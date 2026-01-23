@@ -14,7 +14,7 @@ The entire implementation will be contained in a single C file named `dsdl.c`.
 
 The implementation will be carried out in multiple steps roughly as follows (to be refined):
 
-0. A test suite based on the ThrowTheSwitch Unity framework, or any other framework, needs to be set up, alongside a CMake-based build system. It is expected that some tests may need to access the internals of `dsdl.c`, which can be achieved by `#include <dsdl.c>`, similar to how it's done in libcanard/libudpard test suites. There must be at least one API-level test written in C++, to make sure that the header is compatible with C++. All behaviors tested in the PyDSDL test suite must be tested for dsdl.c as well. Code coverage is needed.
+0. A test suite based on the ThrowTheSwitch Unity framework, or any other framework, needs to be set up, alongside a CMake-based build system. It is expected that some tests may need to access the internals of `dsdl.c`, which can be achieved by `#include <dsdl.c>`, similar to how it's done in libcanard/libudpard test suites. There must be at least one API-level test written in C++20, to make sure that the header is compatible with C++20+. All behaviors tested in the PyDSDL test suite must be tested for dsdl.c as well. Code coverage is needed.
 
 1. A PEG parser needs to be implemented in C. It can be done from scratch, or using a simple third-party library or tool, whichever is easier, as long as no massive external dependencies are introduced. Considering that the grammar is very simple, it makes sense to make a simple ad-hoc parser directly in `dsdl.c`. Since this is a PEG grammar, the parser should be a PEG parser, bypassing the tokenizer. The test namespaces will be used to validate the parser.
 
@@ -22,6 +22,13 @@ The implementation will be carried out in multiple steps roughly as follows (to 
 
 The plan will need to be refined into finer-grained steps.
 
+**See [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md) for the detailed implementation plan.**
+
 Feel free to add git submodules or install whatever software is needed to accomplish the task.
 
 The project organiztion should roughly follow that of libcanard: https://github.com/OpenCyphal/libcanard/; with clang-tidy and clang-format set up.
+
+## Language Requirements
+
+- **C99+**: The library code must be compatible with C99 and later standards.
+- **C++20+**: The public header (`dsdl.h`) must compile cleanly with C++20 and later.
