@@ -2515,6 +2515,101 @@ static bool _dsdl_locate_file(dsdl_t* const           self,
     return false; // Not found in any namespace root
 }
 
+/// Resolve a composite type reference, loading it if necessary.
+/// Returns NULL if the type cannot be found or loaded.
+static const dsdl_composite_t* _dsdl_resolve_composite_type(dsdl_t* const   self,
+                                                            const wkv_str_t type_name,
+                                                            const uint8_t   version_major,
+                                                            const uint8_t   version_minor,
+                                                            const wkv_str_t current_namespace)
+{
+    // Build fully qualified type name with version
+    char   full_name[256];
+    size_t pos = 0;
+
+    // If type_name doesn't contain a dot, it's relative to current_namespace
+    bool has_namespace = false;
+    for (size_t i = 0; i < type_name.len; i++) {
+        if (type_name.str[i] == '.') {
+            has_namespace = true;
+            break;
+        }
+    }
+
+    if (!has_namespace && (current_namespace.len > 0)) {
+        // Prepend current namespace
+        if ((pos + current_namespace.len + 1) >= sizeof(full_name)) {
+            return NULL;
+        }
+        memcpy(full_name + pos, current_namespace.str, current_namespace.len);
+        pos += current_namespace.len;
+        full_name[pos++] = '.';
+    }
+
+    // Add type name
+    if ((pos + type_name.len) >= sizeof(full_name)) {
+        return NULL;
+    }
+    memcpy(full_name + pos, type_name.str, type_name.len);
+    pos += type_name.len;
+
+    // Add version
+    if ((pos + 10) >= sizeof(full_name)) {
+        return NULL;
+    }
+    full_name[pos++] = '.';
+    if (version_major >= 100)
+        full_name[pos++] = (char)('0' + (version_major / 100));
+    if (version_major >= 10)
+        full_name[pos++] = (char)('0' + ((version_major / 10) % 10));
+    full_name[pos++] = (char)('0' + (version_major % 10));
+    full_name[pos++] = '.';
+    if (version_minor >= 100)
+        full_name[pos++] = (char)('0' + (version_minor / 100));
+    if (version_minor >= 10)
+        full_name[pos++] = (char)('0' + ((version_minor / 10) % 10));
+    full_name[pos++] = (char)('0' + (version_minor % 10));
+    full_name[pos]   = '\0';
+
+    // Try to load the type
+    return dsdl_read(self, (wkv_str_t){ pos, full_name });
+}
+
+/// Convert a parsed type to a dsdl_type_t, resolving composite references.
+/// For composite types, ensures the type is loaded and returns a composite type marker.
+static bool _dsdl_convert_parsed_type(dsdl_t* const             self,
+                                      const dsdl_parsed_type_t* parsed_type,
+                                      const wkv_str_t           current_namespace,
+                                      dsdl_type_t*              out_type)
+{
+    // For primitives, void, and aliases, the kind is directly usable
+    if (!dsdl_type_is_array(parsed_type->kind) && !dsdl_type_is_composite(parsed_type->kind)) {
+        *out_type = parsed_type->kind;
+        return true;
+    }
+
+    // For arrays, need to recursively convert element type
+    if (dsdl_type_is_array(parsed_type->kind)) {
+        // TODO: Arrays need special handling - for now just store the array marker
+        *out_type = parsed_type->kind;
+        return true;
+    }
+
+    // For composite types, need to resolve the reference
+    if (dsdl_type_is_composite(parsed_type->kind)) {
+        const dsdl_composite_t* composite = _dsdl_resolve_composite_type(
+          self, parsed_type->type_name, parsed_type->version_major, parsed_type->version_minor, current_namespace);
+        if (composite == NULL) {
+            return false; // Failed to resolve
+        }
+        // Store as composite type marker
+        *out_type = parsed_type->kind;
+        return true;
+    }
+
+    return false;
+}
+
 bool dsdl_add_namespace(dsdl_t* const self, const wkv_str_t root_directory)
 {
     if ((self == NULL) || (root_directory.str == NULL) || (root_directory.len == 0)) {
@@ -2534,29 +2629,38 @@ bool dsdl_add_namespace(dsdl_t* const self, const wkv_str_t root_directory)
 
 const dsdl_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_name)
 {
+#ifdef DSDL_DEBUG_READ
+    fprintf(stderr, "DSDL_READ: type_name='%.*s' (len=%zu)\n", (int)type_name.len, type_name.str, type_name.len);
+#endif
     if ((self == NULL) || (type_name.str == NULL) || (type_name.len == 0)) {
+#ifdef DSDL_DEBUG_READ
+        fprintf(stderr, "DSDL_READ: NULL input\n");
+#endif
         return NULL;
     }
 
     // Parse type name
     _dsdl_type_ref_t type_ref;
     if (!_dsdl_parse_type_name(type_name, &type_ref)) {
+#ifdef DSDL_DEBUG_READ
+        fprintf(stderr, "DSDL_READ: Failed to parse type name\n");
+#endif
         return NULL; // Malformed type name
     }
+#ifdef DSDL_DEBUG_READ
+    fprintf(stderr,
+            "DSDL_READ: Parsed: namespace='%.*s' type='%.*s' version=%d.%d\n",
+            (int)type_ref.namespace_part.len,
+            type_ref.namespace_part.str,
+            (int)type_ref.type_name.len,
+            type_ref.type_name.str,
+            type_ref.major,
+            type_ref.minor);
+#endif
 
-    // Build cache key with version (namespace.TypeName.major.minor)
-    char   cache_key_buf[256];
-    size_t cache_key_len = 0;
-
-    // Add full name (namespace + type name)
-    if ((cache_key_len + type_ref.full_name.len) < sizeof(cache_key_buf)) {
-        memcpy(cache_key_buf + cache_key_len, type_ref.full_name.str, type_ref.full_name.len);
-        cache_key_len += type_ref.full_name.len;
-    }
-
-    // TODO: For now, check cache without version to simplify
-    // Later we need to add version to the cache key properly
-    wkv_node_t* const cached = wkv_get(&self->types, (wkv_str_t){ cache_key_len, cache_key_buf });
+    // Use the original type_name as cache key (includes version)
+    // E.g., "mymsgs.Inner.1.0" -> cache key is "mymsgs.Inner.1.0"
+    wkv_node_t* const cached = wkv_get(&self->types, type_name);
     if (cached != NULL) {
         return (const dsdl_composite_t*)cached->value;
     }
@@ -2564,30 +2668,151 @@ const dsdl_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_name)
     // Locate the DSDL file
     char file_path[512];
     if (!_dsdl_locate_file(self, &type_ref, file_path, sizeof(file_path))) {
+#ifdef DSDL_DEBUG_READ
+        fprintf(stderr, "DSDL_READ: Failed to locate file\n");
+#endif
         return NULL; // File not found
     }
+#ifdef DSDL_DEBUG_READ
+    fprintf(stderr, "DSDL_READ: Located file: '%s'\n", file_path);
+#endif
 
     // Read file contents
     if (self->read == NULL) {
+#ifdef DSDL_DEBUG_READ
+        fprintf(stderr, "DSDL_READ: No read callback\n");
+#endif
         return NULL; // No read callback
     }
 
     size_t file_size = 0;
     void*  file_data = self->read(self, (wkv_str_t){ strlen(file_path), file_path }, &file_size);
     if (file_data == NULL) {
+#ifdef DSDL_DEBUG_READ
+        fprintf(stderr, "DSDL_READ: Failed to read file\n");
+#endif
         return NULL; // Failed to read file
     }
+#ifdef DSDL_DEBUG_READ
+    fprintf(stderr, "DSDL_READ: Read %zu bytes\n", file_size);
+#endif
 
     // Parse the file
-    // TODO: Implement full parsing with dsdl_parse_definition_
-    // TODO: Convert parsed definition to dsdl_composite_t
-    // TODO: Recursively resolve field type dependencies
-    // TODO: Cache the result
+    dsdl_parser_t     parser;
+    dsdl_parsed_def_t def;
 
-    // For now, just free the buffer and return NULL
-    dsdl_free_(self, file_data);
+    dsdl_parser_init_(&parser, self, (const char*)file_data, file_size);
 
-    return NULL; // Not fully implemented yet
+    if (!dsdl_parsed_def_init_(&def, self)) {
+        dsdl_free_(self, file_data);
+#ifdef DSDL_DEBUG_READ
+        fprintf(stderr, "DSDL_READ: def init failed\n");
+#endif
+        return NULL; // OOM
+    }
+
+    if (!dsdl_parse_definition_(&parser, &def)) {
+        dsdl_parsed_def_deinit_(&def);
+        dsdl_free_(self, file_data);
+#ifdef DSDL_DEBUG_READ
+        fprintf(stderr, "DSDL_READ: parse failed\n");
+#endif
+        return NULL; // Parse error
+    }
+#ifdef DSDL_DEBUG_READ
+    fprintf(stderr, "DSDL_READ: parsed OK, field_count=%zu, sealed=%d\n", def.field_count, def.is_sealed);
+#endif
+
+    dsdl_free_(self, file_data); // Done with file contents
+
+    // Convert parsed definition to dsdl_composite_t
+    // Calculate total size needed for single allocation
+    size_t total_size = sizeof(dsdl_composite_t);
+    total_size += type_name.len; // Space for name string (use original type_name which includes version)
+    total_size += def.field_count * sizeof(wkv_str_t);   // field_names array
+    total_size += def.field_count * sizeof(dsdl_type_t); // field_types array
+
+    // Sum up field name string lengths
+    size_t total_name_len = 0;
+    for (size_t i = 0; i < def.field_count; i++) {
+        total_name_len += def.field_names[i].len;
+    }
+    total_size += total_name_len; // Space for all field name strings
+
+    // Allocate single block
+    void* block = dsdl_alloc_(self, total_size);
+    if (block == NULL) {
+        dsdl_parsed_def_deinit_(&def);
+#ifdef DSDL_DEBUG_READ
+        fprintf(stderr, "DSDL_READ: alloc failed, size=%zu\n", total_size);
+#endif
+        return NULL;
+    }
+#ifdef DSDL_DEBUG_READ
+    fprintf(stderr, "DSDL_READ: allocated %zu bytes\n", total_size);
+#endif
+
+    // Layout the block
+    dsdl_composite_t* composite = (dsdl_composite_t*)block;
+    char*             str_ptr   = (char*)(composite + 1);
+
+    // Copy type name (using original type_name which includes version)
+    composite->name.len = type_name.len;
+    composite->name.str = str_ptr;
+    memcpy(str_ptr, type_name.str, type_name.len);
+    str_ptr += type_name.len;
+
+    // Set up field_names array
+    composite->field_names = (wkv_str_t*)str_ptr;
+    str_ptr += def.field_count * sizeof(wkv_str_t);
+
+    // Set up field_types array
+    composite->field_types = (dsdl_type_t*)str_ptr;
+    str_ptr += def.field_count * sizeof(dsdl_type_t);
+
+    // Copy field names and types
+    for (size_t i = 0; i < def.field_count; i++) {
+        composite->field_names[i].len = def.field_names[i].len;
+        composite->field_names[i].str = str_ptr;
+        memcpy(str_ptr, def.field_names[i].str, def.field_names[i].len);
+        str_ptr += def.field_names[i].len;
+
+        // Convert parsed type to dsdl_type_t, resolving dependencies
+        if (!_dsdl_convert_parsed_type(
+              self, &def.field_types[i], type_ref.namespace_part, &composite->field_types[i])) {
+#ifdef DSDL_DEBUG_READ
+            fprintf(stderr, "DSDL_READ: type conversion failed for field %zu\n", i);
+#endif
+            dsdl_parsed_def_deinit_(&def);
+            dsdl_free_(self, block);
+            return NULL;
+        }
+    }
+
+    // Set basic properties
+    composite->field_count = def.field_count;
+    composite->sealed      = def.is_sealed;
+    composite->type =
+      def.is_union ? DSDL_COMPOSITE_UNION : (def.is_service ? DSDL_COMPOSITE_RPC : DSDL_COMPOSITE_STRUCT);
+
+    // Use version from parsed type_ref
+    composite->version[0] = type_ref.major;
+    composite->version[1] = type_ref.minor;
+
+    // Set extent
+    composite->extent = def.has_extent ? def.extent_bits / 8 : 0; // Convert bits to bytes
+
+    // Cache the result using type_name as key
+    wkv_node_t* const cache_node = wkv_set(&self->types, type_name);
+    if (cache_node == NULL) {
+        dsdl_parsed_def_deinit_(&def);
+        dsdl_free_(self, block);
+        return NULL;
+    }
+    cache_node->value = composite;
+
+    dsdl_parsed_def_deinit_(&def);
+    return composite;
 }
 
 size_t dsdl_serialized_footprint(const dsdl_composite_t* const type)

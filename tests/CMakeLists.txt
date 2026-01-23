@@ -129,3 +129,23 @@ target_compile_definitions(test_dsdl_internals PRIVATE
 )
 
 add_test(NAME dsdl_internal_tests COMMAND test_dsdl_internals)
+
+# ------------------------------------------------------------------------------
+# Test executable - Type resolution tests (integration tests)
+# ------------------------------------------------------------------------------
+add_executable(test_dsdl_type_resolution
+    test_type_resolution.c
+)
+
+target_link_libraries(test_dsdl_type_resolution PRIVATE
+    unity
+    dsdl_test_internals
+)
+
+target_compile_definitions(test_dsdl_type_resolution PRIVATE
+    DSDL_INTERNAL_TESTING=1
+)
+
+add_test(NAME dsdl_type_resolution_tests COMMAND test_dsdl_type_resolution
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)

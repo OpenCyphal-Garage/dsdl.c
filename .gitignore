@@ -38,3 +38,4 @@ dkms.conf
 !**/.idea/dictionaries/*
 cmake-build*/
 build*/
+Testing/
