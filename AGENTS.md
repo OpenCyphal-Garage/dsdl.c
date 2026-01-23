@@ -1,6 +1,6 @@
 # Cyphal DSDL parser in C
 
-This is a compact C implementation of a Cyphal DSDL parser. Please read the Specification document in the specs folder, peruse the reference implementations -- Nunavut (focus on C and Python language support only) and PyDSDL (the main reference implementation).
+This is a compact C implementation of a Cyphal DSDL parser. Please read the Specification in the specs folder, peruse the reference implementations -- Nunavut (focus on C and Python language support only) and PyDSDL (the main reference implementation).
 
 A crude draft of the API design is proposed in `dsdl.h`.
 

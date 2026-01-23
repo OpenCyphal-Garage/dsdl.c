@@ -4,3 +4,6 @@
 [submodule "reference_implementations/nunavut"]
 	path = reference_implementations/nunavut
 	url = https://github.com/OpenCyphal/nunavut
+[submodule "specs/specification"]
+	path = specs/specification
+	url = https://github.com/opencyphal/specification
