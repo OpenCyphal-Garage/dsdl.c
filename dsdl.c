@@ -2111,25 +2111,25 @@ static bool dsdl_parse_definition_(dsdl_parser_t* const parser, dsdl_parsed_def_
 // Public API implementation
 // ============================================================================
 
+static void* wkv_realloc_adapter(wkv_t* const self, void* const ptr, const size_t new_size)
+{
+    dsdl_t* const owner = self->context;
+    return owner->realloc(owner, ptr, new_size);
+}
+
 void dsdl_new(dsdl_t* const self, void* (*const realloc_func)(dsdl_t*, void*, size_t))
 {
-    if ((self == NULL) || (realloc_func == NULL)) {
-        return;
-    }
-
-    // Zero-initialize
+    assert((self != NULL) && (realloc_func != NULL));
     (void)memset(self, 0, sizeof(*self));
-
-    // Set up memory allocator
     self->realloc = realloc_func;
 
-    // Initialize WKV containers for types and namespaces
-    // The WKV realloc signature matches ours, but we need to cast
-    wkv_init(&self->types, (wkv_realloc_t)realloc_func);
-    self->types.sep = '.'; // Use '.' as separator for type names
+    wkv_init(&self->types, wkv_realloc_adapter);
+    self->types.sep     = '.';
+    self->types.context = self;
 
-    wkv_init(&self->namespaces, (wkv_realloc_t)realloc_func);
-    self->namespaces.sep = '/'; // Use '/' as separator for paths
+    wkv_init(&self->namespaces, wkv_realloc_adapter);
+    self->namespaces.sep     = '/';
+    self->namespaces.context = self;
 }
 
 void dsdl_destroy(dsdl_t* const self)
