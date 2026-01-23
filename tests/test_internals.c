@@ -157,7 +157,7 @@ static void test_parse_type_name_simple(void)
     _dsdl_type_ref_t ref;
 
     // Just "TypeName"
-    TEST_ASSERT_TRUE(_dsdl_parse_type_name((wkv_str_t){ 8, "TypeName" }, &ref));
+    TEST_ASSERT_TRUE(_dsdl_parse_type_name(wkv_key("TypeName"), &ref));
     TEST_ASSERT_EQUAL_size_t(8, ref.type_name.len);
     TEST_ASSERT_EQUAL_STRING_LEN("TypeName", ref.type_name.str, 8);
     TEST_ASSERT_EQUAL_size_t(0, ref.namespace_part.len);
@@ -170,7 +170,7 @@ static void test_parse_type_name_with_namespace(void)
     _dsdl_type_ref_t ref;
 
     // "uavcan.node.Heartbeat"
-    TEST_ASSERT_TRUE(_dsdl_parse_type_name((wkv_str_t){ 21, "uavcan.node.Heartbeat" }, &ref));
+    TEST_ASSERT_TRUE(_dsdl_parse_type_name(wkv_key("uavcan.node.Heartbeat"), &ref));
     TEST_ASSERT_EQUAL_size_t(9, ref.type_name.len);
     TEST_ASSERT_EQUAL_STRING_LEN("Heartbeat", ref.type_name.str, 9);
     TEST_ASSERT_EQUAL_size_t(11, ref.namespace_part.len);
@@ -185,7 +185,7 @@ static void test_parse_type_name_with_full_version(void)
     _dsdl_type_ref_t ref;
 
     // "uavcan.node.Heartbeat.1.0"
-    TEST_ASSERT_TRUE(_dsdl_parse_type_name((wkv_str_t){ 25, "uavcan.node.Heartbeat.1.0" }, &ref));
+    TEST_ASSERT_TRUE(_dsdl_parse_type_name(wkv_key("uavcan.node.Heartbeat.1.0"), &ref));
     TEST_ASSERT_EQUAL_size_t(9, ref.type_name.len);
     TEST_ASSERT_EQUAL_STRING_LEN("Heartbeat", ref.type_name.str, 9);
     TEST_ASSERT_EQUAL_size_t(11, ref.namespace_part.len);
@@ -201,7 +201,7 @@ static void test_parse_type_name_with_major_only(void)
     _dsdl_type_ref_t ref;
 
     // "uavcan.node.Heartbeat.1"
-    TEST_ASSERT_TRUE(_dsdl_parse_type_name((wkv_str_t){ 23, "uavcan.node.Heartbeat.1" }, &ref));
+    TEST_ASSERT_TRUE(_dsdl_parse_type_name(wkv_key("uavcan.node.Heartbeat.1"), &ref));
     TEST_ASSERT_EQUAL_size_t(9, ref.type_name.len);
     TEST_ASSERT_EQUAL_STRING_LEN("Heartbeat", ref.type_name.str, 9);
     TEST_ASSERT_EQUAL_size_t(11, ref.namespace_part.len);
@@ -216,7 +216,7 @@ static void test_parse_type_name_no_namespace_with_version(void)
     _dsdl_type_ref_t ref;
 
     // "TypeName.1.0"
-    TEST_ASSERT_TRUE(_dsdl_parse_type_name((wkv_str_t){ 12, "TypeName.1.0" }, &ref));
+    TEST_ASSERT_TRUE(_dsdl_parse_type_name(wkv_key("TypeName.1.0"), &ref));
     TEST_ASSERT_EQUAL_size_t(8, ref.type_name.len);
     TEST_ASSERT_EQUAL_STRING_LEN("TypeName", ref.type_name.str, 8);
     TEST_ASSERT_EQUAL_size_t(0, ref.namespace_part.len);
@@ -231,7 +231,7 @@ static void test_parse_type_name_single_namespace(void)
     _dsdl_type_ref_t ref;
 
     // "mymsgs.Inner.1.0"
-    TEST_ASSERT_TRUE(_dsdl_parse_type_name((wkv_str_t){ 16, "mymsgs.Inner.1.0" }, &ref));
+    TEST_ASSERT_TRUE(_dsdl_parse_type_name(wkv_key("mymsgs.Inner.1.0"), &ref));
     TEST_ASSERT_EQUAL_size_t(5, ref.type_name.len);
     TEST_ASSERT_EQUAL_STRING_LEN("Inner", ref.type_name.str, 5);
     TEST_ASSERT_EQUAL_size_t(6, ref.namespace_part.len);
@@ -247,7 +247,7 @@ static void test_parse_type_name_large_version(void)
     _dsdl_type_ref_t ref;
 
     // "TypeName.255.255"
-    TEST_ASSERT_TRUE(_dsdl_parse_type_name((wkv_str_t){ 16, "TypeName.255.255" }, &ref));
+    TEST_ASSERT_TRUE(_dsdl_parse_type_name(wkv_key("TypeName.255.255"), &ref));
     TEST_ASSERT_EQUAL_size_t(8, ref.type_name.len);
     TEST_ASSERT_EQUAL_STRING_LEN("TypeName", ref.type_name.str, 8);
     TEST_ASSERT_TRUE(ref.has_major);

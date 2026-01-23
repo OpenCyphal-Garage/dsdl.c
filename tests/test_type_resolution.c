@@ -92,11 +92,11 @@ static void test_load_simple_type(void)
     setup_dsdl();
 
     // Add namespace root
-    const char* root = "test_dsdl_root_namespaces/nunavut_test_types/nested_array_types";
-    TEST_ASSERT_TRUE(dsdl_add_namespace(&g_dsdl, (wkv_str_t){ strlen(root), root }));
+    TEST_ASSERT_TRUE(dsdl_add_namespace(&g_dsdl,
+                                        wkv_key("test_dsdl_root_namespaces/nunavut_test_types/nested_array_types")));
 
     // Load Simple.1.0 (no dependencies)
-    const dsdl_type_composite_t* simple = dsdl_read(&g_dsdl, (wkv_str_t){ 17, "mymsgs.Simple.1.0" });
+    const dsdl_type_composite_t* simple = dsdl_read(&g_dsdl, wkv_key("mymsgs.Simple.1.0"));
     TEST_ASSERT_NOT_NULL(simple);
 
     // Check basic properties
@@ -116,19 +116,19 @@ static void test_load_type_with_dependency(void)
     setup_dsdl();
 
     // Add namespace root
-    const char* root = "test_dsdl_root_namespaces/nunavut_test_types/nested_array_types";
-    TEST_ASSERT_TRUE(dsdl_add_namespace(&g_dsdl, (wkv_str_t){ strlen(root), root }));
+    TEST_ASSERT_TRUE(dsdl_add_namespace(&g_dsdl,
+                                        wkv_key("test_dsdl_root_namespaces/nunavut_test_types/nested_array_types")));
 
     // Load Outer.1.0 which references Inner.1.0
-    const dsdl_type_composite_t* outer = dsdl_read(&g_dsdl, (wkv_str_t){ 16, "mymsgs.Outer.1.0" });
+    const dsdl_type_composite_t* outer = dsdl_read(&g_dsdl, wkv_key("mymsgs.Outer.1.0"));
     TEST_ASSERT_NOT_NULL(outer);
 
     // Check that Inner.1.0 was also loaded (cached)
-    const dsdl_type_composite_t* inner = dsdl_read(&g_dsdl, (wkv_str_t){ 16, "mymsgs.Inner.1.0" });
+    const dsdl_type_composite_t* inner = dsdl_read(&g_dsdl, wkv_key("mymsgs.Inner.1.0"));
     TEST_ASSERT_NOT_NULL(inner);
 
     // Inner should be the same instance (from cache)
-    const dsdl_type_composite_t* inner2 = dsdl_read(&g_dsdl, (wkv_str_t){ 16, "mymsgs.Inner.1.0" });
+    const dsdl_type_composite_t* inner2 = dsdl_read(&g_dsdl, wkv_key("mymsgs.Inner.1.0"));
     TEST_ASSERT_EQUAL_PTR(inner, inner2);
 
     teardown_dsdl();
@@ -139,14 +139,14 @@ static void test_cache_hit(void)
     setup_dsdl();
 
     // Add namespace root
-    const char* root = "test_dsdl_root_namespaces/nunavut_test_types/nested_array_types";
-    TEST_ASSERT_TRUE(dsdl_add_namespace(&g_dsdl, (wkv_str_t){ strlen(root), root }));
+    TEST_ASSERT_TRUE(dsdl_add_namespace(&g_dsdl,
+                                        wkv_key("test_dsdl_root_namespaces/nunavut_test_types/nested_array_types")));
 
     // Load same type twice
-    const dsdl_type_composite_t* type1 = dsdl_read(&g_dsdl, (wkv_str_t){ 16, "mymsgs.Inner.1.0" });
+    const dsdl_type_composite_t* type1 = dsdl_read(&g_dsdl, wkv_key("mymsgs.Inner.1.0"));
     TEST_ASSERT_NOT_NULL(type1);
 
-    const dsdl_type_composite_t* type2 = dsdl_read(&g_dsdl, (wkv_str_t){ 16, "mymsgs.Inner.1.0" });
+    const dsdl_type_composite_t* type2 = dsdl_read(&g_dsdl, wkv_key("mymsgs.Inner.1.0"));
     TEST_ASSERT_NOT_NULL(type2);
 
     // Should return same instance
@@ -160,12 +160,64 @@ static void test_type_not_found(void)
     setup_dsdl();
 
     // Add namespace root
-    const char* root = "test_dsdl_root_namespaces/nunavut_test_types/nested_array_types";
-    TEST_ASSERT_TRUE(dsdl_add_namespace(&g_dsdl, (wkv_str_t){ strlen(root), root }));
+    TEST_ASSERT_TRUE(dsdl_add_namespace(&g_dsdl,
+                                        wkv_key("test_dsdl_root_namespaces/nunavut_test_types/nested_array_types")));
 
     // Try to load non-existent type
-    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, (wkv_str_t){ 23, "mymsgs.DoesNotExist.1.0" });
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("mymsgs.DoesNotExist.1.0"));
     TEST_ASSERT_NULL(type);
+
+    teardown_dsdl();
+}
+
+static void test_serialized_footprint_simple(void)
+{
+    setup_dsdl();
+
+    TEST_ASSERT_TRUE(dsdl_add_namespace(&g_dsdl,
+                                        wkv_key("test_dsdl_root_namespaces/nunavut_test_types/nested_array_types")));
+
+    // Simple.1.0: int32 a, float16 b, bool c
+    // = 32 + 16 + 1 = 49 bits = 7 bytes (byte-aligned)
+    const dsdl_type_composite_t* simple = dsdl_read(&g_dsdl, wkv_key("mymsgs.Simple.1.0"));
+    TEST_ASSERT_NOT_NULL(simple);
+    TEST_ASSERT_EQUAL_size_t(7, dsdl_serialized_footprint(simple));
+
+    teardown_dsdl();
+}
+
+static void test_serialized_footprint_array(void)
+{
+    setup_dsdl();
+
+    TEST_ASSERT_TRUE(dsdl_add_namespace(&g_dsdl,
+                                        wkv_key("test_dsdl_root_namespaces/nunavut_test_types/nested_array_types")));
+
+    // Inner.1.0: uint32[<=5] inner_items
+    // Length prefix: ceil(log2(5+1)) = ceil(log2(6)) = 3 bits
+    // Elements: 5 * 32 = 160 bits
+    // Total: 3 + 160 = 163 bits = 21 bytes
+    const dsdl_type_composite_t* inner = dsdl_read(&g_dsdl, wkv_key("mymsgs.Inner.1.0"));
+    TEST_ASSERT_NOT_NULL(inner);
+    TEST_ASSERT_EQUAL_size_t(21, dsdl_serialized_footprint(inner));
+
+    teardown_dsdl();
+}
+
+static void test_serialized_footprint_nested(void)
+{
+    setup_dsdl();
+
+    TEST_ASSERT_TRUE(dsdl_add_namespace(&g_dsdl,
+                                        wkv_key("test_dsdl_root_namespaces/nunavut_test_types/nested_array_types")));
+
+    // Outer.1.0: float32[<=8] outer_items, Inner.1.0 inner
+    // float32[<=8]: ceil(log2(9))=4 prefix bits + 8*32=256 element bits = 260 bits
+    // Inner.1.0: 163 bits (from above)
+    // Total: 260 + 163 = 423 bits = 53 bytes
+    const dsdl_type_composite_t* outer = dsdl_read(&g_dsdl, wkv_key("mymsgs.Outer.1.0"));
+    TEST_ASSERT_NOT_NULL(outer);
+    TEST_ASSERT_EQUAL_size_t(53, dsdl_serialized_footprint(outer));
 
     teardown_dsdl();
 }
@@ -185,6 +237,9 @@ int main(void)
     RUN_TEST(test_load_type_with_dependency);
     RUN_TEST(test_cache_hit);
     RUN_TEST(test_type_not_found);
+    RUN_TEST(test_serialized_footprint_simple);
+    RUN_TEST(test_serialized_footprint_array);
+    RUN_TEST(test_serialized_footprint_nested);
 
     return UNITY_END();
 }

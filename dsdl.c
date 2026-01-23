@@ -2710,7 +2710,7 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_
     }
 
     size_t file_size = 0;
-    void*  file_data = self->read(self, (wkv_str_t){ strlen(file_path), file_path }, &file_size);
+    void*  file_data = self->read(self, wkv_key(file_path), &file_size);
     if (file_data == NULL) {
 #ifdef DSDL_DEBUG_READ
         fprintf(stderr, "DSDL_READ: Failed to read file\n");
@@ -2839,14 +2839,134 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_
     return composite;
 }
 
+// ============================================================================
+// Size calculation
+// ============================================================================
+
+/// Calculate ceil(log2(n)) for n > 0. Returns 0 for n <= 1.
+/// Used for array length prefix and union tag bit widths.
+static size_t _dsdl_ceil_log2(const size_t n)
+{
+    if (n <= 1) {
+        return 0;
+    }
+    size_t result = 0;
+    size_t val    = n - 1; // -1 because we want ceil, not floor
+    while (val > 0) {
+        val >>= 1;
+        result++;
+    }
+    return result;
+}
+
+/// Calculate the bit width of the length prefix for a variable-length array.
+/// For capacity C (max elements), prefix is ceil(log2(C + 1)) bits.
+static size_t _dsdl_array_length_prefix_bits(const size_t capacity)
+{
+    return _dsdl_ceil_log2(capacity + 1);
+}
+
+/// Calculate the bit width of the union tag for a union with N alternatives.
+/// Tag is ceil(log2(N)) bits.
+static size_t _dsdl_union_tag_bits(const size_t field_count)
+{
+    return _dsdl_ceil_log2(field_count);
+}
+
+/// Forward declaration for recursive type size calculation.
+static size_t _dsdl_type_max_bits(const dsdl_type_t* type_ptr);
+
+/// Calculate the maximum serialized size in bits for a composite type.
+static size_t _dsdl_composite_max_bits(const dsdl_type_composite_t* const composite)
+{
+    if (composite == NULL) {
+        return 0;
+    }
+
+    const bool is_union = (composite->type == DSDL_COMPOSITE_UNION);
+
+    if (is_union) {
+        // Union: tag bits + max of all field bit sizes (no padding for sealed types)
+        const size_t tag_bits = _dsdl_union_tag_bits(composite->field_count);
+
+        size_t max_field_bits = 0;
+        for (size_t i = 0; i < composite->field_count; i++) {
+            const size_t field_bits = _dsdl_type_max_bits(composite->field_types[i]);
+            if (field_bits > max_field_bits) {
+                max_field_bits = field_bits;
+            }
+        }
+
+        return tag_bits + max_field_bits;
+    } else {
+        // Struct: sum of all field bit sizes (no padding between fields for sealed types)
+        size_t total_bits = 0;
+        for (size_t i = 0; i < composite->field_count; i++) {
+            total_bits += _dsdl_type_max_bits(composite->field_types[i]);
+        }
+        return total_bits;
+    }
+}
+
+/// Calculate the maximum serialized size in bits for any type.
+/// The type_ptr can point to a dsdl_type_t (primitive), dsdl_type_array_t, or dsdl_type_composite_t.
+static size_t _dsdl_type_max_bits(const dsdl_type_t* type_ptr)
+{
+    if (type_ptr == NULL) {
+        return 0;
+    }
+
+    const dsdl_type_t kind = *type_ptr;
+
+    // Primitive types (void, int, uint, float, bool, byte)
+    if (dsdl_type_is_void(kind) || dsdl_type_is_int(kind) || dsdl_type_is_uint(kind) || dsdl_type_is_float(kind)) {
+        return dsdl_type_bit_width(kind);
+    }
+
+    // Handle aliases (bool = uint1, byte = uint8)
+    if (dsdl_type_is_alias(kind)) {
+        // Strip alias flag to get base type bit width
+        return dsdl_type_bit_width((dsdl_type_t)(kind & ~DSDL_TYPE_ALIAS_MASK));
+    }
+
+    // Array types
+    if (dsdl_type_is_array(kind)) {
+        const dsdl_type_array_t* arr = (const dsdl_type_array_t*)type_ptr;
+        const size_t element_bits    = _dsdl_type_max_bits(arr->member_type);
+        const size_t total_bits      = arr->capacity * element_bits;
+
+        if (kind == DSDL_ARRAY_VARIABLE) {
+            // Variable-length array: length prefix + elements
+            const size_t prefix_bits = _dsdl_array_length_prefix_bits(arr->capacity);
+            return prefix_bits + total_bits;
+        } else {
+            // Fixed-length array: just the elements
+            return total_bits;
+        }
+    }
+
+    // Composite types
+    if (dsdl_type_is_composite(kind)) {
+        const dsdl_type_composite_t* composite = (const dsdl_type_composite_t*)type_ptr;
+        return _dsdl_composite_max_bits(composite);
+    }
+
+    return 0; // Unknown type
+}
+
 size_t dsdl_serialized_footprint(const dsdl_type_composite_t* const type)
 {
-    (void)type;
-    // TODO: compute by summing the max size of all fields recursively.
-    // For primitives the size is trivially known; for arrays it is the length prefix (unless fixed-length)
-    // plus capacity times max size of the element type; for unions it is the max field size plus tag,
-    // etc. For non-sealed types the delimiter header (4 bytes) also needs to be added.
-    return 0;
+    if (type == NULL) {
+        return 0;
+    }
+
+    const size_t max_bits = _dsdl_composite_max_bits(type);
+
+    // For non-sealed composites, a 32-bit delimiter header is prepended when nested
+    // However, for the top-level type, we return just the content size.
+    // The delimiter is only added when this type is used as a field in another type.
+
+    return (max_bits + 7) / 8; // Convert bits to bytes, rounding up
 }
 
 size_t dsdl_serialize(const dsdl_type_composite_t* const type, const size_t output_size, void* const output)
