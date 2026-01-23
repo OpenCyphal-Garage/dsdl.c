@@ -7,3 +7,6 @@
 [submodule "specs/specification"]
 	path = specs/specification
 	url = https://github.com/opencyphal/specification
+[submodule "tests/unity"]
+	path = tests/unity
+	url = https://github.com/ThrowTheSwitch/Unity
