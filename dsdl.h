@@ -29,13 +29,9 @@ extern "C"
 /// - Bits 8-11:  Type category
 /// - Bits 12-15: Alias flag
 ///
-/// Categories:
-///   0x0 = void
-///   0x1 = signed integer
-///   0x2 = unsigned integer
-///   0x5 = floating point
-///   0xA = array
-///   0xF = composite
+/// There is a number of structs named `dsdl_type_*_t`; all have a field of type dsdl_type_t as the first element for
+/// runtime type identification. One can interpret a pointer to a type descriptor as dsdl_type_t to find out its
+/// category, and then cast to the specific struct type to obtain further details.
 typedef uint16_t dsdl_type_t;
 
 // Void types (void1..void64)
@@ -109,62 +105,64 @@ static inline bool    dsdl_type_is_composite(dsdl_type_t t) { return (t & DSDL_T
 static inline bool    dsdl_type_is_alias(dsdl_type_t t) { return (t & DSDL_TYPE_ALIAS_MASK) != 0; }
 static inline uint8_t dsdl_type_bit_width(dsdl_type_t t) { return (uint8_t)(t & DSDL_TYPE_BITWIDTH_MASK); }
 
-// ============================================================================
-// Data structures
-// ============================================================================
-
-/// Array type descriptor and storage.
-typedef struct dsdl_array_t
+typedef struct dsdl_type_array_t
 {
-    size_t      capacity;     ///< Maximum number of elements (from type definition)
-    dsdl_type_t member_type;  ///< Type of array elements
-    size_t      member_count; ///< Current number of elements (for variable arrays)
-    void*       members;      ///< Pointer to element storage
-} dsdl_array_t;
+    dsdl_type_t  type;        ///< Always the first field; here DSDL_ARRAY_*
+    size_t       capacity;    ///< Maximum number of elements (from type definition)
+    dsdl_type_t* member_type; ///< Points to any of dsdl_type_*; castable to dsdl_type_t* for type identification.
+} dsdl_type_array_t;
 
-/// Forward declaration for recursive types.
-typedef struct dsdl_composite_t dsdl_composite_t;
-
-/// Composite type descriptor (struct, union, or service).
+/// Composite type descriptor (struct, union, or RPC-service).
 ///
 /// Instances are heap-allocated such that the instance is at the beginning of the
 /// allocated block, and all pointees (name, fields, etc.) are contained in the same
 /// allocated block after the instance. This enables simple memory management.
-struct dsdl_composite_t
+typedef struct dsdl_type_composite_t
 {
-    dsdl_type_t   type;       ///< Differentiates struct/union/RPC (DSDL_COMPOSITE_*)
+    dsdl_type_t   type;       ///< Always the first field; here DSDL_COMPOSITE_*
     wkv_str_t     name;       ///< Fully qualified type name
     uint_least8_t version[2]; ///< [major, minor]
 
     size_t extent; ///< Maximum serialized size in bytes.
     bool   sealed; ///< True if @sealed directive present
 
-    size_t       field_count; ///< Number of fields
-    wkv_str_t*   field_names; ///< Array of field names
-    dsdl_type_t* field_types; ///< Array of field types
-};
+    size_t        field_count; ///< Number of fields
+    wkv_str_t*    field_names; ///< Array of field names
+    dsdl_type_t** field_types; ///< Points to either dsdl_type_t*, dsdl_type_array_t*, dsdl_type_composite_t*, ...
+} dsdl_type_composite_t;
+
+// ============================================================================
+// Data structures
+// ============================================================================
+
+typedef struct dsdl_array_t
+{
+    dsdl_type_array_t type;
+    size_t            member_count; ///< Current number of elements (for variable arrays)
+    void*             members;      ///< Pointer to element storage
+} dsdl_array_t;
 
 /// Struct instance with field values.
 typedef struct dsdl_struct_t
 {
-    dsdl_composite_t base;   ///< Type descriptor
-    void*            values; ///< Packed field values
+    dsdl_type_composite_t type;
+    void*                 values;
 } dsdl_struct_t;
 
 /// Union instance with selected variant.
 typedef struct dsdl_union_t
 {
-    dsdl_composite_t base;  ///< Type descriptor
-    void*            value; ///< Currently selected field value
-    size_t           tag;   ///< Which field is selected; must be in [0, field_count)
+    dsdl_type_composite_t type;
+    void*                 value; ///< Currently selected field value
+    size_t                tag;   ///< Which field is selected; must be in [0, field_count)
 } dsdl_union_t;
 
 /// Service (RPC) type with request and response parts.
 typedef struct dsdl_rpc_t
 {
-    dsdl_composite_t  base;     ///< Type descriptor (defaults to request properties)
-    dsdl_composite_t* request;  ///< Request type
-    dsdl_composite_t* response; ///< Response type
+    dsdl_type_composite_t  type;     ///< Defaults to request properties
+    dsdl_type_composite_t* request;  ///< Request type
+    dsdl_type_composite_t* response; ///< Response type
 } dsdl_rpc_t;
 
 // ============================================================================
@@ -242,14 +240,14 @@ bool dsdl_add_namespace(dsdl_t* self, wkv_str_t root_directory);
 ///                            "uavcan.node.Heartbeat.1" (latest minor in v1)
 ///                            "uavcan.node.Heartbeat" (latest version)
 /// @return Pointer to type descriptor (owned by dsdl_t), or NULL on error
-const dsdl_composite_t* dsdl_read(dsdl_t* self, wkv_str_t type_name);
+const dsdl_type_composite_t* dsdl_read(dsdl_t* self, wkv_str_t type_name);
 
 /// Get the maximum serialized size in bytes for a type.
 /// This is less than or equal the extent. For sealed types, equals the extent.
 ///
 /// @param type  Type descriptor
 /// @return Maximum serialized size in bytes, which is NOT the same as the extent.
-size_t dsdl_serialized_footprint(const dsdl_composite_t* type);
+size_t dsdl_serialized_footprint(const dsdl_type_composite_t* type);
 
 /// Serialize a composite type instance to a byte buffer.
 ///
@@ -257,7 +255,7 @@ size_t dsdl_serialized_footprint(const dsdl_composite_t* type);
 /// @param output_size  Size of output buffer in bytes
 /// @param output       Output buffer
 /// @return Number of bytes written, or 0 on error
-size_t dsdl_serialize(const dsdl_composite_t* type, size_t output_size, void* output);
+size_t dsdl_serialize(const dsdl_type_composite_t* type, size_t output_size, void* output);
 
 /// Deserialize a byte buffer into a composite type instance.
 ///
@@ -265,7 +263,7 @@ size_t dsdl_serialize(const dsdl_composite_t* type, size_t output_size, void* ou
 /// @param input_size  Size of input buffer in bytes
 /// @param input       Input buffer
 /// @return Number of bytes consumed, or 0 on error
-size_t dsdl_deserialize(dsdl_composite_t* type, size_t input_size, const void* input);
+size_t dsdl_deserialize(dsdl_type_composite_t* type, size_t input_size, const void* input);
 
 #ifdef __cplusplus
 }

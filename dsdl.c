@@ -71,7 +71,7 @@ struct dsdl_value_t
             size_t        count;
             dsdl_value_t* elements;
         } set;
-        void* type_ref; ///< dsdl_value_type (pointer to dsdl_composite_t)
+        void* type_ref; ///< dsdl_value_type (pointer to dsdl_type_composite_t)
     } as;
 };
 
@@ -1405,7 +1405,8 @@ static bool dsdl_parse_expression_(dsdl_parser_t* const parser, dsdl_value_t* co
 /// This is an intermediate representation before converting to dsdl_type_t.
 typedef struct
 {
-    dsdl_type_t kind;          ///< DSDL_xxx type kind constant
+    dsdl_type_t kind;          ///< DSDL_xxx type kind constant (DSDL_ARRAY_* for arrays)
+    dsdl_type_t element_kind;  ///< For arrays: the element type kind (primitive or composite marker)
     uint8_t     bit_width;     ///< Bit width for primitives/void
     bool        is_saturated;  ///< true = saturated (default), false = truncated
     bool        is_variable;   ///< For arrays: is variable-length
@@ -1690,7 +1691,8 @@ static bool dsdl_parse_type_array_(dsdl_parser_t* const parser, dsdl_parsed_type
     }
     dsdl_parser_advance_(parser, 1);
 
-    // Update type kind to array
+    // Save element type and update kind to array marker
+    out_type->element_kind = out_type->kind;
     if (out_type->is_variable) {
         out_type->kind = DSDL_ARRAY_VARIABLE;
     } else {
@@ -2517,11 +2519,11 @@ static bool _dsdl_locate_file(dsdl_t* const           self,
 
 /// Resolve a composite type reference, loading it if necessary.
 /// Returns NULL if the type cannot be found or loaded.
-static const dsdl_composite_t* _dsdl_resolve_composite_type(dsdl_t* const   self,
-                                                            const wkv_str_t type_name,
-                                                            const uint8_t   version_major,
-                                                            const uint8_t   version_minor,
-                                                            const wkv_str_t current_namespace)
+static const dsdl_type_composite_t* _dsdl_resolve_composite_type(dsdl_t* const   self,
+                                                                 const wkv_str_t type_name,
+                                                                 const uint8_t   version_major,
+                                                                 const uint8_t   version_minor,
+                                                                 const wkv_str_t current_namespace)
 {
     // Build fully qualified type name with version
     char   full_name[256];
@@ -2575,39 +2577,61 @@ static const dsdl_composite_t* _dsdl_resolve_composite_type(dsdl_t* const   self
     return dsdl_read(self, (wkv_str_t){ pos, full_name });
 }
 
-/// Convert a parsed type to a dsdl_type_t, resolving composite references.
-/// For composite types, ensures the type is loaded and returns a composite type marker.
-static bool _dsdl_convert_parsed_type(dsdl_t* const             self,
-                                      const dsdl_parsed_type_t* parsed_type,
-                                      const wkv_str_t           current_namespace,
-                                      dsdl_type_t*              out_type)
+/// Create a type descriptor from a parsed type, resolving composite references.
+/// Returns a pointer to the allocated type descriptor, or NULL on error.
+/// The returned pointer can be cast to dsdl_type_t* to read the type discriminator,
+/// then cast to the appropriate concrete type (dsdl_type_array_t*, dsdl_type_composite_t*, etc.).
+static dsdl_type_t* _dsdl_create_type_descriptor(dsdl_t* const             self,
+                                                 const dsdl_parsed_type_t* parsed_type,
+                                                 const wkv_str_t           current_namespace)
 {
-    // For primitives, void, and aliases, the kind is directly usable
+    // For primitives, void, and aliases: allocate a single dsdl_type_t
     if (!dsdl_type_is_array(parsed_type->kind) && !dsdl_type_is_composite(parsed_type->kind)) {
-        *out_type = parsed_type->kind;
-        return true;
+        dsdl_type_t* type_ptr = (dsdl_type_t*)dsdl_alloc_(self, sizeof(dsdl_type_t));
+        if (type_ptr == NULL) {
+            return NULL;
+        }
+        *type_ptr = parsed_type->kind;
+        return type_ptr;
     }
 
-    // For arrays, need to recursively convert element type
+    // For arrays: allocate dsdl_type_array_t and recursively create element type
     if (dsdl_type_is_array(parsed_type->kind)) {
-        // TODO: Arrays need special handling - for now just store the array marker
-        *out_type = parsed_type->kind;
-        return true;
+        dsdl_type_array_t* arr = (dsdl_type_array_t*)dsdl_alloc_(self, sizeof(dsdl_type_array_t));
+        if (arr == NULL) {
+            return NULL;
+        }
+        arr->type     = parsed_type->kind;
+        arr->capacity = parsed_type->array_size;
+
+        // Create a temporary parsed_type for the element (strip array info)
+        dsdl_parsed_type_t element_type = *parsed_type;
+        element_type.kind               = parsed_type->element_kind;
+        element_type.array_size         = 0;
+        element_type.is_variable        = false;
+
+        arr->member_type = _dsdl_create_type_descriptor(self, &element_type, current_namespace);
+        if (arr->member_type == NULL) {
+            dsdl_free_(self, arr);
+            return NULL;
+        }
+        return &arr->type;
     }
 
-    // For composite types, need to resolve the reference
+    // For composite types: resolve and return pointer to the cached type
     if (dsdl_type_is_composite(parsed_type->kind)) {
-        const dsdl_composite_t* composite = _dsdl_resolve_composite_type(
+        const dsdl_type_composite_t* composite = _dsdl_resolve_composite_type(
           self, parsed_type->type_name, parsed_type->version_major, parsed_type->version_minor, current_namespace);
         if (composite == NULL) {
-            return false; // Failed to resolve
+            return NULL; // Failed to resolve
         }
-        // Store as composite type marker
-        *out_type = parsed_type->kind;
-        return true;
+        // Return pointer to the composite's type field (first field of the struct).
+        // The const cast is safe because all type data is owned by dsdl_t and
+        // the field_types array is for reading, not modification.
+        return (dsdl_type_t*)(uintptr_t)composite;
     }
 
-    return false;
+    return NULL;
 }
 
 bool dsdl_add_namespace(dsdl_t* const self, const wkv_str_t root_directory)
@@ -2627,7 +2651,7 @@ bool dsdl_add_namespace(dsdl_t* const self, const wkv_str_t root_directory)
     return true;
 }
 
-const dsdl_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_name)
+const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_name)
 {
 #ifdef DSDL_DEBUG_READ
     fprintf(stderr, "DSDL_READ: type_name='%.*s' (len=%zu)\n", (int)type_name.len, type_name.str, type_name.len);
@@ -2662,7 +2686,7 @@ const dsdl_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_name)
     // E.g., "mymsgs.Inner.1.0" -> cache key is "mymsgs.Inner.1.0"
     wkv_node_t* const cached = wkv_get(&self->types, type_name);
     if (cached != NULL) {
-        return (const dsdl_composite_t*)cached->value;
+        return (const dsdl_type_composite_t*)cached->value;
     }
 
     // Locate the DSDL file
@@ -2725,12 +2749,12 @@ const dsdl_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_name)
 
     dsdl_free_(self, file_data); // Done with file contents
 
-    // Convert parsed definition to dsdl_composite_t
+    // Convert parsed definition to dsdl_type_composite_t
     // Calculate total size needed for single allocation
-    size_t total_size = sizeof(dsdl_composite_t);
+    size_t total_size = sizeof(dsdl_type_composite_t);
     total_size += type_name.len; // Space for name string (use original type_name which includes version)
-    total_size += def.field_count * sizeof(wkv_str_t);   // field_names array
-    total_size += def.field_count * sizeof(dsdl_type_t); // field_types array
+    total_size += def.field_count * sizeof(wkv_str_t);    // field_names array
+    total_size += def.field_count * sizeof(dsdl_type_t*); // field_types array (pointers)
 
     // Sum up field name string lengths
     size_t total_name_len = 0;
@@ -2753,8 +2777,8 @@ const dsdl_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_name)
 #endif
 
     // Layout the block
-    dsdl_composite_t* composite = (dsdl_composite_t*)block;
-    char*             str_ptr   = (char*)(composite + 1);
+    dsdl_type_composite_t* composite = (dsdl_type_composite_t*)block;
+    char*                  str_ptr   = (char*)(composite + 1);
 
     // Copy type name (using original type_name which includes version)
     composite->name.len = type_name.len;
@@ -2766,22 +2790,22 @@ const dsdl_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_name)
     composite->field_names = (wkv_str_t*)str_ptr;
     str_ptr += def.field_count * sizeof(wkv_str_t);
 
-    // Set up field_types array
-    composite->field_types = (dsdl_type_t*)str_ptr;
-    str_ptr += def.field_count * sizeof(dsdl_type_t);
+    // Set up field_types array (array of pointers)
+    composite->field_types = (dsdl_type_t**)str_ptr;
+    str_ptr += def.field_count * sizeof(dsdl_type_t*);
 
-    // Copy field names and types
+    // Copy field names and create type descriptors
     for (size_t i = 0; i < def.field_count; i++) {
         composite->field_names[i].len = def.field_names[i].len;
         composite->field_names[i].str = str_ptr;
         memcpy(str_ptr, def.field_names[i].str, def.field_names[i].len);
         str_ptr += def.field_names[i].len;
 
-        // Convert parsed type to dsdl_type_t, resolving dependencies
-        if (!_dsdl_convert_parsed_type(
-              self, &def.field_types[i], type_ref.namespace_part, &composite->field_types[i])) {
+        // Create type descriptor for this field
+        composite->field_types[i] = _dsdl_create_type_descriptor(self, &def.field_types[i], type_ref.namespace_part);
+        if (composite->field_types[i] == NULL) {
 #ifdef DSDL_DEBUG_READ
-            fprintf(stderr, "DSDL_READ: type conversion failed for field %zu\n", i);
+            fprintf(stderr, "DSDL_READ: type descriptor creation failed for field %zu\n", i);
 #endif
             dsdl_parsed_def_deinit_(&def);
             dsdl_free_(self, block);
@@ -2815,7 +2839,7 @@ const dsdl_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_name)
     return composite;
 }
 
-size_t dsdl_serialized_footprint(const dsdl_composite_t* const type)
+size_t dsdl_serialized_footprint(const dsdl_type_composite_t* const type)
 {
     (void)type;
     // TODO: compute by summing the max size of all fields recursively.
@@ -2825,7 +2849,7 @@ size_t dsdl_serialized_footprint(const dsdl_composite_t* const type)
     return 0;
 }
 
-size_t dsdl_serialize(const dsdl_composite_t* const type, const size_t output_size, void* const output)
+size_t dsdl_serialize(const dsdl_type_composite_t* const type, const size_t output_size, void* const output)
 {
     if ((type == NULL) || (output == NULL) || (output_size == 0)) {
         return 0;
@@ -2839,7 +2863,7 @@ size_t dsdl_serialize(const dsdl_composite_t* const type, const size_t output_si
     return 0; // Not yet implemented
 }
 
-size_t dsdl_deserialize(dsdl_composite_t* const type, const size_t input_size, const void* const input)
+size_t dsdl_deserialize(dsdl_type_composite_t* const type, const size_t input_size, const void* const input)
 {
     if ((type == NULL) || (input == NULL) || (input_size == 0)) {
         return 0;

@@ -96,7 +96,7 @@ static void test_load_simple_type(void)
     TEST_ASSERT_TRUE(dsdl_add_namespace(&g_dsdl, (wkv_str_t){ strlen(root), root }));
 
     // Load Simple.1.0 (no dependencies)
-    const dsdl_composite_t* simple = dsdl_read(&g_dsdl, (wkv_str_t){ 17, "mymsgs.Simple.1.0" });
+    const dsdl_type_composite_t* simple = dsdl_read(&g_dsdl, (wkv_str_t){ 17, "mymsgs.Simple.1.0" });
     TEST_ASSERT_NOT_NULL(simple);
 
     // Check basic properties
@@ -120,15 +120,15 @@ static void test_load_type_with_dependency(void)
     TEST_ASSERT_TRUE(dsdl_add_namespace(&g_dsdl, (wkv_str_t){ strlen(root), root }));
 
     // Load Outer.1.0 which references Inner.1.0
-    const dsdl_composite_t* outer = dsdl_read(&g_dsdl, (wkv_str_t){ 16, "mymsgs.Outer.1.0" });
+    const dsdl_type_composite_t* outer = dsdl_read(&g_dsdl, (wkv_str_t){ 16, "mymsgs.Outer.1.0" });
     TEST_ASSERT_NOT_NULL(outer);
 
     // Check that Inner.1.0 was also loaded (cached)
-    const dsdl_composite_t* inner = dsdl_read(&g_dsdl, (wkv_str_t){ 16, "mymsgs.Inner.1.0" });
+    const dsdl_type_composite_t* inner = dsdl_read(&g_dsdl, (wkv_str_t){ 16, "mymsgs.Inner.1.0" });
     TEST_ASSERT_NOT_NULL(inner);
 
     // Inner should be the same instance (from cache)
-    const dsdl_composite_t* inner2 = dsdl_read(&g_dsdl, (wkv_str_t){ 16, "mymsgs.Inner.1.0" });
+    const dsdl_type_composite_t* inner2 = dsdl_read(&g_dsdl, (wkv_str_t){ 16, "mymsgs.Inner.1.0" });
     TEST_ASSERT_EQUAL_PTR(inner, inner2);
 
     teardown_dsdl();
@@ -143,10 +143,10 @@ static void test_cache_hit(void)
     TEST_ASSERT_TRUE(dsdl_add_namespace(&g_dsdl, (wkv_str_t){ strlen(root), root }));
 
     // Load same type twice
-    const dsdl_composite_t* type1 = dsdl_read(&g_dsdl, (wkv_str_t){ 16, "mymsgs.Inner.1.0" });
+    const dsdl_type_composite_t* type1 = dsdl_read(&g_dsdl, (wkv_str_t){ 16, "mymsgs.Inner.1.0" });
     TEST_ASSERT_NOT_NULL(type1);
 
-    const dsdl_composite_t* type2 = dsdl_read(&g_dsdl, (wkv_str_t){ 16, "mymsgs.Inner.1.0" });
+    const dsdl_type_composite_t* type2 = dsdl_read(&g_dsdl, (wkv_str_t){ 16, "mymsgs.Inner.1.0" });
     TEST_ASSERT_NOT_NULL(type2);
 
     // Should return same instance
@@ -164,7 +164,7 @@ static void test_type_not_found(void)
     TEST_ASSERT_TRUE(dsdl_add_namespace(&g_dsdl, (wkv_str_t){ strlen(root), root }));
 
     // Try to load non-existent type
-    const dsdl_composite_t* type = dsdl_read(&g_dsdl, (wkv_str_t){ 23, "mymsgs.DoesNotExist.1.0" });
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, (wkv_str_t){ 23, "mymsgs.DoesNotExist.1.0" });
     TEST_ASSERT_NULL(type);
 
     teardown_dsdl();
