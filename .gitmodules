@@ -1,0 +1,6 @@
+[submodule "reference_implementations/pydsdl"]
+	path = reference_implementations/pydsdl
+	url = https://github.com/OpenCyphal/pydsdl
+[submodule "reference_implementations/nunavut"]
+	path = reference_implementations/nunavut
+	url = https://github.com/OpenCyphal/nunavut
