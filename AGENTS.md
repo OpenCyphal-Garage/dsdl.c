@@ -14,9 +14,9 @@ The entire implementation will be contained in a single C file named `dsdl.c`.
 
 The implementation will be carried out in multiple steps roughly as follows (to be refined):
 
-0. A test suite based on the ThrowTheSwitch Unity framework, or any other framework, needs to be set up, alongside a CMake-based build system.
+0. A test suite based on the ThrowTheSwitch Unity framework, or any other framework, needs to be set up, alongside a CMake-based build system. It is expected that some tests may need to access the internals of `dsdl.c`, which can be achieved by `#include <dsdl.c>`, similar to how it's done in libcanard/libudpard test suites. There must be at least one API-level test written in C++, to make sure that the header is compatible with C++. All behaviors tested in the PyDSDL test suite must be tested for dsdl.c as well. Code coverage is needed.
 
-1. A PEG parser needs to be implemented in C. It can be done from scratch, or using a simple third-party library or tool, whichever is easier, as long as no massive external dependencies are introduced. Considering that the grammar is very simple, it makes sense to make a simple ad-hoc parser directly in `dsdl.c`. The test namespaces will be used to validate the parser.
+1. A PEG parser needs to be implemented in C. It can be done from scratch, or using a simple third-party library or tool, whichever is easier, as long as no massive external dependencies are introduced. Considering that the grammar is very simple, it makes sense to make a simple ad-hoc parser directly in `dsdl.c`. Since this is a PEG grammar, the parser should be a PEG parser, bypassing the tokenizer. The test namespaces will be used to validate the parser.
 
 2. Once the parser is done, serialization and deserialization logic needs to be implemented per the Specification. It will need to be cross-validated against Nunavut-generated C serialization code for every data type in the test namespaces, with randomly seeded field values.
 
