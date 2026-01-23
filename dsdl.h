@@ -89,7 +89,7 @@ typedef uint16_t dsdl_type_t;
 #define DSDL_COMPOSITE_UNION  ((dsdl_type_t)0x0F01)
 #define DSDL_COMPOSITE_RPC    ((dsdl_type_t)0x0F02)
 
-// Aliases (bit 12 set indicates alias, mask with 0x0FFF for base type)
+// Aliases (bits above 0xFFF indicate alias, mask with 0x0FFF for base type)
 #define DSDL_BOOL ((dsdl_type_t)0x1201)   ///< Alias for uint1
 #define DSDL_BYTE ((dsdl_type_t)0x1208)   ///< Alias for uint8
 #define DSDL_UTF8 ((dsdl_type_t)0x2208)   ///< Alias for variable uint8 array
@@ -135,7 +135,7 @@ struct dsdl_composite_t
     wkv_str_t     name;          ///< Fully qualified type name
     uint_least8_t version[2];    ///< [major, minor]
 
-    size_t extent;   ///< Maximum serialized size in bits
+    size_t extent;   ///< Maximum serialized size in bytes.
     bool   sealed;   ///< True if @sealed directive present
 
     size_t       field_count;   ///< Number of fields
@@ -244,9 +244,10 @@ bool dsdl_add_namespace(dsdl_t* self, wkv_str_t root_directory);
 const dsdl_composite_t* dsdl_read(dsdl_t* self, wkv_str_t type_name);
 
 /// Get the maximum serialized size in bytes for a type.
+/// This is less than or equal the extent. For sealed types, equals the extent.
 ///
 /// @param type  Type descriptor
-/// @return Maximum serialized size in bytes (ceil of extent/8)
+/// @return Maximum serialized size in bytes, which is NOT the same as the extent.
 size_t dsdl_serialized_footprint(const dsdl_composite_t* type);
 
 /// Serialize a composite type instance to a byte buffer.

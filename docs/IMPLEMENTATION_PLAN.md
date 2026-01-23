@@ -305,17 +305,17 @@ Process `@assert` directives:
 // The expression must evaluate to true or a set containing true
 ```
 
-### 2.4 Extent Calculation
+### 2.4 Size Calculation
 
 Calculate serialized size bounds:
 
 ```c
 typedef struct {
     size_t min_bits;  // Minimum serialized size
-    size_t max_bits;  // Maximum serialized size (extent if specified)
-} dsdl_extent_t;
+    size_t max_bits;  // Maximum serialized size
+} dsdl_size_bounds_t;
 
-static dsdl_extent_t _dsdl_calculate_extent(const dsdl_composite_t* type);
+static dsdl_size_bounds_t _dsdl_calculate_size_bounds(const dsdl_composite_t* type);
 ```
 
 **Rules:**
@@ -323,7 +323,19 @@ static dsdl_extent_t _dsdl_calculate_extent(const dsdl_composite_t* type);
 - Fixed arrays: element_size * count
 - Variable arrays: length_prefix_bits + element_size * max_count
 - Composites: sum of field extents (union: max of alternatives)
-- `@extent` directive overrides calculated maximum
+
+**NOTE:** The extent is NOT the same as the max size! Excerpt from the libcanard docs:
+
+```
+/// The extent defines the size of the transfer payload memory buffer; or, in other words, the maximum possible size
+/// of received objects, considering also possible future versions with new fields. It is safe to pick larger values.
+/// Note well that the extent is not the same thing as the maximum size of the object, it is usually larger!
+/// Transfers that carry payloads that exceed the specified extent will be accepted anyway but the excess payload
+/// will be truncated away, as mandated by the Specification. The transfer CRC is always validated regardless of
+/// whether its payload is truncated.
+```
+
+Please refer to the Specification for the precise definition of the extent and how it differs from max size.
 
 ---
 

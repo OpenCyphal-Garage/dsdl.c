@@ -2392,14 +2392,12 @@ const dsdl_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_name)
 
 size_t dsdl_serialized_footprint(const dsdl_composite_t* const type)
 {
-    if (type == NULL)
-    {
-        return 0;
-    }
-
-    // TODO: Implement extent calculation
-    // Return ceil(extent / 8) bytes
-    return (type->extent + 7U) / 8U;
+    (void) type;
+    // TODO: compute by summing the max size of all fields recursively.
+    // For primitives the size is trivially known; for arrays it is the length prefix (unless fixed-length)
+    // plus capacity times max size of the element type; for unions it is the max field size plus tag,
+    // etc. For non-sealed types the delimiter header (4 bytes) also needs to be added.
+    return 0;
 }
 
 size_t dsdl_serialize(const dsdl_composite_t* const type, const size_t output_size, void* const output)
