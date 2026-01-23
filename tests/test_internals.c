@@ -41,7 +41,7 @@ static void test_gcd_basic(void)
 static void test_gcd_large(void)
 {
     // Test with larger numbers
-    TEST_ASSERT_EQUAL_UINT64(1, dsdl_gcd_(1000000007ULL, 1000000009ULL));   // Two primes
+    TEST_ASSERT_EQUAL_UINT64(1, dsdl_gcd_(1000000007ULL, 1000000009ULL)); // Two primes
     TEST_ASSERT_EQUAL_UINT64(1000000000ULL, dsdl_gcd_(1000000000ULL, 2000000000ULL));
 }
 
@@ -60,7 +60,7 @@ static void test_abs_basic(void)
 static void test_abs_intmax_min(void)
 {
     // Special case: INTMAX_MIN
-    const uintmax_t expected = (uintmax_t) INTMAX_MAX + 1U;
+    const uintmax_t expected = (uintmax_t)INTMAX_MAX + 1U;
     TEST_ASSERT_EQUAL_UINT64(expected, dsdl_abs_(INTMAX_MIN));
 }
 
@@ -75,10 +75,10 @@ static void test_rational_is_int(void)
     r = dsdl_rational_from_int_(42);
     TEST_ASSERT_TRUE(dsdl_rational_is_int_(r));
 
-    r = (dsdl_rational_t){1, 2};
+    r = (dsdl_rational_t){ 1, 2 };
     TEST_ASSERT_FALSE(dsdl_rational_is_int_(r));
 
-    r = (dsdl_rational_t){4, 2};
+    r = (dsdl_rational_t){ 4, 2 };
     r = dsdl_rational_normalize_(r);
     TEST_ASSERT_TRUE(dsdl_rational_is_int_(r));
 }
@@ -110,7 +110,7 @@ static void test_rational_neg(void)
     r = dsdl_rational_neg_(r);
     TEST_ASSERT_EQUAL_INT64(-5, r.num);
 
-    r = (dsdl_rational_t){3, 7};
+    r = (dsdl_rational_t){ 3, 7 };
     r = dsdl_rational_neg_(r);
     TEST_ASSERT_EQUAL_INT64(-3, r.num);
     TEST_ASSERT_EQUAL_UINT64(7, r.den);
@@ -122,9 +122,8 @@ static void test_rational_neg(void)
 
 static void* test_realloc(dsdl_t* self, void* ptr, size_t size)
 {
-    (void) self;
-    if (size == 0)
-    {
+    (void)self;
+    if (size == 0) {
         free(ptr);
         return NULL;
     }
@@ -150,6 +149,114 @@ static void test_alloc_free(void)
 }
 
 // ============================================================================
+// Type name parsing tests
+// ============================================================================
+
+static void test_parse_type_name_simple(void)
+{
+    _dsdl_type_ref_t ref;
+
+    // Just "TypeName"
+    TEST_ASSERT_TRUE(_dsdl_parse_type_name((wkv_str_t){ 8, "TypeName" }, &ref));
+    TEST_ASSERT_EQUAL_size_t(8, ref.type_name.len);
+    TEST_ASSERT_EQUAL_STRING_LEN("TypeName", ref.type_name.str, 8);
+    TEST_ASSERT_EQUAL_size_t(0, ref.namespace_part.len);
+    TEST_ASSERT_FALSE(ref.has_major);
+    TEST_ASSERT_FALSE(ref.has_minor);
+}
+
+static void test_parse_type_name_with_namespace(void)
+{
+    _dsdl_type_ref_t ref;
+
+    // "uavcan.node.Heartbeat"
+    TEST_ASSERT_TRUE(_dsdl_parse_type_name((wkv_str_t){ 21, "uavcan.node.Heartbeat" }, &ref));
+    TEST_ASSERT_EQUAL_size_t(9, ref.type_name.len);
+    TEST_ASSERT_EQUAL_STRING_LEN("Heartbeat", ref.type_name.str, 9);
+    TEST_ASSERT_EQUAL_size_t(11, ref.namespace_part.len);
+    TEST_ASSERT_EQUAL_STRING_LEN("uavcan.node", ref.namespace_part.str, 11);
+    TEST_ASSERT_EQUAL_size_t(21, ref.full_name.len);
+    TEST_ASSERT_FALSE(ref.has_major);
+    TEST_ASSERT_FALSE(ref.has_minor);
+}
+
+static void test_parse_type_name_with_full_version(void)
+{
+    _dsdl_type_ref_t ref;
+
+    // "uavcan.node.Heartbeat.1.0"
+    TEST_ASSERT_TRUE(_dsdl_parse_type_name((wkv_str_t){ 25, "uavcan.node.Heartbeat.1.0" }, &ref));
+    TEST_ASSERT_EQUAL_size_t(9, ref.type_name.len);
+    TEST_ASSERT_EQUAL_STRING_LEN("Heartbeat", ref.type_name.str, 9);
+    TEST_ASSERT_EQUAL_size_t(11, ref.namespace_part.len);
+    TEST_ASSERT_EQUAL_STRING_LEN("uavcan.node", ref.namespace_part.str, 11);
+    TEST_ASSERT_TRUE(ref.has_major);
+    TEST_ASSERT_TRUE(ref.has_minor);
+    TEST_ASSERT_EQUAL_UINT8(1, ref.major);
+    TEST_ASSERT_EQUAL_UINT8(0, ref.minor);
+}
+
+static void test_parse_type_name_with_major_only(void)
+{
+    _dsdl_type_ref_t ref;
+
+    // "uavcan.node.Heartbeat.1"
+    TEST_ASSERT_TRUE(_dsdl_parse_type_name((wkv_str_t){ 23, "uavcan.node.Heartbeat.1" }, &ref));
+    TEST_ASSERT_EQUAL_size_t(9, ref.type_name.len);
+    TEST_ASSERT_EQUAL_STRING_LEN("Heartbeat", ref.type_name.str, 9);
+    TEST_ASSERT_EQUAL_size_t(11, ref.namespace_part.len);
+    TEST_ASSERT_EQUAL_STRING_LEN("uavcan.node", ref.namespace_part.str, 11);
+    TEST_ASSERT_TRUE(ref.has_major);
+    TEST_ASSERT_FALSE(ref.has_minor);
+    TEST_ASSERT_EQUAL_UINT8(1, ref.major);
+}
+
+static void test_parse_type_name_no_namespace_with_version(void)
+{
+    _dsdl_type_ref_t ref;
+
+    // "TypeName.1.0"
+    TEST_ASSERT_TRUE(_dsdl_parse_type_name((wkv_str_t){ 12, "TypeName.1.0" }, &ref));
+    TEST_ASSERT_EQUAL_size_t(8, ref.type_name.len);
+    TEST_ASSERT_EQUAL_STRING_LEN("TypeName", ref.type_name.str, 8);
+    TEST_ASSERT_EQUAL_size_t(0, ref.namespace_part.len);
+    TEST_ASSERT_TRUE(ref.has_major);
+    TEST_ASSERT_TRUE(ref.has_minor);
+    TEST_ASSERT_EQUAL_UINT8(1, ref.major);
+    TEST_ASSERT_EQUAL_UINT8(0, ref.minor);
+}
+
+static void test_parse_type_name_single_namespace(void)
+{
+    _dsdl_type_ref_t ref;
+
+    // "mymsgs.Inner.1.0"
+    TEST_ASSERT_TRUE(_dsdl_parse_type_name((wkv_str_t){ 16, "mymsgs.Inner.1.0" }, &ref));
+    TEST_ASSERT_EQUAL_size_t(5, ref.type_name.len);
+    TEST_ASSERT_EQUAL_STRING_LEN("Inner", ref.type_name.str, 5);
+    TEST_ASSERT_EQUAL_size_t(6, ref.namespace_part.len);
+    TEST_ASSERT_EQUAL_STRING_LEN("mymsgs", ref.namespace_part.str, 6);
+    TEST_ASSERT_TRUE(ref.has_major);
+    TEST_ASSERT_TRUE(ref.has_minor);
+    TEST_ASSERT_EQUAL_UINT8(1, ref.major);
+    TEST_ASSERT_EQUAL_UINT8(0, ref.minor);
+}
+
+static void test_parse_type_name_large_version(void)
+{
+    _dsdl_type_ref_t ref;
+
+    // "TypeName.255.255"
+    TEST_ASSERT_TRUE(_dsdl_parse_type_name((wkv_str_t){ 16, "TypeName.255.255" }, &ref));
+    TEST_ASSERT_EQUAL_size_t(8, ref.type_name.len);
+    TEST_ASSERT_EQUAL_STRING_LEN("TypeName", ref.type_name.str, 8);
+    TEST_ASSERT_TRUE(ref.has_major);
+    TEST_ASSERT_TRUE(ref.has_minor);
+    TEST_ASSERT_EQUAL_UINT8(255, ref.major);
+    TEST_ASSERT_EQUAL_UINT8(255, ref.minor);
+}
+
+// ============================================================================
 // Main
 // ============================================================================
 
@@ -172,6 +279,15 @@ int main(void)
 
     // Memory helper tests
     RUN_TEST(test_alloc_free);
+
+    // Type name parsing tests
+    RUN_TEST(test_parse_type_name_simple);
+    RUN_TEST(test_parse_type_name_with_namespace);
+    RUN_TEST(test_parse_type_name_with_full_version);
+    RUN_TEST(test_parse_type_name_with_major_only);
+    RUN_TEST(test_parse_type_name_no_namespace_with_version);
+    RUN_TEST(test_parse_type_name_single_namespace);
+    RUN_TEST(test_parse_type_name_large_version);
 
     return UNITY_END();
 }

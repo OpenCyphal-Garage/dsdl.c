@@ -5,10 +5,11 @@
 
 // Ensure C++20
 #if __cplusplus < 202002L
-#    error "This test requires C++20 or later"
+#error "This test requires C++20 or later"
 #endif
 
-extern "C" {
+extern "C"
+{
 #include "unity.h"
 }
 
@@ -23,8 +24,7 @@ extern "C" {
 
 static void* test_realloc(dsdl_t* /*self*/, void* ptr, size_t size)
 {
-    if (size == 0)
-    {
+    if (size == 0) {
         std::free(ptr);
         return nullptr;
     }
@@ -62,7 +62,7 @@ static void test_cpp_api_add_namespace()
     dsdl_new(&dsdl, test_realloc);
 
     const char*     path = "/test/namespace";
-    const wkv_str_t ns   = {std::strlen(path), path};
+    const wkv_str_t ns   = { std::strlen(path), path };
 
     const bool result = dsdl_add_namespace(&dsdl, ns);
     TEST_ASSERT_TRUE(result);
@@ -122,8 +122,7 @@ static void test_cpp_lambda_allocator()
     // but captureless lambdas are OK.
 
     static auto allocator = +[](dsdl_t* /*self*/, void* ptr, size_t size) -> void* {
-        if (size == 0)
-        {
+        if (size == 0) {
             std::free(ptr);
             return nullptr;
         }

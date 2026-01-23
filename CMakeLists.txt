@@ -57,6 +57,7 @@ if(CMAKE_C_COMPILER_ID MATCHES "Clang|GNU")
         -Wconversion
         -Wsign-conversion
         -Wno-error=padded
+        -Wno-error=unused-function
     )
     if(CMAKE_C_COMPILER_ID MATCHES "GNU")
         add_compile_options(
@@ -114,6 +115,21 @@ if(DSDL_BUILD_TESTS)
     enable_testing()
     add_subdirectory(tests)
 endif()
+
+# ------------------------------------------------------------------------------
+# Clang-Format integration
+# ------------------------------------------------------------------------------
+find_program(clang_format NAMES clang-format)
+if (NOT clang_format)
+    message(STATUS "Could not locate clang-format")
+else ()
+    file(GLOB format_files
+            ${CMAKE_CURRENT_SOURCE_DIR}/dsdl.[ch]
+            ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_*.[ch]
+            ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_*.cpp)
+    message(STATUS "Using clang-format: ${clang_format}")
+    add_custom_target(format COMMAND ${clang_format} -i -fallback-style=none -style=file --verbose ${format_files})
+endif ()
 
 # ------------------------------------------------------------------------------
 # Clang-tidy integration
