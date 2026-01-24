@@ -263,10 +263,7 @@ size_t dsdl_serialized_footprint(const dsdl_type_composite_t* type);
 /// @param output_size  Size of output buffer in bytes
 /// @param output       Output buffer
 /// @return Number of bytes written, or 0 on error
-size_t dsdl_serialize(const dsdl_type_composite_t* type,
-                      const void*                  values,
-                      size_t                       output_size,
-                      void*                        output);
+size_t dsdl_serialize(const dsdl_type_composite_t* type, const void* values, size_t output_size, void* output);
 
 /// Deserialize a byte buffer into a composite type instance.
 ///
@@ -278,10 +275,7 @@ size_t dsdl_serialize(const dsdl_type_composite_t* type,
 /// @param input_size  Size of input buffer in bytes
 /// @param input       Input buffer
 /// @return Number of bytes consumed, or 0 on error
-size_t dsdl_deserialize(const dsdl_type_composite_t* type,
-                        void*                        values,
-                        size_t                       input_size,
-                        const void*                  input);
+size_t dsdl_deserialize(const dsdl_type_composite_t* type, void* values, size_t input_size, const void* input);
 
 #ifdef __cplusplus
 }

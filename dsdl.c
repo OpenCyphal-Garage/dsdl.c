@@ -825,6 +825,7 @@ static bool dsdl_parse_expression_(dsdl_parser_t* parser, dsdl_value_t* out_valu
 
 /// Parse a set literal: { expr, expr, ... }
 /// Returns true on success, fills out_value with dsdl_value_set.
+/// Uses dynamic allocation for arbitrary-sized sets.
 static bool dsdl_parse_set_(dsdl_parser_t* const parser, dsdl_value_t* const out_value)
 {
     if (dsdl_parser_peek_(parser, 0) != '{') {
@@ -844,19 +845,36 @@ static bool dsdl_parse_set_(dsdl_parser_t* const parser, dsdl_value_t* const out
         return true;
     }
 
-    // For now, we'll use a simple fixed-size array approach
-    // TODO: Dynamic allocation for arbitrary-sized sets
-    dsdl_value_t temp_elements[64];
-    size_t       count = 0;
+    // Dynamic allocation with growth strategy
+    size_t        capacity = 8; // Initial capacity
+    size_t        count    = 0;
+    dsdl_value_t* elements = (dsdl_value_t*)dsdl_alloc_(parser->dsdl, capacity * sizeof(dsdl_value_t));
+    if (elements == NULL) {
+        return false; // OOM
+    }
 
-    while (count < 64) {
+    for (;;) {
         // Parse expression
         dsdl_value_t elem;
         if (!dsdl_parse_expression_(parser, &elem)) {
+            dsdl_free_(parser->dsdl, elements);
             return false; // Parse error
         }
-        temp_elements[count++] = elem;
 
+        // Grow buffer if needed
+        if (count >= capacity) {
+            const size_t        new_capacity = capacity * 2;
+            dsdl_value_t* const new_elements =
+              (dsdl_value_t*)dsdl_realloc_(parser->dsdl, elements, new_capacity * sizeof(dsdl_value_t));
+            if (new_elements == NULL) {
+                dsdl_free_(parser->dsdl, elements);
+                return false; // OOM
+            }
+            elements = new_elements;
+            capacity = new_capacity;
+        }
+
+        elements[count++] = elem;
         dsdl_parser_skip_ws_(parser);
 
         // Check for comma or closing brace
@@ -866,25 +884,29 @@ static bool dsdl_parse_set_(dsdl_parser_t* const parser, dsdl_value_t* const out
         } else if (dsdl_parser_peek_(parser, 0) == '}') {
             break;
         } else {
+            dsdl_free_(parser->dsdl, elements);
             return false; // Unexpected character
         }
     }
 
     // Consume closing brace
     if (dsdl_parser_peek_(parser, 0) != '}') {
+        dsdl_free_(parser->dsdl, elements);
         return false;
     }
     dsdl_parser_advance_(parser, 1);
 
-    // Allocate and copy elements
-    if (count > 0) {
-        out_value->as.set.elements = (dsdl_value_t*)dsdl_alloc_(parser->dsdl, count * sizeof(dsdl_value_t));
-        if (out_value->as.set.elements == NULL) {
-            return false; // OOM
+    // Shrink to fit if significantly oversized (optional optimization)
+    if ((count > 0) && (count < capacity / 2) && (capacity > 8)) {
+        dsdl_value_t* const shrunk = (dsdl_value_t*)dsdl_realloc_(parser->dsdl, elements, count * sizeof(dsdl_value_t));
+        if (shrunk != NULL) {
+            elements = shrunk;
         }
-        (void)memcpy(out_value->as.set.elements, temp_elements, count * sizeof(dsdl_value_t));
-        out_value->as.set.count = count;
+        // If shrink fails, keep the larger buffer - not a critical error
     }
+
+    out_value->as.set.elements = elements;
+    out_value->as.set.count    = count;
 
     return true;
 }
@@ -2854,17 +2876,11 @@ static size_t _dsdl_ceil_log2(const size_t n)
 
 /// Calculate the bit width of the length prefix for a variable-length array.
 /// For capacity C (max elements), prefix is ceil(log2(C + 1)) bits.
-static size_t _dsdl_array_length_prefix_bits(const size_t capacity)
-{
-    return _dsdl_ceil_log2(capacity + 1);
-}
+static size_t _dsdl_array_length_prefix_bits(const size_t capacity) { return _dsdl_ceil_log2(capacity + 1); }
 
 /// Calculate the bit width of the union tag for a union with N alternatives.
 /// Tag is ceil(log2(N)) bits.
-static size_t _dsdl_union_tag_bits(const size_t field_count)
-{
-    return _dsdl_ceil_log2(field_count);
-}
+static size_t _dsdl_union_tag_bits(const size_t field_count) { return _dsdl_ceil_log2(field_count); }
 
 /// Forward declaration for recursive type size calculation.
 static size_t _dsdl_type_max_bits(const dsdl_type_t* type_ptr);
@@ -2924,9 +2940,9 @@ static size_t _dsdl_type_max_bits(const dsdl_type_t* type_ptr)
 
     // Array types
     if (dsdl_type_is_array(kind)) {
-        const dsdl_type_array_t* arr = (const dsdl_type_array_t*)type_ptr;
-        const size_t element_bits    = _dsdl_type_max_bits(arr->member_type);
-        const size_t total_bits      = arr->capacity * element_bits;
+        const dsdl_type_array_t* arr          = (const dsdl_type_array_t*)type_ptr;
+        const size_t             element_bits = _dsdl_type_max_bits(arr->member_type);
+        const size_t             total_bits   = arr->capacity * element_bits;
 
         if (kind == DSDL_ARRAY_VARIABLE) {
             // Variable-length array: length prefix + elements
@@ -2988,9 +3004,9 @@ static void _dsdl_bitbuf_write(_dsdl_bitbuf_t* const buf, uint64_t value, size_t
             return; // Buffer overflow - stop writing
         }
 
-        const size_t byte_index   = buf->offset_bits / 8;
-        const size_t bit_in_byte  = buf->offset_bits % 8;
-        const size_t bits_in_byte = 8 - bit_in_byte;
+        const size_t byte_index    = buf->offset_bits / 8;
+        const size_t bit_in_byte   = buf->offset_bits % 8;
+        const size_t bits_in_byte  = 8 - bit_in_byte;
         const size_t bits_to_write = (bits < bits_in_byte) ? bits : bits_in_byte;
 
         // Mask for the bits we're writing
@@ -3023,10 +3039,10 @@ static uint64_t _dsdl_bitbuf_read(_dsdl_bitbuf_t* const buf, size_t bits)
             break;
         }
 
-        const size_t byte_index    = buf->offset_bits / 8;
-        const size_t bit_in_byte   = buf->offset_bits % 8;
-        const size_t bits_in_byte  = 8 - bit_in_byte;
-        const size_t bits_to_read  = (bits < bits_in_byte) ? bits : bits_in_byte;
+        const size_t byte_index   = buf->offset_bits / 8;
+        const size_t bit_in_byte  = buf->offset_bits % 8;
+        const size_t bits_in_byte = 8 - bit_in_byte;
+        const size_t bits_to_read = (bits < bits_in_byte) ? bits : bits_in_byte;
 
         // Mask for the bits we're reading
         const uint8_t mask = (uint8_t)((1U << bits_to_read) - 1U);
@@ -3295,9 +3311,7 @@ static void _dsdl_deserialize_composite(_dsdl_bitbuf_t* const              buf,
 }
 
 /// Serialize any type (primitive, array, or composite).
-static void _dsdl_serialize_type(_dsdl_bitbuf_t* const buf,
-                                 const dsdl_type_t* const    type_ptr,
-                                 const void* const           value)
+static void _dsdl_serialize_type(_dsdl_bitbuf_t* const buf, const dsdl_type_t* const type_ptr, const void* const value)
 {
     if ((buf == NULL) || (type_ptr == NULL) || (value == NULL)) {
         return;
@@ -3393,9 +3407,7 @@ static void _dsdl_serialize_type(_dsdl_bitbuf_t* const buf,
 }
 
 /// Deserialize any type (primitive, array, or composite).
-static void _dsdl_deserialize_type(_dsdl_bitbuf_t* const buf,
-                                   const dsdl_type_t* const    type_ptr,
-                                   void* const                 value)
+static void _dsdl_deserialize_type(_dsdl_bitbuf_t* const buf, const dsdl_type_t* const type_ptr, void* const value)
 {
     if ((buf == NULL) || (type_ptr == NULL) || (value == NULL)) {
         return;

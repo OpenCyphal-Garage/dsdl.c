@@ -7,6 +7,7 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include <stdio.h>
 
 // Include the implementation directly for internal access
 #include "dsdl.c"
@@ -535,6 +536,38 @@ static void test_parse_set_multiple(void)
     dsdl_free_(&g_dsdl, val.as.set.elements);
 }
 
+static void test_parse_set_large(void)
+{
+    // Build a large set with 100 elements to test dynamic allocation
+    // (exceeds old fixed limit of 64)
+    char  input[1024];
+    char* p = input;
+    *p++    = '{';
+    for (int i = 0; i < 100; i++) {
+        if (i > 0) {
+            *p++ = ',';
+            *p++ = ' ';
+        }
+        p += sprintf(p, "%d", i);
+    }
+    *p++ = '}';
+    *p   = '\0';
+
+    init_parser(input);
+    dsdl_value_t val;
+    TEST_ASSERT_TRUE(dsdl_parse_literal_(&g_parser, &val));
+    TEST_ASSERT_EQUAL(dsdl_value_set, val.kind);
+    TEST_ASSERT_EQUAL_size_t(100, val.as.set.count);
+
+    // Verify all elements
+    for (int i = 0; i < 100; i++) {
+        TEST_ASSERT_EQUAL(dsdl_value_rational, val.as.set.elements[i].kind);
+        TEST_ASSERT_EQUAL_INT64(i, val.as.set.elements[i].as.rational.num);
+    }
+
+    dsdl_free_(&g_dsdl, val.as.set.elements);
+}
+
 // ============================================================================
 // Type parsing tests
 // ============================================================================
@@ -1002,6 +1035,7 @@ int main(void)
     RUN_TEST(test_parse_set_empty);
     RUN_TEST(test_parse_set_single);
     RUN_TEST(test_parse_set_multiple);
+    RUN_TEST(test_parse_set_large);
 
     // Type parsing tests
     RUN_TEST(test_parse_type_void);
