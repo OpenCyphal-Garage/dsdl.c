@@ -1,0 +1,25 @@
+# All primitive types in one structure
+
+# Boolean
+bool flag
+
+# Unsigned integers - sampling of widths
+uint1 u1
+uint8 u8
+uint16 u16
+uint32 u32
+uint64 u64
+
+# Signed integers - sampling of widths
+int2 i2
+int8 i8
+int16 i16
+int32 i32
+int64 i64
+
+# Floating point
+float16 f16
+float32 f32
+float64 f64
+
+@sealed

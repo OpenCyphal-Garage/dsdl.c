@@ -1,0 +1,42 @@
+# Set operations testing
+
+# Set equality and inequality
+@assert {1, 2, 3} == {1, 2, 3}
+@assert {1, 2} != {1, 2, 3}
+
+# Subset and superset
+@assert {1, 2} <= {1, 2, 3}
+@assert {1, 2, 3} >= {1, 2}
+@assert {1, 2} < {1, 2, 3}   # Proper subset
+@assert {1, 2, 3} > {1, 2}   # Proper superset
+
+# Set union
+@assert ({1, 2} | {2, 3}) == {1, 2, 3}
+
+# Set intersection
+@assert ({1, 2, 3} & {2, 3, 4}) == {2, 3}
+
+# Disjunctive union (symmetric difference)
+@assert ({1, 2, 3} ^ {2, 3, 4}) == {1, 4}
+
+# Set attributes
+@assert {1, 2, 3}.min == 1
+@assert {1, 2, 3}.max == 3
+@assert {1, 2, 3}.count == 3
+
+# Elementwise operations (set with scalar)
+@assert {1, 2, 3} + 10 == {11, 12, 13}
+@assert {10, 20, 30} / 10 == {1, 2, 3}
+@assert {2, 3, 4} * 2 == {4, 6, 8}
+@assert {2, 3, 4} ** 2 == {4, 9, 16}
+
+# _offset_ set operations
+uint8 field1
+uint8[<=10] field2
+@assert _offset_.min == 16
+@assert _offset_.max == 96
+@assert _offset_ % 8 == {0}
+
+uint8 dummy
+
+@sealed

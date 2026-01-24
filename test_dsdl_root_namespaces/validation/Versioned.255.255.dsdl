@@ -1,0 +1,7 @@
+# Maximum version numbers (255.255)
+
+uint8 MAJOR = 255
+uint8 MINOR = 255
+uint8 field
+
+@sealed

@@ -1,0 +1,6 @@
+# Helper type in subnamespace
+
+uint8 HELPER_CONST = 42
+uint8 helper_field
+
+@sealed

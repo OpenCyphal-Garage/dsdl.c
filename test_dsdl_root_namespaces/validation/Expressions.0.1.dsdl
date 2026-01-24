@@ -1,0 +1,39 @@
+# Expression operators testing
+
+# Arithmetic operators
+uint32 ADD = 100 + 200
+uint32 SUB = 500 - 200
+uint32 MUL = 10 * 20
+uint32 DIV = 100 / 4
+uint32 MOD = 17 % 5
+uint32 POW = 2 ** 10
+
+# Unary operators
+int32 UNARY_PLUS = +42
+int32 UNARY_MINUS = -42
+
+# Comparison operators (used in assertions)
+@assert 10 == 10
+@assert 10 != 20
+@assert 10 < 20
+@assert 20 > 10
+@assert 10 <= 10
+@assert 10 <= 20
+@assert 20 >= 20
+@assert 20 >= 10
+
+# Logical operators
+@assert true && true
+@assert true || false
+@assert !false
+@assert !(false && true)
+@assert (true || false) && true
+
+# Bitwise operators (on integers)
+uint8 BIT_AND = 0b11110000 & 0b10101010
+uint8 BIT_OR = 0b11110000 | 0b00001111
+uint8 BIT_XOR = 0b11110000 ^ 0b10101010
+
+uint8 dummy
+
+@sealed

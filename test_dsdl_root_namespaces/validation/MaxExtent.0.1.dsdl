@@ -1,0 +1,6 @@
+# Maximum extent value testing
+
+uint8 data
+
+# Large extent (but reasonable for testing)
+@extent 65536 * 8  # 64KB extent

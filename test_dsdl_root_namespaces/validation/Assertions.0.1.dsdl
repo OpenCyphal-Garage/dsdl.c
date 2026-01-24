@@ -1,0 +1,41 @@
+# @assert directive testing
+
+# Simple boolean assertions
+@assert true
+@assert !false
+
+# Numeric comparisons
+@assert 1 == 1
+@assert 1 != 2
+@assert 1 < 2
+@assert 2 > 1
+@assert 1 <= 1
+@assert 1 >= 1
+
+# Arithmetic assertions
+@assert 2 + 2 == 4
+@assert 10 - 3 == 7
+@assert 3 * 4 == 12
+@assert 20 / 4 == 5
+@assert 17 % 5 == 2
+@assert 2 ** 8 == 256
+
+# Logical assertions
+@assert true && true
+@assert true || false
+@assert !(true && false)
+
+# Set assertions
+@assert {1, 2, 3} == {3, 2, 1}
+@assert {1, 2} != {1, 2, 3}
+@assert {1}.count == 1
+
+# Offset assertions
+uint8 field1
+@assert _offset_ == {8}
+
+uint16 field2
+@assert _offset_ == {24}
+@assert _offset_ % 8 == {0}
+
+@sealed

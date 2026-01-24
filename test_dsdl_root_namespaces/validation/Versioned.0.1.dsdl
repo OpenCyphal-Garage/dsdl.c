@@ -1,0 +1,6 @@
+# Version 0.1 of a type
+
+uint8 VERSION = 0
+uint8 field_v01
+
+@sealed

@@ -1,0 +1,17 @@
+# Large array capacities for testing length prefix sizes
+
+# 8-bit length prefix (capacity <= 255)
+uint8[<=255] array_8bit_prefix
+
+# 16-bit length prefix (256 <= capacity <= 65535)
+uint8[<=256] array_16bit_prefix_min
+uint8[<=1000] array_1000
+uint8[<=65535] array_16bit_prefix_max
+
+# 32-bit length prefix (capacity > 65535)
+uint8[<=65536] array_32bit_prefix_min
+
+# Large fixed array
+uint8[1000] fixed_1000
+
+@sealed

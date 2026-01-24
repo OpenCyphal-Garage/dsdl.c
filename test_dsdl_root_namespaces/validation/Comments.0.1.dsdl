@@ -1,0 +1,18 @@
+# This is a line comment
+# Another line comment
+
+uint8 field1  # Comment at end of line
+
+# Comment with special characters: !@#$%^&*()_+-=[]{}|;':",.<>?/`~
+
+# Unicode in comments: Hello Welt Monde
+# More unicode:
+
+# Empty comment follows:
+#
+
+uint16 field2
+# Comment between fields
+uint32 field3
+
+@sealed  # Comment after directive

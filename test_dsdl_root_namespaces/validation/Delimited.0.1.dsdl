@@ -1,0 +1,8 @@
+# Delimited type - extensible, has delimiter header when nested
+
+uint8 a
+uint16 b
+uint32 c
+float64 d
+
+@extent 256 * 8  # 256 bytes extent

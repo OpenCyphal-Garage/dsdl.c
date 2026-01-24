@@ -1,0 +1,22 @@
+# Whitespace handling tests
+
+uint8 normal_spacing
+uint16   extra_spaces
+uint32	tab_separated
+
+# No space around operators in expressions
+uint8 NO_SPACE=1+2*3
+
+# Extra whitespace around operators
+uint8 EXTRA_SPACE   =   10   +   20
+
+# Multiple spaces
+uint8     many_spaces_before
+
+# Empty lines above and below
+
+
+uint64 after_empty_lines
+
+
+@sealed

@@ -1,0 +1,6 @@
+# Helper type in deeply nested namespace
+
+uint8 DEEP_CONST = 123
+uint16 deep_field
+
+@sealed

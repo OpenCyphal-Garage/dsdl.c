@@ -1,0 +1,37 @@
+# Operator precedence testing
+
+# ** binds tighter than *
+uint32 POWER_MUL = 2 * 3 ** 2      # 2 * 9 = 18, not (2*3)^2 = 36
+@assert 2 * 3 ** 2 == 18
+
+# * binds tighter than +
+uint32 MUL_ADD = 2 + 3 * 4         # 2 + 12 = 14, not (2+3)*4 = 20
+@assert 2 + 3 * 4 == 14
+
+# Parentheses override precedence
+uint32 PAREN_OVERRIDE = (2 + 3) * 4  # 5 * 4 = 20
+@assert (2 + 3) * 4 == 20
+
+# Right associativity of **
+uint32 POWER_RIGHT = 2 ** 3 ** 2   # 2 ** 9 = 512, not (2**3)**2 = 64
+@assert 2 ** 3 ** 2 == 512
+
+# Left associativity of -
+uint32 SUB_LEFT = 100 - 30 - 20    # (100 - 30) - 20 = 50
+@assert 100 - 30 - 20 == 50
+
+# Left associativity of /
+uint32 DIV_LEFT = 100 / 5 / 2      # (100 / 5) / 2 = 10
+@assert 100 / 5 / 2 == 10
+
+# Complex nested expressions
+uint32 COMPLEX = ((2 + 3) * 4 - 5) ** 2 / 5 + 1  # ((5*4-5)^2)/5+1 = (15^2)/5+1 = 225/5+1 = 46
+@assert ((2 + 3) * 4 - 5) ** 2 / 5 + 1 == 46
+
+# Comparison and logical precedence
+@assert 1 + 1 == 2 && 2 * 2 == 4
+@assert !(1 > 2) && 2 > 1
+
+uint8 dummy
+
+@sealed

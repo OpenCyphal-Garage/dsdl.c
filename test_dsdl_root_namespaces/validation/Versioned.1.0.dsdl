@@ -1,0 +1,7 @@
+# Version 1.0 of a type - major version change
+
+uint8 VERSION = 1
+uint8 field_v10
+uint16 new_field  # Added in version 1.0
+
+@sealed

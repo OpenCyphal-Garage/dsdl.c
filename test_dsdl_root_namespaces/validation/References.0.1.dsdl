@@ -1,0 +1,15 @@
+# Type references testing
+
+# Full qualified name reference
+Simple.0.1 full_ref
+
+# Access constant from another type
+uint8 IMPORTED_CONST = Constants.0.1.BYTE_CONST
+
+# Type used in expression context (for @print)
+@print Simple.0.1
+@print Primitives.0.1
+
+uint8 own_field
+
+@sealed

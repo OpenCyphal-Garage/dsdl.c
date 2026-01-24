@@ -1,0 +1,4 @@
+# Nesting level 7
+uint8 value
+Level8.0.1 next
+@sealed

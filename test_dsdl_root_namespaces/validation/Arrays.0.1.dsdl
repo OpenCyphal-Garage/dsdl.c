@@ -1,0 +1,28 @@
+# Array types - fixed and variable length
+
+# Fixed-length arrays
+uint8[1] fixed_1
+uint8[10] fixed_10
+uint16[5] fixed_16bit
+uint32[3] fixed_32bit
+float32[4] fixed_float
+bool[8] fixed_bool
+
+# Variable-length arrays with inclusive bound (<=)
+uint8[<=1] var_incl_1          # Capacity 1
+uint8[<=10] var_incl_10        # Capacity 10
+uint8[<=255] var_incl_255      # Capacity 255 (8-bit length prefix)
+uint8[<=256] var_incl_256      # Capacity 256 (16-bit length prefix)
+
+# Variable-length arrays with exclusive bound (<)
+uint8[<2] var_excl_2           # Capacity 1
+uint8[<11] var_excl_11         # Capacity 10
+uint8[<256] var_excl_256       # Capacity 255 (8-bit length prefix)
+uint8[<257] var_excl_257       # Capacity 256 (16-bit length prefix)
+
+# Arrays of different primitive types
+int16[<=10] var_signed
+float64[<=5] var_float
+bool[<=100] var_bool
+
+@sealed

@@ -1,0 +1,16 @@
+# _offset_ in unions - can only be used after all fields
+
+@union
+
+uint8 option_a      # 8 bits
+uint16 option_b     # 16 bits
+uint32 option_c     # 32 bits
+uint64 option_d     # 64 bits
+
+# Union tag is 8 bits (4 fields need 2 bits, rounded to 8)
+# _offset_ is the set of all possible total sizes
+@assert _offset_ == {8 + 8, 8 + 16, 8 + 32, 8 + 64}
+@assert _offset_.min == 16
+@assert _offset_.max == 72
+
+@sealed

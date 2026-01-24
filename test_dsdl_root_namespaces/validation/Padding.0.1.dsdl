@@ -1,0 +1,20 @@
+# Padding field usage with void types
+
+uint8 first
+void8                   # 8-bit padding
+uint8 second
+void1                   # 1-bit padding
+void2                   # 2-bit padding
+void5                   # 5-bit padding to byte-align
+uint16 third
+void16                  # 16-bit padding
+uint32 fourth
+
+# Multiple consecutive void fields
+void8
+void8
+void8
+
+uint8 last
+
+@sealed

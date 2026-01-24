@@ -1,0 +1,11 @@
+# Mixed sealed and delimited nesting
+
+# Sealed nested inside delimited (this file)
+Sealed.0.1 sealed_nested
+
+# Delimited nested inside sealed (this file is delimited)
+Delimited.0.1 delimited_nested
+
+uint8 own_field
+
+@extent 1024 * 8

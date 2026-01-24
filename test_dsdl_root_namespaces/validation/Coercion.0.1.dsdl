@@ -1,0 +1,24 @@
+# Type coercion tests
+
+# Integer to rational (implicit)
+uint32 INT_EXPR = 100 + 200  # Integer arithmetic
+
+# Real to rational
+float64 REAL_EXPR = 1.5 + 2.5  # 4.0
+
+# Rational to integer constant (denominator must be 1)
+uint8 FROM_RATIONAL = 100 / 4  # 25, exact division
+
+# Rational to float constant
+float32 FLOAT_FROM_EXPR = 22 / 7  # Approximate pi
+
+# String char to uint8
+uint8 FROM_STRING = 'X'  # ASCII 88
+
+# Verify coercions
+@assert 100 / 4 == 25
+# Note: Direct string-to-int comparison not supported, verified via constant assignment above
+
+uint8 dummy
+
+@sealed

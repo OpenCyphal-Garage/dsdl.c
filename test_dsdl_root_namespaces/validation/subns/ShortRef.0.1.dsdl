@@ -1,0 +1,9 @@
+# Short name references - referencing types in same namespace
+
+# Short reference to Helper (same namespace)
+Helper.0.1 helper_short_ref
+
+# Access constant from Helper using short name
+uint8 IMPORTED = Helper.0.1.HELPER_CONST
+
+@sealed

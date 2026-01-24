@@ -1,0 +1,19 @@
+# Union tag size tests - 8-bit tag for up to 255 variants
+
+@union
+
+# Fields 0-7 (need 3 bits, rounded to 8)
+uint8 opt0
+uint8 opt1
+uint8 opt2
+uint8 opt3
+uint8 opt4
+uint8 opt5
+uint8 opt6
+uint8 opt7
+
+# 8 fields = 8-bit tag
+@assert _offset_.min == 16  # 8-bit tag + 8-bit field
+@assert _offset_.max == 16
+
+@sealed

@@ -1,0 +1,16 @@
+# Array length prefix size tests
+
+# 8-bit prefix: capacity <= 255
+uint8[<=1] cap_1           # 8-bit prefix
+uint8[<=127] cap_127       # 8-bit prefix
+uint8[<=255] cap_255       # 8-bit prefix
+
+# 16-bit prefix: 256 <= capacity <= 65535
+uint8[<=256] cap_256       # 16-bit prefix
+uint8[<=1000] cap_1000     # 16-bit prefix
+uint8[<=65535] cap_65535   # 16-bit prefix
+
+# 32-bit prefix: capacity > 65535
+uint8[<=65536] cap_65536   # 32-bit prefix
+
+@sealed

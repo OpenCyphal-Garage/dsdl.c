@@ -1,0 +1,44 @@
+# Constant attributes of various types
+
+# Boolean constants
+bool TRUE_CONST = true
+bool FALSE_CONST = false
+
+# Unsigned integer constants
+uint8 BYTE_CONST = 255
+uint16 WORD_CONST = 65535
+uint32 DWORD_CONST = 4294967295
+uint64 QWORD_CONST = 18446744073709551615
+
+# Signed integer constants
+int8 NEG_BYTE = -128
+int8 POS_BYTE = 127
+int16 NEG_WORD = -32768
+int32 NEG_DWORD = -2147483648
+int64 NEG_QWORD = -9223372036854775808
+
+# Float constants from integers
+float32 FLOAT_FROM_INT = 42
+float64 DOUBLE_FROM_INT = 123456789
+
+# Float constants from real literals
+float16 HALF_PI = 3.14159
+float32 SINGLE_E = 2.71828
+float64 DOUBLE_PRECISE = 3.141592653589793
+
+# Constant from expression
+uint8 COMPUTED = 10 + 20 * 2
+uint16 POWER_CONST = 2 ** 10
+
+# Constant referencing prior constant
+uint8 DERIVED = BYTE_CONST - 1
+uint16 ALSO_DERIVED = (WORD_CONST + 1) / 2  # 65536/2 = 32768
+
+# Constant from string (ASCII char to uint8)
+uint8 CHAR_A = 'A'
+uint8 CHAR_NEWLINE = '\n'
+
+# Fields to make this a valid message type
+uint8 dummy_field
+
+@sealed

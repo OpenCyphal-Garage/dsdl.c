@@ -1,0 +1,6 @@
+# Deeply nested types - 10 levels deep
+# Each level contains the previous level
+
+Level1.0.1 level1
+
+@sealed

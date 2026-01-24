@@ -1,0 +1,15 @@
+# Deep namespace nesting test
+
+# Reference to type in same deep namespace (short name)
+DeepHelper.0.1 deep_helper
+
+# Reference to type in parent namespace (full path from root)
+validation.subns.Helper.0.1 parent_helper
+
+# Reference to root namespace type
+validation.Simple.0.1 root_simple
+
+# Access deep constant
+uint8 IMPORTED_DEEP = DeepHelper.0.1.DEEP_CONST
+
+@sealed

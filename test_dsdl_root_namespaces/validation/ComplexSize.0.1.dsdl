@@ -1,0 +1,20 @@
+# Complex variable-size type with multiple variable elements
+
+uint8 header
+
+# First variable array
+uint8[<=10] data1
+
+# Fixed field
+uint32 middle
+
+# Second variable array
+uint16[<=20] data2
+
+# Nested variable type
+StringArrays.0.1 nested_string
+
+# Third variable array
+uint8[<=5] data3
+
+@sealed

@@ -1,0 +1,8 @@
+# Delimited type with extent based on _offset_
+
+uint8 a
+uint16 b
+uint32 c
+uint8[<=100] d
+
+@extent _offset_.max * 2  # Extent is twice the maximum size

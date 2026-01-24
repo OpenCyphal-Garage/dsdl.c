@@ -1,0 +1,19 @@
+# Service with unions in request and response
+
+# Request is a union
+@union
+uint8 get_by_id
+utf8[<=64] get_by_name
+bool get_all
+
+@sealed
+
+----
+
+# Response is also a union (using multiple dashes)
+@union
+Empty.0.1 not_found
+Simple.0.1 single_result
+Simple.0.1[<=10] multiple_results
+
+@sealed

@@ -1,0 +1,35 @@
+# Identifier naming tests
+
+# Lowercase
+uint8 lowercase
+
+# Uppercase
+uint8 UPPERCASE
+
+# Mixed case
+uint8 MixedCase
+uint8 camelCase
+uint8 PascalCase
+
+# With underscores
+uint8 with_underscore
+uint8 multiple_under_scores
+uint8 trailing_
+
+# Starting with underscore
+uint8 _leading_underscore
+uint8 __double_leading
+
+# Single character
+uint8 a
+uint8 Z
+
+# Long identifier (100+ characters)
+uint8 this_is_a_very_long_identifier_name_that_exceeds_one_hundred_characters_to_test_parser_handling_of_long_names
+
+# Numbers in identifiers (not at start)
+uint8 field1
+uint8 field123
+uint8 a1b2c3
+
+@sealed

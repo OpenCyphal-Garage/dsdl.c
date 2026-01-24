@@ -1,0 +1,21 @@
+# Set literals and basic set usage
+
+# Single element set
+@assert {42} == {42}
+
+# Multiple element set
+@assert {1, 2, 3} == {3, 2, 1}  # Sets are unordered
+
+# Set with booleans
+@assert {true, false} == {false, true}
+
+# Set comparison with _offset_
+uint8 a
+@assert _offset_ == {8}
+
+uint8[<=3] b
+@assert _offset_ == {8 + 8, 8 + 16, 8 + 24, 8 + 32}
+
+uint8 dummy
+
+@sealed

@@ -1,0 +1,6 @@
+# File with Windows (CRLF) line endings
+
+uint8 field1
+uint16 field2
+
+@sealed

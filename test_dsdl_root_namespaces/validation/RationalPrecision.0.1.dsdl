@@ -1,0 +1,29 @@
+# Rational arithmetic precision tests
+
+# Exact integer arithmetic
+@assert 1000000 * 1000000 == 1000000000000
+@assert 999999999999 + 1 == 1000000000000
+
+# Exact fractional arithmetic
+@assert 1 / 3 + 1 / 3 + 1 / 3 == 1
+@assert 1 / 7 * 7 == 1
+@assert 2 / 3 + 1 / 6 == 5 / 6
+
+# Division producing fractions
+@assert 1 / 2 == 0.5
+@assert 1 / 4 == 0.25
+@assert 3 / 4 == 0.75
+
+# Modulo with integers
+@assert 17 % 5 == 2
+@assert 100 % 7 == 2
+
+# Large numbers
+uint64 LARGE = 9223372036854775807  # Max int64
+
+# Powers
+@assert 2 ** 62 == 4611686018427387904
+
+uint8 dummy
+
+@sealed

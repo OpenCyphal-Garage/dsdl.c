@@ -1,0 +1,8 @@
+# @deprecated directive - marks type as deprecated
+
+@deprecated
+
+uint8 old_field
+uint16 another_old_field
+
+@sealed

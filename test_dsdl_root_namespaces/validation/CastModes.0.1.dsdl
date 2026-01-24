@@ -1,0 +1,18 @@
+# Cast mode tests - saturated and truncated
+
+# Saturated is the default (keyword optional)
+uint8 saturated_implicit
+saturated uint8 saturated_explicit
+saturated int8 saturated_signed
+saturated float32 saturated_float
+
+# Truncated mode
+truncated uint8 truncated_uint
+truncated uint16 truncated_uint16
+truncated uint32 truncated_uint32
+truncated uint64 truncated_uint64
+truncated float16 truncated_float16
+truncated float32 truncated_float32
+truncated float64 truncated_float64
+
+@sealed

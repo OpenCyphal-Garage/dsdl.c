@@ -1,0 +1,7 @@
+# Minimal serialized size - single bit
+
+bool single_bit
+
+@assert _offset_ == {1}
+
+@sealed

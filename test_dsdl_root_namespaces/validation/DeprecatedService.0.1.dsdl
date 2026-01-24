@@ -1,0 +1,8 @@
+# Deprecated service - @deprecated in request applies to whole service
+
+@deprecated
+uint8 request_field
+@sealed
+---
+uint8 response_field
+@sealed

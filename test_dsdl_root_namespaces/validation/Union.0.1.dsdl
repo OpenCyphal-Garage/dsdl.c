@@ -1,0 +1,15 @@
+# Basic tagged union with different field types
+
+@union
+
+uint8 byte_value
+uint16 word_value
+uint32 dword_value
+uint64 qword_value
+float32 float_value
+float64 double_value
+bool bool_value
+uint8[<=100] array_value
+Simple.0.1 nested_value
+
+@sealed

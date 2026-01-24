@@ -1,0 +1,17 @@
+# Service type with request and response
+
+# Request
+uint8 command
+uint16 parameter
+byte[<=64] data
+
+@sealed
+
+---
+
+# Response
+uint8 status
+uint32 result
+utf8[<=128] message
+
+@sealed

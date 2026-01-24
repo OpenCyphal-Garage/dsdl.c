@@ -1,0 +1,24 @@
+# Basic structure with multiple fields of mixed types
+
+uint8 byte_field
+uint16 word_field
+uint32 dword_field
+uint64 qword_field
+
+int8 signed_byte
+int16 signed_word
+int32 signed_dword
+int64 signed_qword
+
+float16 half_float
+float32 single_float
+float64 double_float
+
+bool flag1
+bool flag2
+bool flag3
+
+uint8[10] byte_array
+uint16[<=5] variable_array
+
+@sealed

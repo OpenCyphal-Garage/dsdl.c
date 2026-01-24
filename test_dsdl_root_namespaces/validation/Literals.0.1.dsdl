@@ -1,0 +1,57 @@
+# All literal types testing
+
+# Decimal integers
+uint32 DECIMAL = 123456789
+uint32 DECIMAL_UNDERSCORE = 1_000_000
+uint8 ZERO = 0
+uint8 ZEROS = 0_0_0
+
+# Binary integers
+uint8 BINARY = 0b10101010
+uint8 BINARY_UPPER = 0B11110000
+uint8 BINARY_UNDERSCORE = 0b1010_1010
+
+# Octal integers
+uint16 OCTAL = 0o7654
+uint16 OCTAL_UPPER = 0O1234
+uint16 OCTAL_UNDERSCORE = 0o7_6_5_4
+
+# Hexadecimal integers
+uint32 HEX_LOWER = 0xdeadbeef
+uint32 HEX_UPPER = 0XDEADBEEF
+uint32 HEX_MIXED = 0xDeAdBeEf
+uint32 HEX_UNDERSCORE = 0xFF_FF_FF_FF
+
+# Real literals - point notation
+float64 REAL_POINT = 3.14159
+float64 REAL_NO_INT = .5
+float64 REAL_NO_FRAC = 5.
+float64 REAL_UNDERSCORE = 1_000.123_456
+
+# Real literals - exponent notation
+float64 REAL_EXP_LOWER = 1e10
+float64 REAL_EXP_UPPER = 1E10
+float64 REAL_EXP_PLUS = 1e+10
+float64 REAL_EXP_MINUS = 1e-10
+float64 REAL_COMBINED = 1.5e10
+float64 REAL_SMALL = 6.022e-23
+
+# Boolean literals
+bool BOOL_TRUE = true
+bool BOOL_FALSE = false
+
+# String to uint8 (ASCII)
+uint8 CHAR_UPPER_A = 'A'
+uint8 CHAR_LOWER_A = "a"
+uint8 CHAR_ZERO = '0'
+uint8 CHAR_SPACE = ' '
+
+# Escape sequences
+uint8 ESCAPE_BACKSLASH = '\\'
+uint8 ESCAPE_NEWLINE = '\n'
+uint8 ESCAPE_TAB = '\t'
+uint8 ESCAPE_CR = '\r'
+
+uint8 dummy
+
+@sealed

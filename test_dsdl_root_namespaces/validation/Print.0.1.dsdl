@@ -1,0 +1,23 @@
+# @print directive testing
+
+# Print without expression
+@print
+
+# Print various expression types
+@print 42
+@print 3.14159
+@print true
+@print 'hello world'
+@print {1, 2, 3}
+
+# Print expressions
+@print 2 + 2
+@print 10 * 10
+
+uint8 field
+@print _offset_
+
+# Print type references
+@print Simple.0.1
+
+@sealed

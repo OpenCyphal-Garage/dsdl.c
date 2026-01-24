@@ -1,0 +1,37 @@
+# String operations testing
+
+# String concatenation (used to show equality)
+@assert 'hello' + ' ' + 'world' == 'hello world'
+
+# String equality
+@assert 'test' == 'test'
+@assert "test" == 'test'  # Single and double quotes are equivalent
+
+# String inequality
+@assert 'foo' != 'bar'
+
+# String to uint8 (ASCII conversion) - verified via constant assignment
+uint8 CHAR_H = 'H'
+uint8 CHAR_e = 'e'
+uint8 CHAR_l = 'l'
+uint8 CHAR_o = 'o'
+
+# Verify ASCII values via constants
+uint8 CHAR_A = 'A'
+uint8 CHAR_Z = 'Z'
+uint8 CHAR_a_lower = 'a'
+uint8 CHAR_z_lower = 'z'
+uint8 CHAR_0 = '0'
+uint8 CHAR_9 = '9'
+
+# Verify the constant values are correct
+@assert CHAR_A == 65
+@assert CHAR_Z == 90
+@assert CHAR_a_lower == 97
+@assert CHAR_z_lower == 122
+@assert CHAR_0 == 48
+@assert CHAR_9 == 57
+
+uint8 dummy
+
+@sealed

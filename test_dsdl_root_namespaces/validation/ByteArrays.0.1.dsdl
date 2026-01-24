@@ -1,0 +1,7 @@
+# Byte arrays for raw binary data
+
+byte[8] fixed_bytes
+byte[<=100] variable_bytes
+byte[<=1024] large_bytes
+
+@sealed

@@ -1,0 +1,9 @@
+# Arrays of composite types
+
+Simple.0.1[3] fixed_simple_array
+Simple.0.1[<=10] var_simple_array
+
+Primitives.0.1[2] fixed_primitives_array
+Primitives.0.1[<=5] var_primitives_array
+
+@sealed

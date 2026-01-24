@@ -1,0 +1,8 @@
+# Sealed type - non-extensible, no delimiter header when nested
+
+uint8 a
+uint16 b
+uint32 c
+float64 d
+
+@sealed

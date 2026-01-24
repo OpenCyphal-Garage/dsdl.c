@@ -1,0 +1,7 @@
+# UTF-8 string arrays
+
+utf8[<=32] short_string
+utf8[<=256] medium_string
+utf8[<=1024] long_string
+
+@sealed

@@ -1,0 +1,31 @@
+# Bit-level alignment and packing tests
+
+# Cross-byte field packing
+uint3 three_bits
+uint5 five_bits      # Completes first byte
+@assert _offset_ == {8}
+
+uint12 twelve_bits   # Crosses byte boundary
+@assert _offset_ == {20}
+
+uint4 four_bits      # Completes to 24 bits (3 bytes)
+@assert _offset_ == {24}
+
+# Verify byte alignment
+@assert _offset_ % 8 == {0}
+
+# Non-aligned fields
+uint1 one_bit
+uint2 two_bits
+uint3 more_bits
+uint2 final_bits     # Total 8 bits
+@assert _offset_ == {32}
+
+# More complex packing
+uint7 seven
+uint9 nine           # Crosses boundary
+uint6 six
+uint10 ten           # Crosses boundary
+@assert _offset_ == {64}
+
+@sealed

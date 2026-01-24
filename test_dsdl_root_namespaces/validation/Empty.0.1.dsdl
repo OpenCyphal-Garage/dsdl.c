@@ -1,0 +1,5 @@
+# Empty type - contains no fields
+# This is a valid DSDL definition representing an empty structure.
+# The only valid serialized representation is an empty bit sequence (0 bytes after padding).
+
+@sealed

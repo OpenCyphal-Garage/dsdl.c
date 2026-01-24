@@ -1,0 +1,9 @@
+# Nested composite types
+
+Simple.0.1 simple
+Primitives.0.1 primitives
+BasicStruct.0.1 structure
+
+uint8 own_field
+
+@sealed

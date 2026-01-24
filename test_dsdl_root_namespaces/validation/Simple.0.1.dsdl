@@ -1,0 +1,5 @@
+# Simple single-field structure
+
+uint8 value
+
+@sealed
