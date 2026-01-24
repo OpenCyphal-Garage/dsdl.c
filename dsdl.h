@@ -82,6 +82,7 @@ typedef struct dsdl_type_array_t
     dsdl_type_t  type;        ///< Always the first field; here DSDL_ARRAY_*
     size_t       capacity;    ///< Maximum number of elements (from type definition)
     dsdl_type_t* member_type; ///< Points to any of dsdl_type_*; castable to dsdl_type_t* for type identification.
+    void*        bls;         ///< Internal: symbolic bit length set (dsdl_bls_t*)
 } dsdl_type_array_t;
 
 /// Composite type descriptor (struct, union, or RPC-service).
@@ -104,6 +105,8 @@ typedef struct dsdl_type_composite_t
 
     struct dsdl_type_composite_t*
       response; ///< In RPC-service types this field contains the response type. NULL otherwise.
+
+    void* bls; ///< Internal: symbolic bit length set (dsdl_bls_t*)
 } dsdl_type_composite_t;
 
 // ============================================================================

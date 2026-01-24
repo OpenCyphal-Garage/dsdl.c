@@ -24,6 +24,14 @@
 #define DSDL_TRACE(self, ...) (void)self
 #endif
 
+// Suppress unused-function warnings for functions that are defined but not yet integrated.
+// These will be used once the type system integration is complete.
+#if defined(__GNUC__) || defined(__clang__)
+#define DSDL_MAYBE_UNUSED __attribute__((unused))
+#else
+#define DSDL_MAYBE_UNUSED
+#endif
+
 // ============================================================================
 // Internal type definitions
 // ============================================================================
@@ -402,6 +410,652 @@ static dsdl_rational_t dsdl_rational_from_double(double x)
     result.num = negative ? -h1 : h1;
     result.den = (k1 == 0) ? 1 : k1;
     return dsdl_rational_normalize(result);
+}
+
+// Forward declaration - needed by BLS functions below
+static void* dsdl_alloc(dsdl_t* self, size_t size);
+
+// ============================================================================
+// Symbolic Bit Length Set
+// ============================================================================
+//
+// Bit length sets are represented symbolically to avoid combinatorial explosion.
+// For example, uint8[<=65536][<=65536] would have 4+ billion entries if expanded
+// numerically, but symbolically it's just repeat_range(repeat_range({8}, 65536), 65536).
+//
+// The key insight is that most operations (min, max, modulo) can be computed
+// without full expansion. The modulo operation is particularly important for
+// checking alignment: {x % divisor} has at most 'divisor' elements.
+
+/// Operator kind for symbolic bit length set expression tree.
+typedef enum {
+    dsdl_bls_nullary,      ///< Leaf: concrete set of integers
+    dsdl_bls_concat,       ///< Concatenation: sum of cartesian product (struct fields)
+    dsdl_bls_repeat,       ///< Fixed repetition: child * k (fixed array)
+    dsdl_bls_repeat_range, ///< Range repetition: child * [0..k_max] (variable array)
+    dsdl_bls_union,        ///< Set union of children (union variants)
+    dsdl_bls_pad,          ///< Padding: align child to boundary
+} dsdl_bls_kind_t;
+
+/// Forward declaration.
+typedef struct dsdl_bls_t dsdl_bls_t;
+
+/// Symbolic bit length set node.
+/// Instances are heap-allocated via dsdl_alloc().
+struct dsdl_bls_t
+{
+    dsdl_bls_kind_t kind;
+    union {
+        struct
+        { ///< nullary: concrete values (small sets, e.g., primitives)
+            size_t  count;
+            size_t* values; ///< Sorted array of distinct values
+        } nullary;
+        struct
+        { ///< concat: children summed (struct)
+            size_t       count;
+            dsdl_bls_t** children;
+        } concat;
+        struct
+        { ///< repeat: child * k (fixed array)
+            dsdl_bls_t* child;
+            size_t      k;
+        } repeat;
+        struct
+        { ///< repeat_range: child * [0..k_max] (variable array)
+            dsdl_bls_t* child;
+            size_t      k_max;
+        } repeat_range;
+        struct
+        { ///< union: set union of children
+            size_t       count;
+            dsdl_bls_t** children;
+        } set_union;
+        struct
+        { ///< pad: align child to boundary
+            dsdl_bls_t* child;
+            size_t      alignment;
+        } pad;
+    } data;
+    /// Cached values (SIZE_MAX = not computed yet)
+    size_t cached_min;
+    size_t cached_max;
+};
+
+/// Sentinel value indicating "not yet computed" for cached min/max.
+#define DSDL_BLS_NOT_COMPUTED SIZE_MAX
+
+// Forward declarations for bls operations
+static size_t dsdl_bls_min(dsdl_bls_t* bls);
+static size_t dsdl_bls_max(dsdl_bls_t* bls);
+
+/// Create a nullary (leaf) bit length set with a single value.
+static dsdl_bls_t* dsdl_bls_new_single(dsdl_t* const dsdl, const size_t value)
+{
+    dsdl_bls_t* const bls = (dsdl_bls_t*)dsdl_alloc(dsdl, sizeof(dsdl_bls_t) + sizeof(size_t));
+    if (bls == NULL) {
+        return NULL;
+    }
+    bls->kind               = dsdl_bls_nullary;
+    bls->data.nullary.count = 1;
+    // Store value immediately after the struct
+    bls->data.nullary.values    = (size_t*)(bls + 1);
+    bls->data.nullary.values[0] = value;
+    bls->cached_min             = value;
+    bls->cached_max             = value;
+    return bls;
+}
+
+/// Create a nullary bit length set from an array of values.
+/// Values need not be sorted; will be sorted and deduplicated.
+DSDL_MAYBE_UNUSED static dsdl_bls_t* dsdl_bls_new_set(dsdl_t* const dsdl, const size_t count, const size_t* const values)
+{
+    if (count == 0) {
+        return NULL; // Empty sets are invalid
+    }
+    // Allocate space for struct + values
+    dsdl_bls_t* const bls = (dsdl_bls_t*)dsdl_alloc(dsdl, sizeof(dsdl_bls_t) + count * sizeof(size_t));
+    if (bls == NULL) {
+        return NULL;
+    }
+    bls->kind            = dsdl_bls_nullary;
+    bls->data.nullary.values = (size_t*)(bls + 1);
+
+    // Copy and sort values (simple insertion sort for small sets)
+    size_t n = 0;
+    for (size_t i = 0; i < count; i++) {
+        const size_t v = values[i];
+        // Find insertion point (maintain sorted order)
+        size_t j = n;
+        while ((j > 0) && (bls->data.nullary.values[j - 1] > v)) {
+            j--;
+        }
+        // Skip duplicates (check BEFORE shifting)
+        if ((j > 0) && (bls->data.nullary.values[j - 1] == v)) {
+            continue;
+        }
+        if ((j < n) && (bls->data.nullary.values[j] == v)) {
+            continue;
+        }
+        // Shift elements to make room for insertion
+        for (size_t k = n; k > j; k--) {
+            bls->data.nullary.values[k] = bls->data.nullary.values[k - 1];
+        }
+        bls->data.nullary.values[j] = v;
+        n++;
+    }
+    bls->data.nullary.count = n;
+    bls->cached_min         = bls->data.nullary.values[0];
+    bls->cached_max         = bls->data.nullary.values[n - 1];
+    return bls;
+}
+
+/// Create a concatenation (sum of cartesian product) of bit length sets.
+/// Represents struct field concatenation: total = f1 + f2 + ... + fn
+static dsdl_bls_t* dsdl_bls_new_concat(dsdl_t* const dsdl, const size_t count, dsdl_bls_t** const children)
+{
+    if (count == 0) {
+        return dsdl_bls_new_single(dsdl, 0); // Empty concat = {0}
+    }
+    if (count == 1) {
+        return children[0]; // Single child optimization
+    }
+    dsdl_bls_t* const bls = (dsdl_bls_t*)dsdl_alloc(dsdl, sizeof(dsdl_bls_t) + count * sizeof(dsdl_bls_t*));
+    if (bls == NULL) {
+        return NULL;
+    }
+    bls->kind              = dsdl_bls_concat;
+    bls->data.concat.count = count;
+    bls->data.concat.children = (dsdl_bls_t**)(bls + 1);
+    for (size_t i = 0; i < count; i++) {
+        bls->data.concat.children[i] = children[i];
+    }
+    bls->cached_min = DSDL_BLS_NOT_COMPUTED;
+    bls->cached_max = DSDL_BLS_NOT_COMPUTED;
+    return bls;
+}
+
+/// Create a fixed repetition: child repeated k times.
+/// Represents fixed-length array: element[k]
+static dsdl_bls_t* dsdl_bls_new_repeat(dsdl_t* const dsdl, dsdl_bls_t* const child, const size_t k)
+{
+    if (k == 0) {
+        return dsdl_bls_new_single(dsdl, 0); // Empty repetition = {0}
+    }
+    if (k == 1) {
+        return child; // Single repetition optimization
+    }
+    dsdl_bls_t* const bls = (dsdl_bls_t*)dsdl_alloc(dsdl, sizeof(dsdl_bls_t));
+    if (bls == NULL) {
+        return NULL;
+    }
+    bls->kind              = dsdl_bls_repeat;
+    bls->data.repeat.child = child;
+    bls->data.repeat.k     = k;
+    bls->cached_min        = DSDL_BLS_NOT_COMPUTED;
+    bls->cached_max        = DSDL_BLS_NOT_COMPUTED;
+    return bls;
+}
+
+/// Create a range repetition: child repeated 0 to k_max times.
+/// Represents variable-length array: element[<=k_max]
+static dsdl_bls_t* dsdl_bls_new_repeat_range(dsdl_t* const dsdl, dsdl_bls_t* const child, const size_t k_max)
+{
+    dsdl_bls_t* const bls = (dsdl_bls_t*)dsdl_alloc(dsdl, sizeof(dsdl_bls_t));
+    if (bls == NULL) {
+        return NULL;
+    }
+    bls->kind                    = dsdl_bls_repeat_range;
+    bls->data.repeat_range.child = child;
+    bls->data.repeat_range.k_max = k_max;
+    bls->cached_min              = 0; // Always includes k=0 case
+    bls->cached_max              = DSDL_BLS_NOT_COMPUTED;
+    return bls;
+}
+
+/// Create a union (set union) of bit length sets.
+/// Represents union variants: max of all alternatives
+DSDL_MAYBE_UNUSED static dsdl_bls_t* dsdl_bls_new_unite(dsdl_t* const dsdl, const size_t count, dsdl_bls_t** const children)
+{
+    if (count == 0) {
+        return dsdl_bls_new_single(dsdl, 0);
+    }
+    if (count == 1) {
+        return children[0];
+    }
+    dsdl_bls_t* const bls = (dsdl_bls_t*)dsdl_alloc(dsdl, sizeof(dsdl_bls_t) + count * sizeof(dsdl_bls_t*));
+    if (bls == NULL) {
+        return NULL;
+    }
+    bls->kind                 = dsdl_bls_union;
+    bls->data.set_union.count = count;
+    bls->data.set_union.children = (dsdl_bls_t**)(bls + 1);
+    for (size_t i = 0; i < count; i++) {
+        bls->data.set_union.children[i] = children[i];
+    }
+    bls->cached_min = DSDL_BLS_NOT_COMPUTED;
+    bls->cached_max = DSDL_BLS_NOT_COMPUTED;
+    return bls;
+}
+
+/// Create a padding operator: align child to boundary.
+/// Adds 0 to (alignment-1) padding bits.
+static dsdl_bls_t* dsdl_bls_new_pad(dsdl_t* const dsdl, dsdl_bls_t* const child, const size_t alignment)
+{
+    if (alignment <= 1) {
+        return child; // No-op for alignment 1
+    }
+    dsdl_bls_t* const bls = (dsdl_bls_t*)dsdl_alloc(dsdl, sizeof(dsdl_bls_t));
+    if (bls == NULL) {
+        return NULL;
+    }
+    bls->kind               = dsdl_bls_pad;
+    bls->data.pad.child     = child;
+    bls->data.pad.alignment = alignment;
+    bls->cached_min         = DSDL_BLS_NOT_COMPUTED;
+    bls->cached_max         = DSDL_BLS_NOT_COMPUTED;
+    return bls;
+}
+
+/// Helper: round up x to next multiple of alignment.
+static size_t dsdl_align_up(const size_t x, const size_t alignment)
+{
+    return ((x + alignment - 1) / alignment) * alignment;
+}
+
+/// Compute minimum value in a bit length set.
+static size_t dsdl_bls_min(dsdl_bls_t* const bls)
+{
+    if (bls == NULL) {
+        return 0;
+    }
+    if (bls->cached_min != DSDL_BLS_NOT_COMPUTED) {
+        return bls->cached_min;
+    }
+
+    size_t result = 0;
+    switch (bls->kind) {
+    case dsdl_bls_nullary:
+        result = bls->data.nullary.values[0]; // Already sorted
+        break;
+
+    case dsdl_bls_concat: {
+        result = 0;
+        for (size_t i = 0; i < bls->data.concat.count; i++) {
+            result += dsdl_bls_min(bls->data.concat.children[i]);
+        }
+        break;
+    }
+
+    case dsdl_bls_repeat:
+        result = dsdl_bls_min(bls->data.repeat.child) * bls->data.repeat.k;
+        break;
+
+    case dsdl_bls_repeat_range:
+        result = 0; // k=0 case
+        break;
+
+    case dsdl_bls_union: {
+        result = SIZE_MAX;
+        for (size_t i = 0; i < bls->data.set_union.count; i++) {
+            const size_t child_min = dsdl_bls_min(bls->data.set_union.children[i]);
+            if (child_min < result) {
+                result = child_min;
+            }
+        }
+        break;
+    }
+
+    case dsdl_bls_pad:
+        result = dsdl_align_up(dsdl_bls_min(bls->data.pad.child), bls->data.pad.alignment);
+        break;
+    }
+
+    bls->cached_min = result;
+    return result;
+}
+
+/// Compute maximum value in a bit length set.
+static size_t dsdl_bls_max(dsdl_bls_t* const bls)
+{
+    if (bls == NULL) {
+        return 0;
+    }
+    if (bls->cached_max != DSDL_BLS_NOT_COMPUTED) {
+        return bls->cached_max;
+    }
+
+    size_t result = 0;
+    switch (bls->kind) {
+    case dsdl_bls_nullary:
+        result = bls->data.nullary.values[bls->data.nullary.count - 1]; // Already sorted
+        break;
+
+    case dsdl_bls_concat: {
+        result = 0;
+        for (size_t i = 0; i < bls->data.concat.count; i++) {
+            result += dsdl_bls_max(bls->data.concat.children[i]);
+        }
+        break;
+    }
+
+    case dsdl_bls_repeat:
+        result = dsdl_bls_max(bls->data.repeat.child) * bls->data.repeat.k;
+        break;
+
+    case dsdl_bls_repeat_range:
+        result = dsdl_bls_max(bls->data.repeat_range.child) * bls->data.repeat_range.k_max;
+        break;
+
+    case dsdl_bls_union: {
+        result = 0;
+        for (size_t i = 0; i < bls->data.set_union.count; i++) {
+            const size_t child_max = dsdl_bls_max(bls->data.set_union.children[i]);
+            if (child_max > result) {
+                result = child_max;
+            }
+        }
+        break;
+    }
+
+    case dsdl_bls_pad:
+        result = dsdl_align_up(dsdl_bls_max(bls->data.pad.child), bls->data.pad.alignment);
+        break;
+    }
+
+    bls->cached_max = result;
+    return result;
+}
+
+/// Check if bit length set has fixed length (min == max).
+DSDL_MAYBE_UNUSED static bool dsdl_bls_is_fixed(dsdl_bls_t* const bls) { return dsdl_bls_min(bls) == dsdl_bls_max(bls); }
+
+/// Compute modulo of all values in a bit length set.
+/// Returns the count of unique results, stores results in out_values (must have space for 'divisor' elements).
+/// This is the key operation for checking alignment without combinatorial explosion.
+static size_t dsdl_bls_modulo(dsdl_bls_t* const bls, const size_t divisor, size_t* const out_values)
+{
+    if ((bls == NULL) || (divisor == 0)) {
+        return 0;
+    }
+
+    // Use a bitmap for tracking which remainders we've seen (works for divisor <= 64*8 = 512)
+    // For larger divisors, fall back to linear scan.
+    uint64_t seen_bitmap[8] = { 0 };
+    const bool use_bitmap = divisor <= sizeof(seen_bitmap) * 8;
+
+    size_t count = 0;
+
+    switch (bls->kind) {
+    case dsdl_bls_nullary: {
+        for (size_t i = 0; i < bls->data.nullary.count; i++) {
+            const size_t r = bls->data.nullary.values[i] % divisor;
+            if (use_bitmap) {
+                const size_t idx = r / 64;
+                const uint64_t bit = ((uint64_t)1) << (r % 64);
+                if ((seen_bitmap[idx] & bit) == 0) {
+                    seen_bitmap[idx] |= bit;
+                    out_values[count++] = r;
+                }
+            } else {
+                // Linear scan for large divisors
+                bool found = false;
+                for (size_t j = 0; j < count; j++) {
+                    if (out_values[j] == r) {
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found) {
+                    out_values[count++] = r;
+                }
+            }
+        }
+        break;
+    }
+
+    case dsdl_bls_concat: {
+        // For concatenation, we need modular sum of all combinations.
+        // Start with {0} and add each child's modulo set.
+        out_values[0] = 0;
+        count         = 1;
+
+        for (size_t i = 0; i < bls->data.concat.count; i++) {
+            // Get child's modulo values
+            size_t* const child_mods   = (size_t*)out_values + divisor; // Use second half as temp
+            const size_t  child_count = dsdl_bls_modulo(bls->data.concat.children[i], divisor, child_mods);
+
+            // Compute new modulo set: {(a + b) % divisor | a in current, b in child}
+            size_t new_count = 0;
+            if (use_bitmap) {
+                memset(seen_bitmap, 0, sizeof(seen_bitmap));
+            }
+            for (size_t j = 0; j < count; j++) {
+                for (size_t k = 0; k < child_count; k++) {
+                    const size_t r = (out_values[j] + child_mods[k]) % divisor;
+                    if (use_bitmap) {
+                        const size_t idx = r / 64;
+                        const uint64_t bit = ((uint64_t)1) << (r % 64);
+                        if ((seen_bitmap[idx] & bit) == 0) {
+                            seen_bitmap[idx] |= bit;
+                            out_values[new_count++] = r;
+                        }
+                    } else {
+                        bool found = false;
+                        for (size_t m = 0; m < new_count; m++) {
+                            if (out_values[m] == r) {
+                                found = true;
+                                break;
+                            }
+                        }
+                        if (!found) {
+                            out_values[new_count++] = r;
+                        }
+                    }
+                }
+            }
+            count = new_count;
+        }
+        break;
+    }
+
+    case dsdl_bls_repeat: {
+        // For repeat(k), we need k-multicombinations of child modulos summed.
+        // Optimization: for k >= divisor, pattern repeats, so use equivalent_k.
+        const size_t k            = bls->data.repeat.k;
+        const size_t equivalent_k = (k < divisor) ? k : (divisor + k % divisor);
+
+        // Get child's modulo values
+        size_t  child_mods[512]; // Stack allocation for common case
+        const size_t child_count = dsdl_bls_modulo(bls->data.repeat.child, divisor, child_mods);
+
+        // Start with {0} (k=0 gives 0, but k>=1 here since we don't reach this for k=0)
+        // Actually for repeat, k is fixed, so we need k iterations of adding child_mods.
+        out_values[0] = 0;
+        count         = 1;
+
+        for (size_t rep = 0; rep < equivalent_k; rep++) {
+            size_t new_count = 0;
+            if (use_bitmap) {
+                memset(seen_bitmap, 0, sizeof(seen_bitmap));
+            }
+            for (size_t j = 0; j < count; j++) {
+                for (size_t k2 = 0; k2 < child_count; k2++) {
+                    const size_t r = (out_values[j] + child_mods[k2]) % divisor;
+                    if (use_bitmap) {
+                        const size_t idx = r / 64;
+                        const uint64_t bit = ((uint64_t)1) << (r % 64);
+                        if ((seen_bitmap[idx] & bit) == 0) {
+                            seen_bitmap[idx] |= bit;
+                            out_values[new_count++] = r;
+                        }
+                    } else {
+                        bool found = false;
+                        for (size_t m = 0; m < new_count; m++) {
+                            if (out_values[m] == r) {
+                                found = true;
+                                break;
+                            }
+                        }
+                        if (!found) {
+                            out_values[new_count++] = r;
+                        }
+                    }
+                }
+            }
+            count = new_count;
+        }
+        break;
+    }
+
+    case dsdl_bls_repeat_range: {
+        // For repeat_range(k_max), we include all k in [0, k_max].
+        // Optimization: for k_max >= divisor, pattern repeats.
+        const size_t k_max            = bls->data.repeat_range.k_max;
+        const size_t equivalent_k_max = (k_max < divisor) ? k_max : (divisor + k_max % divisor);
+
+        // Get child's modulo values
+        size_t  child_mods[512];
+        const size_t child_count = dsdl_bls_modulo(bls->data.repeat_range.child, divisor, child_mods);
+
+        // Include k=0 case: {0}
+        out_values[0] = 0;
+        count         = 1;
+        if (use_bitmap) {
+            seen_bitmap[0] |= 1; // Mark 0 as seen
+        }
+
+        // Running set of sums for current k
+        size_t running[512];
+        running[0]        = 0;
+        size_t running_count = 1;
+
+        for (size_t k = 1; k <= equivalent_k_max; k++) {
+            // Add one more child to running sums
+            size_t new_running_count = 0;
+            uint64_t running_bitmap[8] = { 0 };
+
+            for (size_t j = 0; j < running_count; j++) {
+                for (size_t m = 0; m < child_count; m++) {
+                    const size_t r = (running[j] + child_mods[m]) % divisor;
+                    const size_t idx = r / 64;
+                    const uint64_t bit = ((uint64_t)1) << (r % 64);
+                    if ((running_bitmap[idx] & bit) == 0) {
+                        running_bitmap[idx] |= bit;
+                        running[new_running_count++] = r;
+                    }
+                }
+            }
+            running_count = new_running_count;
+
+            // Add to output (union with existing)
+            for (size_t j = 0; j < running_count; j++) {
+                const size_t r = running[j];
+                if (use_bitmap) {
+                    const size_t idx = r / 64;
+                    const uint64_t bit = ((uint64_t)1) << (r % 64);
+                    if ((seen_bitmap[idx] & bit) == 0) {
+                        seen_bitmap[idx] |= bit;
+                        out_values[count++] = r;
+                    }
+                } else {
+                    bool found = false;
+                    for (size_t m = 0; m < count; m++) {
+                        if (out_values[m] == r) {
+                            found = true;
+                            break;
+                        }
+                    }
+                    if (!found) {
+                        out_values[count++] = r;
+                    }
+                }
+            }
+        }
+        break;
+    }
+
+    case dsdl_bls_union: {
+        // Union: collect all modulos from all children
+        for (size_t i = 0; i < bls->data.set_union.count; i++) {
+            size_t child_mods[512];
+            const size_t child_count = dsdl_bls_modulo(bls->data.set_union.children[i], divisor, child_mods);
+            for (size_t j = 0; j < child_count; j++) {
+                const size_t r = child_mods[j];
+                if (use_bitmap) {
+                    const size_t idx = r / 64;
+                    const uint64_t bit = ((uint64_t)1) << (r % 64);
+                    if ((seen_bitmap[idx] & bit) == 0) {
+                        seen_bitmap[idx] |= bit;
+                        out_values[count++] = r;
+                    }
+                } else {
+                    bool found = false;
+                    for (size_t m = 0; m < count; m++) {
+                        if (out_values[m] == r) {
+                            found = true;
+                            break;
+                        }
+                    }
+                    if (!found) {
+                        out_values[count++] = r;
+                    }
+                }
+            }
+        }
+        break;
+    }
+
+    case dsdl_bls_pad: {
+        // Padding: round each child value up to alignment, then take modulo
+        const size_t alignment = bls->data.pad.alignment;
+        // We need child % lcm(alignment, divisor), but that's complex.
+        // Simpler: get child modulo (lcm), apply padding, then modulo divisor.
+        const size_t lcm = (alignment * divisor) / dsdl_gcd(alignment, divisor);
+
+        size_t child_mods[512];
+        const size_t child_count = dsdl_bls_modulo(bls->data.pad.child, lcm, child_mods);
+
+        for (size_t i = 0; i < child_count; i++) {
+            const size_t padded = dsdl_align_up(child_mods[i], alignment);
+            const size_t r      = padded % divisor;
+            if (use_bitmap) {
+                const size_t idx = r / 64;
+                const uint64_t bit = ((uint64_t)1) << (r % 64);
+                if ((seen_bitmap[idx] & bit) == 0) {
+                    seen_bitmap[idx] |= bit;
+                    out_values[count++] = r;
+                }
+            } else {
+                bool found = false;
+                for (size_t j = 0; j < count; j++) {
+                    if (out_values[j] == r) {
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found) {
+                    out_values[count++] = r;
+                }
+            }
+        }
+        break;
+    }
+    }
+
+    return count;
+}
+
+/// Check if all values in a bit length set are aligned at the given boundary.
+/// Returns true iff {x % alignment} == {0} for all x in the set.
+DSDL_MAYBE_UNUSED static bool dsdl_bls_is_aligned(dsdl_bls_t* const bls, const size_t alignment)
+{
+    if ((bls == NULL) || (alignment <= 1)) {
+        return true;
+    }
+    size_t mods[512];
+    const size_t count = dsdl_bls_modulo(bls, alignment, mods);
+    return (count == 1) && (mods[0] == 0);
 }
 
 // ============================================================================
@@ -2832,6 +3486,7 @@ static dsdl_type_t* dsdl_create_type_descriptor(dsdl_t* const             self,
         }
         arr->type     = parsed_type->kind;
         arr->capacity = parsed_type->array_size;
+        arr->bls      = NULL;
 
         // Create a temporary parsed_type for the element (strip array info)
         dsdl_parsed_type_t element_type = *parsed_type;
@@ -3039,6 +3694,10 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_
     // Set extent
     composite->extent = def.has_extent ? def.extent_bits / 8 : 0; // Convert bits to bytes
 
+    // Initialize optional fields
+    composite->response = NULL;
+    composite->bls      = NULL;
+
     // Cache the result using type_name as key
     wkv_node_t* const cache_node = wkv_set(&self->types, type_name);
     if (cache_node == NULL) {
@@ -3236,6 +3895,101 @@ static size_t dsdl_type_max_bits(const dsdl_type_t* type_ptr)
     }
 
     return 0; // Unknown type
+}
+
+/// Compute the symbolic bit length set for any type.
+/// For primitives, returns a single-value set. For arrays and composites, uses the stored bls.
+/// If bls hasn't been computed yet, computes and stores it.
+/// This function should be called after type creation is complete.
+static dsdl_bls_t* dsdl_type_bls(dsdl_t* const self, dsdl_type_t* type_ptr)
+{
+    if (type_ptr == NULL) {
+        return dsdl_bls_new_single(self, 0);
+    }
+
+    const dsdl_type_t kind = *type_ptr;
+
+    // Primitive types (void, int, uint, float)
+    if (dsdl_type_is_void(kind) || dsdl_type_is_int(kind) || dsdl_type_is_uint(kind) || dsdl_type_is_float(kind)) {
+        return dsdl_bls_new_single(self, dsdl_type_bit_width(kind));
+    }
+
+    // Handle aliases (bool = uint1, byte = uint8)
+    if (dsdl_type_is_alias(kind)) {
+        return dsdl_bls_new_single(self, dsdl_type_bit_width((dsdl_type_t)(kind & ~DSDL_TYPE_ALIAS_MASK)));
+    }
+
+    // Array types - use stored bls
+    if (dsdl_type_is_array(kind)) {
+        dsdl_type_array_t* arr = (dsdl_type_array_t*)type_ptr;
+        if (arr->bls != NULL) {
+            return (dsdl_bls_t*)arr->bls;
+        }
+
+        // Compute and store bls
+        dsdl_bls_t* const elem_bls = dsdl_type_bls(self, arr->member_type);
+        if (elem_bls == NULL) {
+            return NULL;
+        }
+
+        if (kind == DSDL_ARRAY_VARIABLE) {
+            // Variable-length: length_prefix + repeat_range(element, capacity)
+            const size_t prefix_bits = dsdl_array_length_prefix_bits(arr->capacity);
+            dsdl_bls_t* const prefix_bls = dsdl_bls_new_single(self, prefix_bits);
+            dsdl_bls_t* const var_bls = dsdl_bls_new_repeat_range(self, elem_bls, arr->capacity);
+            dsdl_bls_t* children[2] = { prefix_bls, var_bls };
+            arr->bls = dsdl_bls_new_concat(self, 2, children);
+        } else {
+            // Fixed-length: repeat(element, capacity)
+            arr->bls = dsdl_bls_new_repeat(self, elem_bls, arr->capacity);
+        }
+        return (dsdl_bls_t*)arr->bls;
+    }
+
+    // Composite types - use stored bls
+    if (dsdl_type_is_composite(kind)) {
+        dsdl_type_composite_t* composite = (dsdl_type_composite_t*)type_ptr;
+        if (composite->bls != NULL) {
+            return (dsdl_bls_t*)composite->bls;
+        }
+
+        // Compute bls based on struct vs union
+        const bool is_union = (composite->type == DSDL_COMPOSITE_UNION);
+
+        if (is_union) {
+            // Union: tag + union of all variant bit length sets
+            const size_t tag_bits = dsdl_union_tag_bits(composite->field_count);
+            dsdl_bls_t* const tag_bls = dsdl_bls_new_single(self, tag_bits);
+
+            // Collect variant bit length sets
+            dsdl_bls_t** variants = (dsdl_bls_t**)dsdl_alloc(self, composite->field_count * sizeof(dsdl_bls_t*));
+            if (variants == NULL) {
+                return NULL;
+            }
+            for (size_t i = 0; i < composite->field_count; i++) {
+                variants[i] = dsdl_type_bls(self, composite->field_types[i]);
+            }
+            dsdl_bls_t* const variants_bls = dsdl_bls_new_unite(self, composite->field_count, variants);
+            dsdl_free(self, variants);
+
+            dsdl_bls_t* children[2] = { tag_bls, variants_bls };
+            composite->bls = dsdl_bls_new_concat(self, 2, children);
+        } else {
+            // Struct: concatenation of all field bit length sets
+            dsdl_bls_t** fields = (dsdl_bls_t**)dsdl_alloc(self, composite->field_count * sizeof(dsdl_bls_t*));
+            if (fields == NULL) {
+                return NULL;
+            }
+            for (size_t i = 0; i < composite->field_count; i++) {
+                fields[i] = dsdl_type_bls(self, composite->field_types[i]);
+            }
+            composite->bls = dsdl_bls_new_concat(self, composite->field_count, fields);
+            dsdl_free(self, fields);
+        }
+        return (dsdl_bls_t*)composite->bls;
+    }
+
+    return dsdl_bls_new_single(self, 0);
 }
 
 size_t dsdl_serialized_footprint(const dsdl_type_composite_t* const type)

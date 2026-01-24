@@ -185,3 +185,22 @@ target_compile_definitions(test_dsdl_type_resolution PRIVATE
 add_test(NAME dsdl_type_resolution_tests COMMAND test_dsdl_type_resolution
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )
+
+# ------------------------------------------------------------------------------
+# Test executable - Bit Length Set tests (symbolic evaluation)
+# ------------------------------------------------------------------------------
+add_executable(test_dsdl_bls
+    test_bls.c
+)
+
+target_link_libraries(test_dsdl_bls PRIVATE
+    unity
+    dsdl_test_internals
+    dsdl_trace
+)
+
+target_compile_definitions(test_dsdl_bls PRIVATE
+    DSDL_INTERNAL_TESTING=1
+)
+
+add_test(NAME dsdl_bls_tests COMMAND test_dsdl_bls)

@@ -222,6 +222,59 @@ static void test_serialized_footprint_nested(void)
     teardown_dsdl();
 }
 
+static void test_bit_length_set_simple(void)
+{
+    setup_dsdl();
+
+    TEST_ASSERT_TRUE(
+      dsdl_add_namespace(&g_dsdl, wkv_key("test_dsdl_root_namespaces/nunavut_test_types/nested_array_types")));
+
+    // Simple.1.0: int32 a, float16 b, bool c
+    // = 32 + 16 + 1 = 49 bits (fixed)
+    dsdl_type_composite_t* simple = (dsdl_type_composite_t*)dsdl_read(&g_dsdl, wkv_key("mymsgs.Simple.1.0"));
+    TEST_ASSERT_NOT_NULL(simple);
+
+    // Compute bit length set
+    dsdl_bls_t* bls = dsdl_type_bls(&g_dsdl, &simple->type);
+    TEST_ASSERT_NOT_NULL(bls);
+
+    // Simple has fixed size, so min == max == 49
+    TEST_ASSERT_EQUAL_size_t(49, dsdl_bls_min(bls));
+    TEST_ASSERT_EQUAL_size_t(49, dsdl_bls_max(bls));
+    TEST_ASSERT_TRUE(dsdl_bls_is_fixed(bls));
+
+    // Should be stored in composite
+    TEST_ASSERT_NOT_NULL(simple->bls);
+
+    teardown_dsdl();
+}
+
+static void test_bit_length_set_variable_array(void)
+{
+    setup_dsdl();
+
+    TEST_ASSERT_TRUE(
+      dsdl_add_namespace(&g_dsdl, wkv_key("test_dsdl_root_namespaces/nunavut_test_types/nested_array_types")));
+
+    // Inner.1.0: uint32[<=5] inner_items
+    // Length prefix: ceil(log2(5+1)) = ceil(log2(6)) = 3 bits
+    // Elements: 0..5 * 32 = 0..160 bits
+    // Total: min = 3 + 0 = 3 bits, max = 3 + 160 = 163 bits
+    dsdl_type_composite_t* inner = (dsdl_type_composite_t*)dsdl_read(&g_dsdl, wkv_key("mymsgs.Inner.1.0"));
+    TEST_ASSERT_NOT_NULL(inner);
+
+    // Compute bit length set
+    dsdl_bls_t* bls = dsdl_type_bls(&g_dsdl, &inner->type);
+    TEST_ASSERT_NOT_NULL(bls);
+
+    // Inner has variable size due to variable array
+    TEST_ASSERT_EQUAL_size_t(3, dsdl_bls_min(bls));
+    TEST_ASSERT_EQUAL_size_t(163, dsdl_bls_max(bls));
+    TEST_ASSERT_FALSE(dsdl_bls_is_fixed(bls));
+
+    teardown_dsdl();
+}
+
 // ============================================================================
 // Main
 // ============================================================================
@@ -240,6 +293,8 @@ int main(void)
     RUN_TEST(test_serialized_footprint_simple);
     RUN_TEST(test_serialized_footprint_array);
     RUN_TEST(test_serialized_footprint_nested);
+    RUN_TEST(test_bit_length_set_simple);
+    RUN_TEST(test_bit_length_set_variable_array);
 
     return UNITY_END();
 }
