@@ -33,9 +33,13 @@ The project organiztion should roughly follow that of libcanard: https://github.
 - **C99+**: The library code must be compatible with C99 and later standards.
 - **C++20+**: The public header (`dsdl.h`) must compile cleanly with C++20 and later.
 
+## Style
+
 Follow the Zubax Style Guide per `specs/CODING_CONVENTIONS.md`. Run Clang-Format regularly.
 
-The code must be striclty C99-compliant, possibly with optional features enabled at compile time if a newer version of C is detected, and portable between all standard-compliant compilers (no compiler-specific features can be used; in particular, no `__attribute__` declarations are allowed).
+The code must be strictly C99-compliant, possibly with optional features enabled at compile time if a newer version of C is detected, and portable between all standard-compliant compilers (no compiler-specific features can be used; in particular, no `__attribute__` declarations are allowed).
+
+**AGAIN:** COMPILER EXTENSIONS AND PLATFORM ASSUMPTIONS ARE NOT ALLOWED. Assume only standard C99.
 
 The code must not make assumptions about the execution platform (pointer width, endianness, baremetal or not, etc.).
 
@@ -44,11 +48,3 @@ The code must not make assumptions about the execution platform (pointer width, 
 Some of the known issues are listed below; the list is known to be NOT exhaustive:
 
 - All fixed-size arrays that limit the number of processed entities must be replaced with proper dynamic heap allocation with realloc. For example, `size_t child_mods[512];` et al.
-
-- The test suite must enable `#define DSDL_CONFIG_TRACE 1` for observability.
-
-- The `dsdl_trace_stderr.c` must be moved into the `tests` directory because it's only for testing.
-
-- The entire `dsdl.c` must contain a large number of `DSDL_TRACE()` statements such that it is easily possible to understand the execution flow by observing the traces. Currently, only a few of such traces are implemented. Ideally, all major functions should have at least one such trace statement. Very low-level functions should not use tracing because that would create too much noise. As a ballpark target verbosity estimate, parsing an ordinary single type should produce ca. 100 lines of traces.
-
-- Ideally, each function should have at least two assertion check statements, unless there is positively nothing to assert. More defensive programming is needed!

@@ -115,6 +115,7 @@ target_link_libraries(dsdl PUBLIC m)
 # ------------------------------------------------------------------------------
 if(DSDL_BUILD_TESTS)
     enable_testing()
+    set(CMAKE_CTEST_ARGUMENTS "-V")  # Enable test outputs when running `make test`
     add_subdirectory(tests)
 endif()
 

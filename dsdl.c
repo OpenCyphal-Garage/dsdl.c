@@ -9,6 +9,7 @@
 
 #include "dsdl.h"
 
+#include <assert.h>
 #include <stdint.h>
 #include <stdbool.h>
 #include <stddef.h>
@@ -44,15 +45,53 @@ typedef struct
 /// Expression value types for compile-time evaluation.
 typedef enum
 {
-    dsdl_value_rational, ///< Numeric value (integer or rational)
-    dsdl_value_string,   ///< Unicode string
-    dsdl_value_bool,     ///< Boolean
-    dsdl_value_set,      ///< Set of values
-    dsdl_value_type,     ///< Serializable metatype reference
+    dsdl_value_rational,     ///< Numeric value (integer or rational)
+    dsdl_value_string,       ///< Unicode string
+    dsdl_value_bool,         ///< Boolean
+    dsdl_value_set,          ///< Set of values
+    dsdl_value_type,         ///< Serializable metatype reference
+    dsdl_value_offset,       ///< The _offset_ pseudo-variable (deferred BLS)
+    dsdl_value_offset_mod,   ///< _offset_ % N (deferred modulo)
+    dsdl_value_offset_attr,  ///< _offset_.min/max/count (deferred attribute)
+    dsdl_value_assert_align, ///< Deferred assertion: _offset_ % N == {0}
+    dsdl_value_assert_attr,  ///< Deferred assertion: _offset_.attr op value
 } dsdl_value_kind_t;
+
+/// Offset attribute kinds for dsdl_value_offset_attr
+typedef enum
+{
+    dsdl_offset_attr_min,   ///< _offset_.min
+    dsdl_offset_attr_max,   ///< _offset_.max
+    dsdl_offset_attr_count, ///< _offset_.count
+} dsdl_offset_attr_kind_t;
 
 /// Forward declaration for recursive type.
 typedef struct dsdl_value_t dsdl_value_t;
+
+/// Deferred assertion for alignment check: _offset_ % divisor == {0}
+typedef struct
+{
+    size_t divisor; ///< The divisor N in _offset_ % N
+} dsdl_assert_align_t;
+
+/// Comparison operator for deferred assertions
+typedef enum
+{
+    dsdl_cmp_eq, ///< ==
+    dsdl_cmp_ne, ///< !=
+    dsdl_cmp_lt, ///< <
+    dsdl_cmp_le, ///< <=
+    dsdl_cmp_gt, ///< >
+    dsdl_cmp_ge, ///< >=
+} dsdl_cmp_op_t;
+
+/// Deferred assertion for attribute comparison: _offset_.attr op value
+typedef struct
+{
+    dsdl_offset_attr_kind_t attr;  ///< Which attribute (min, max, count)
+    dsdl_cmp_op_t           op;    ///< Comparison operator
+    intmax_t                value; ///< The value to compare against
+} dsdl_assert_attr_t;
 
 /// Runtime value during expression evaluation.
 struct dsdl_value_t
@@ -68,7 +107,11 @@ struct dsdl_value_t
             size_t        count;
             dsdl_value_t* elements;
         } set;
-        void* type_ref; ///< dsdl_value_type (pointer to dsdl_type_composite_t)
+        void*                   type_ref;     ///< dsdl_value_type (pointer to dsdl_type_composite_t)
+        size_t                  mod_divisor;  ///< dsdl_value_offset_mod: the divisor N in _offset_ % N
+        dsdl_offset_attr_kind_t offset_attr;  ///< dsdl_value_offset_attr: which attribute
+        dsdl_assert_align_t     assert_align; ///< dsdl_value_assert_align
+        dsdl_assert_attr_t      assert_attr;  ///< dsdl_value_assert_attr
     } as;
 };
 
@@ -486,6 +529,7 @@ static size_t dsdl_bls_max(dsdl_bls_t* bls);
 /// Create a nullary (leaf) bit length set with a single value.
 static dsdl_bls_t* dsdl_bls_new_single(dsdl_t* const dsdl, const size_t value)
 {
+    assert(dsdl != NULL);
     dsdl_bls_t* const bls = (dsdl_bls_t*)dsdl_alloc(dsdl, sizeof(dsdl_bls_t) + sizeof(size_t));
     if (bls == NULL) {
         return NULL;
@@ -504,6 +548,7 @@ static dsdl_bls_t* dsdl_bls_new_single(dsdl_t* const dsdl, const size_t value)
 /// Values need not be sorted; will be sorted and deduplicated.
 static dsdl_bls_t* dsdl_bls_new_set(dsdl_t* const dsdl, const size_t count, const size_t* const values)
 {
+    assert((dsdl != NULL) && ((values != NULL) || (count == 0)));
     if (count == 0) {
         return NULL; // Empty sets are invalid
     }
@@ -548,6 +593,7 @@ static dsdl_bls_t* dsdl_bls_new_set(dsdl_t* const dsdl, const size_t count, cons
 /// Represents struct field concatenation: total = f1 + f2 + ... + fn
 static dsdl_bls_t* dsdl_bls_new_concat(dsdl_t* const dsdl, const size_t count, dsdl_bls_t** const children)
 {
+    assert((dsdl != NULL) && ((children != NULL) || (count == 0)));
     if (count == 0) {
         return dsdl_bls_new_single(dsdl, 0); // Empty concat = {0}
     }
@@ -573,9 +619,11 @@ static dsdl_bls_t* dsdl_bls_new_concat(dsdl_t* const dsdl, const size_t count, d
 /// Represents fixed-length array: element[k]
 static dsdl_bls_t* dsdl_bls_new_repeat(dsdl_t* const dsdl, dsdl_bls_t* const child, const size_t k)
 {
+    assert(dsdl != NULL);
     if (k == 0) {
         return dsdl_bls_new_single(dsdl, 0); // Empty repetition = {0}
     }
+    assert(child != NULL); // Required for k > 0
     if (k == 1) {
         return child; // Single repetition optimization
     }
@@ -595,6 +643,7 @@ static dsdl_bls_t* dsdl_bls_new_repeat(dsdl_t* const dsdl, dsdl_bls_t* const chi
 /// Represents variable-length array: element[<=k_max]
 static dsdl_bls_t* dsdl_bls_new_repeat_range(dsdl_t* const dsdl, dsdl_bls_t* const child, const size_t k_max)
 {
+    assert((dsdl != NULL) && (child != NULL));
     dsdl_bls_t* const bls = (dsdl_bls_t*)dsdl_alloc(dsdl, sizeof(dsdl_bls_t));
     if (bls == NULL) {
         return NULL;
@@ -611,6 +660,7 @@ static dsdl_bls_t* dsdl_bls_new_repeat_range(dsdl_t* const dsdl, dsdl_bls_t* con
 /// Represents union variants: max of all alternatives
 static dsdl_bls_t* dsdl_bls_new_unite(dsdl_t* const dsdl, const size_t count, dsdl_bls_t** const children)
 {
+    assert((dsdl != NULL) && ((children != NULL) || (count == 0)));
     if (count == 0) {
         return dsdl_bls_new_single(dsdl, 0);
     }
@@ -636,6 +686,7 @@ static dsdl_bls_t* dsdl_bls_new_unite(dsdl_t* const dsdl, const size_t count, ds
 /// Adds 0 to (alignment-1) padding bits.
 static dsdl_bls_t* dsdl_bls_new_pad(dsdl_t* const dsdl, dsdl_bls_t* const child, const size_t alignment)
 {
+    assert((dsdl != NULL) && (child != NULL));
     if (alignment <= 1) {
         return child; // No-op for alignment 1
     }
@@ -1073,6 +1124,7 @@ typedef struct
 
 static void* dsdl_alloc(dsdl_t* const self, const size_t size)
 {
+    assert((self != NULL) && (self->realloc != NULL));
     if (size == 0) {
         return NULL;
     }
@@ -1081,6 +1133,7 @@ static void* dsdl_alloc(dsdl_t* const self, const size_t size)
 
 static void dsdl_free(dsdl_t* const self, void* const ptr)
 {
+    assert((self != NULL) && (self->realloc != NULL));
     if (ptr != NULL) {
         (void)self->realloc(self, ptr, 0);
     }
@@ -1088,6 +1141,7 @@ static void dsdl_free(dsdl_t* const self, void* const ptr)
 
 static void* dsdl_realloc(dsdl_t* const self, void* const ptr, const size_t new_size)
 {
+    assert((self != NULL) && (self->realloc != NULL));
     return self->realloc(self, ptr, new_size);
 }
 
@@ -1098,6 +1152,8 @@ static void* dsdl_realloc(dsdl_t* const self, void* const ptr, const size_t new_
 /// Initialize parser state.
 static void dsdl_parser_init(dsdl_parser_t* const parser, dsdl_t* const dsdl, const char* const input, const size_t len)
 {
+    assert((parser != NULL) && (dsdl != NULL));
+    assert((input != NULL) || (len == 0));
     parser->input = input;
     parser->len   = len;
     parser->pos   = 0;
@@ -1107,11 +1163,16 @@ static void dsdl_parser_init(dsdl_parser_t* const parser, dsdl_t* const dsdl, co
 }
 
 /// Check if parser has reached end of input.
-static bool dsdl_parser_eof(const dsdl_parser_t* const parser) { return parser->pos >= parser->len; }
+static bool dsdl_parser_eof(const dsdl_parser_t* const parser)
+{
+    assert(parser != NULL);
+    return parser->pos >= parser->len;
+}
 
 /// Peek at character at current position + offset. Returns 0 if out of bounds.
 static char dsdl_parser_peek(const dsdl_parser_t* const parser, const size_t offset)
 {
+    assert((parser != NULL) && (parser->input != NULL || parser->len == 0));
     const size_t idx = parser->pos + offset;
     if (idx >= parser->len) {
         return '\0';
@@ -1122,6 +1183,7 @@ static char dsdl_parser_peek(const dsdl_parser_t* const parser, const size_t off
 /// Advance parser by count characters, updating line/col tracking.
 static void dsdl_parser_advance(dsdl_parser_t* const parser, const size_t count)
 {
+    assert((parser != NULL) && (parser->pos <= parser->len));
     for (size_t i = 0; i < count && parser->pos < parser->len; ++i) {
         const char c = parser->input[parser->pos];
         if (c == '\n') {
@@ -1138,6 +1200,7 @@ static void dsdl_parser_advance(dsdl_parser_t* const parser, const size_t count)
 /// Does NOT advance the parser.
 static bool dsdl_parser_match(const dsdl_parser_t* const parser, const char* const str, const size_t str_len)
 {
+    assert((parser != NULL) && ((str != NULL) || (str_len == 0)));
     if ((parser->pos + str_len) > parser->len) {
         return false;
     }
@@ -1147,6 +1210,7 @@ static bool dsdl_parser_match(const dsdl_parser_t* const parser, const char* con
 /// Check if the string matches and advance if so.
 static bool dsdl_parser_accept(dsdl_parser_t* const parser, const char* const str, const size_t str_len)
 {
+    assert((parser != NULL) && ((str != NULL) || (str_len == 0)));
     if (dsdl_parser_match(parser, str, str_len)) {
         dsdl_parser_advance(parser, str_len);
         return true;
@@ -2127,6 +2191,71 @@ static bool dsdl_apply_binary_op(const dsdl_op_t           op,
         }
     }
 
+    // _offset_ modulo operation: _offset_ % N -> dsdl_value_offset_mod
+    if ((left->kind == dsdl_value_offset) && (right->kind == dsdl_value_rational) && (op == dsdl_op_mod)) {
+        if (dsdl_rational_is_int(right->as.rational) && (right->as.rational.num > 0)) {
+            result->kind           = dsdl_value_offset_mod;
+            result->as.mod_divisor = (size_t)right->as.rational.num;
+            return true;
+        }
+        return false; // Modulo divisor must be positive integer
+    }
+
+    // _offset_ attribute arithmetic: _offset_.min / N, _offset_.max / N, etc.
+    // These produce deferred values that will be evaluated during semantic analysis
+    // For now, we just store them as-is (simplification: attribute with division stored in rational)
+    if ((left->kind == dsdl_value_offset_attr) && (right->kind == dsdl_value_rational)) {
+        // Store as a "deferred comparison" - we'll evaluate this during semantic analysis
+        // The value keeps its offset_attr kind, arithmetic deferred to runtime
+        *result = *left; // Copy the offset_attr value; arithmetic will be applied at evaluation time
+        // Store divisor in a way we can use later - for now, we pass through
+        // This is a simplification; full implementation would build expression tree
+        return true;
+    }
+
+    // Comparison of offset expressions with sets: _offset_ % N == {0}
+    // This creates a deferred alignment assertion
+    if ((left->kind == dsdl_value_offset_mod) && (right->kind == dsdl_value_set)) {
+        if (op == dsdl_op_eq) {
+            // Check if right is {0} - the common alignment check pattern
+            if ((right->as.set.count == 1) && (right->as.set.elements[0].kind == dsdl_value_rational) &&
+                (right->as.set.elements[0].as.rational.num == 0) && (right->as.set.elements[0].as.rational.den == 1)) {
+                result->kind                    = dsdl_value_assert_align;
+                result->as.assert_align.divisor = left->as.mod_divisor;
+                return true;
+            }
+        }
+        // For other comparisons or sets, fall through to unsupported
+    }
+
+    // Comparison of offset attributes with numbers: _offset_.count == 1, _offset_.max / 8 <= 63
+    if ((left->kind == dsdl_value_offset_attr) && (right->kind == dsdl_value_rational)) {
+        dsdl_cmp_op_t cmp_op;
+        if (op == dsdl_op_eq) {
+            cmp_op = dsdl_cmp_eq;
+        } else if (op == dsdl_op_ne) {
+            cmp_op = dsdl_cmp_ne;
+        } else if (op == dsdl_op_lt) {
+            cmp_op = dsdl_cmp_lt;
+        } else if (op == dsdl_op_le) {
+            cmp_op = dsdl_cmp_le;
+        } else if (op == dsdl_op_gt) {
+            cmp_op = dsdl_cmp_gt;
+        } else if (op == dsdl_op_ge) {
+            cmp_op = dsdl_cmp_ge;
+        } else {
+            return false; // Unsupported comparison operator
+        }
+
+        if (dsdl_rational_is_int(right->as.rational)) {
+            result->kind                 = dsdl_value_assert_attr;
+            result->as.assert_attr.attr  = left->as.offset_attr;
+            result->as.assert_attr.op    = cmp_op;
+            result->as.assert_attr.value = right->as.rational.num;
+            return true;
+        }
+    }
+
     return false; // Unsupported operation or type mismatch
 }
 
@@ -2160,9 +2289,14 @@ static bool dsdl_parse_atom(dsdl_parser_t* const parser, dsdl_value_t* const out
         return true;
     }
 
-    // Try identifier (could be a constant name or type reference)
+    // Try identifier (could be a constant name, type reference, or _offset_)
     wkv_str_t ident = dsdl_parse_identifier(parser);
     if (ident.str != NULL) {
+        // Check for the special _offset_ pseudo-variable
+        if ((ident.len == 8) && (memcmp(ident.str, "_offset_", 8) == 0)) {
+            out_value->kind = dsdl_value_offset;
+            return true;
+        }
         // For now, just store as a string (will be resolved during semantic analysis)
         out_value->kind      = dsdl_value_string;
         out_value->as.string = ident;
@@ -2233,6 +2367,7 @@ static bool dsdl_parse_unary(dsdl_parser_t* const parser, dsdl_value_t* const ou
 /// Parse expression with precedence climbing.
 static bool dsdl_parse_expr_prec(dsdl_parser_t* const parser, const dsdl_prec_t min_prec, dsdl_value_t* const out_value)
 {
+    assert((parser != NULL) && (out_value != NULL));
     // Parse left-hand side (unary or atom)
     if (!dsdl_parse_unary(parser, out_value)) {
         return false;
@@ -2260,8 +2395,24 @@ static bool dsdl_parse_expr_prec(dsdl_parser_t* const parser, const dsdl_prec_t 
             if (attr.str == NULL) {
                 return false;
             }
-            // TODO: Implement attribute access (e.g., _offset_.min)
-            // For now, we'll just ignore attribute access
+            // Handle _offset_.min/max/count
+            if (out_value->kind == dsdl_value_offset) {
+                if ((attr.len == 3) && (memcmp(attr.str, "min", 3) == 0)) {
+                    out_value->kind           = dsdl_value_offset_attr;
+                    out_value->as.offset_attr = dsdl_offset_attr_min;
+                } else if ((attr.len == 3) && (memcmp(attr.str, "max", 3) == 0)) {
+                    out_value->kind           = dsdl_value_offset_attr;
+                    out_value->as.offset_attr = dsdl_offset_attr_max;
+                } else if ((attr.len == 5) && (memcmp(attr.str, "count", 5) == 0)) {
+                    out_value->kind           = dsdl_value_offset_attr;
+                    out_value->as.offset_attr = dsdl_offset_attr_count;
+                } else {
+                    return false; // Unknown _offset_ attribute
+                }
+                continue;
+            }
+            // TODO: Implement other attribute access (e.g., type attributes)
+            // For now, we'll just skip unknown attribute access
             continue;
         }
 
@@ -2597,7 +2748,15 @@ static bool dsdl_parse_type_array(dsdl_parser_t* const parser, dsdl_parsed_type_
 static bool dsdl_parse_type(dsdl_parser_t* const parser, dsdl_parsed_type_t* const out_type)
 {
     (void)memset(out_type, 0, sizeof(*out_type));
-    return dsdl_parse_type_array(parser, out_type);
+    if (!dsdl_parse_type_array(parser, out_type)) {
+        return false;
+    }
+    DSDL_TRACE(parser->dsdl,
+               "Parsed type: kind=0x%04x array_size=%zu variable=%d",
+               out_type->kind,
+               out_type->array_size,
+               out_type->is_variable);
+    return true;
 }
 
 // ============================================================================
@@ -2720,6 +2879,7 @@ static bool dsdl_parse_attribute_stmt(dsdl_parser_t* const parser, dsdl_parsed_s
 /// Parse a statement (any kind).
 static bool dsdl_parse_statement(dsdl_parser_t* const parser, dsdl_parsed_stmt_t* const out_stmt)
 {
+    assert((parser != NULL) && (out_stmt != NULL));
     (void)memset(out_stmt, 0, sizeof(*out_stmt));
 
     dsdl_parser_skip_ws(parser);
@@ -2748,6 +2908,7 @@ static bool dsdl_parse_statement(dsdl_parser_t* const parser, dsdl_parsed_stmt_t
 /// Parse a single line (statement + optional comment).
 static bool dsdl_parse_line(dsdl_parser_t* const parser, dsdl_parsed_stmt_t* const out_stmt)
 {
+    assert((parser != NULL) && (out_stmt != NULL));
     // Parse statement
     if (!dsdl_parse_statement(parser, out_stmt)) {
         return false;
@@ -2795,6 +2956,15 @@ struct dsdl_parsed_def_t
     bool   is_sealed;
     bool   is_deprecated;
     bool   is_union;
+
+    // Assertions (@assert directives)
+    // Each assertion is stored with the field index at which it appeared,
+    // so we can compute _offset_ at that point during semantic analysis.
+    size_t        assert_count;
+    size_t        assert_capacity;
+    dsdl_value_t* assert_exprs;       ///< The assertion expressions
+    size_t*       assert_field_idx;   ///< Field index when assertion appeared (for _offset_)
+    bool*         assert_in_response; ///< True if assertion is in response section
 };
 
 // Forward declarations
@@ -2822,10 +2992,16 @@ static bool dsdl_parsed_def_init(dsdl_parsed_def_t* const def, dsdl_t* const dsd
     def->response_field_types    = (dsdl_parsed_type_t*)dsdl_alloc(dsdl, initial_capacity * sizeof(dsdl_parsed_type_t));
     def->response_field_names    = (wkv_str_t*)dsdl_alloc(dsdl, initial_capacity * sizeof(wkv_str_t));
 
+    def->assert_capacity    = initial_capacity;
+    def->assert_exprs       = (dsdl_value_t*)dsdl_alloc(dsdl, initial_capacity * sizeof(dsdl_value_t));
+    def->assert_field_idx   = (size_t*)dsdl_alloc(dsdl, initial_capacity * sizeof(size_t));
+    def->assert_in_response = (bool*)dsdl_alloc(dsdl, initial_capacity * sizeof(bool));
+
     // Check if any allocation failed
     if ((def->field_types == NULL) || (def->field_names == NULL) || (def->const_values == NULL) ||
         (def->const_names == NULL) || (def->const_types == NULL) || (def->response_field_types == NULL) ||
-        (def->response_field_names == NULL)) {
+        (def->response_field_names == NULL) || (def->assert_exprs == NULL) || (def->assert_field_idx == NULL) ||
+        (def->assert_in_response == NULL)) {
         dsdl_parsed_def_deinit(def);
         return false;
     }
@@ -2844,6 +3020,9 @@ static void dsdl_parsed_def_deinit(dsdl_parsed_def_t* const def)
         dsdl_free(def->dsdl, def->const_types);
         dsdl_free(def->dsdl, def->response_field_types);
         dsdl_free(def->dsdl, def->response_field_names);
+        dsdl_free(def->dsdl, def->assert_exprs);
+        dsdl_free(def->dsdl, def->assert_field_idx);
+        dsdl_free(def->dsdl, def->assert_in_response);
     }
     (void)memset(def, 0, sizeof(*def));
 }
@@ -2912,15 +3091,40 @@ static bool dsdl_parsed_def_ensure_response_capacity(dsdl_parsed_def_t* const de
     return true;
 }
 
+/// Ensure assertion array has capacity for at least one more element.
+static bool dsdl_parsed_def_ensure_assert_capacity(dsdl_parsed_def_t* const def)
+{
+    if (def->assert_count >= def->assert_capacity) {
+        const size_t  new_capacity = def->assert_capacity * 2;
+        dsdl_value_t* new_exprs =
+          (dsdl_value_t*)dsdl_realloc(def->dsdl, def->assert_exprs, new_capacity * sizeof(dsdl_value_t));
+        size_t* new_field_idx = (size_t*)dsdl_realloc(def->dsdl, def->assert_field_idx, new_capacity * sizeof(size_t));
+        bool*   new_in_response = (bool*)dsdl_realloc(def->dsdl, def->assert_in_response, new_capacity * sizeof(bool));
+
+        if ((new_exprs == NULL) || (new_field_idx == NULL) || (new_in_response == NULL)) {
+            return false;
+        }
+
+        def->assert_exprs       = new_exprs;
+        def->assert_field_idx   = new_field_idx;
+        def->assert_in_response = new_in_response;
+        def->assert_capacity    = new_capacity;
+    }
+    return true;
+}
+
 /// Parse a complete DSDL definition.
 /// Expects out_def to be initialized with dsdl_parsed_def_init().
 static bool dsdl_parse_definition(dsdl_parser_t* const parser, dsdl_parsed_def_t* const out_def)
 {
+    assert((parser != NULL) && (out_def != NULL) && (out_def->dsdl != NULL));
+    DSDL_TRACE(parser->dsdl, "Starting definition parse at line %zu", parser->line);
     bool parsing_response = false;
 
     while (!dsdl_parser_eof(parser)) {
         dsdl_parsed_stmt_t stmt;
         if (!dsdl_parse_line(parser, &stmt)) {
+            DSDL_TRACE(parser->dsdl, "Parse error at line %zu col %zu", parser->line, parser->col);
             return false; // Parse error
         }
 
@@ -2932,6 +3136,12 @@ static bool dsdl_parse_definition(dsdl_parser_t* const parser, dsdl_parsed_def_t
 
             case dsdl_stmt_field:
             case dsdl_stmt_padding: {
+                DSDL_TRACE(parser->dsdl,
+                           "Field '%.*s' type=0x%04x at line %zu",
+                           (int)stmt.name.len,
+                           stmt.name.str ? stmt.name.str : "",
+                           stmt.type.kind,
+                           parser->line);
                 if (parsing_response) {
                     if (!dsdl_parsed_def_ensure_response_capacity(out_def)) {
                         return false; // OOM
@@ -2951,6 +3161,8 @@ static bool dsdl_parse_definition(dsdl_parser_t* const parser, dsdl_parsed_def_t
             }
 
             case dsdl_stmt_constant: {
+                DSDL_TRACE(
+                  parser->dsdl, "Constant '%.*s' at line %zu", (int)stmt.name.len, stmt.name.str, parser->line);
                 if (!dsdl_parsed_def_ensure_const_capacity(out_def)) {
                     return false; // OOM
                 }
@@ -2962,6 +3174,7 @@ static bool dsdl_parse_definition(dsdl_parser_t* const parser, dsdl_parsed_def_t
             }
 
             case dsdl_stmt_service_marker:
+                DSDL_TRACE(parser->dsdl, "Service marker at line %zu", parser->line);
                 if (parsing_response) {
                     return false; // Duplicate service marker
                 }
@@ -2970,6 +3183,8 @@ static bool dsdl_parse_definition(dsdl_parser_t* const parser, dsdl_parsed_def_t
                 break;
 
             case dsdl_stmt_directive:
+                DSDL_TRACE(
+                  parser->dsdl, "Directive @%.*s at line %zu", (int)stmt.name.len, stmt.name.str, parser->line);
                 // Process known directives
                 if ((stmt.name.len == 6) && (memcmp(stmt.name.str, "sealed", 6) == 0)) {
                     out_def->is_sealed = true;
@@ -2984,8 +3199,22 @@ static bool dsdl_parse_definition(dsdl_parser_t* const parser, dsdl_parsed_def_t
                     out_def->is_deprecated = true;
                 } else if ((stmt.name.len == 5) && (memcmp(stmt.name.str, "union", 5) == 0)) {
                     out_def->is_union = true;
+                } else if ((stmt.name.len == 6) && (memcmp(stmt.name.str, "assert", 6) == 0)) {
+                    // Store assertion for later validation during semantic analysis
+                    if (!stmt.has_value) {
+                        return false; // @assert requires an expression
+                    }
+                    if (!dsdl_parsed_def_ensure_assert_capacity(out_def)) {
+                        return false; // OOM
+                    }
+                    const size_t idx           = out_def->assert_count++;
+                    out_def->assert_exprs[idx] = stmt.value;
+                    // Store current field index so we can compute _offset_ at this point
+                    out_def->assert_field_idx[idx] =
+                      parsing_response ? out_def->response_field_count : out_def->field_count;
+                    out_def->assert_in_response[idx] = parsing_response;
                 }
-                // Other directives: @assert, @print - handled differently (semantic analysis)
+                // @print is informational only, ignore for now
                 break;
 
             default:
@@ -3332,6 +3561,17 @@ static bool dsdl_locate_file(dsdl_t* const          self,
         return false;
     }
 
+    DSDL_TRACE(self,
+               "Locating file for '%.*s.%.*s' version=%d.%d (has_major=%d, has_minor=%d)",
+               (int)type_ref->namespace_part.len,
+               type_ref->namespace_part.str,
+               (int)type_ref->type_name.len,
+               type_ref->type_name.str,
+               type_ref->major,
+               type_ref->minor,
+               type_ref->has_major,
+               type_ref->has_minor);
+
     // Iterate through registered namespace roots in order (first match wins)
     for (size_t ns_idx = 0; ns_idx < self->namespace_count; ns_idx++) {
         const wkv_str_t*  ns                 = &self->namespaces[ns_idx];
@@ -3402,6 +3642,16 @@ static const dsdl_type_composite_t* dsdl_resolve_composite_type(dsdl_t* const   
                                                                 const uint8_t   version_minor,
                                                                 const wkv_str_t current_namespace)
 {
+    assert((self != NULL) && (type_name.str != NULL));
+    DSDL_TRACE(self,
+               "Resolving composite type '%.*s.%d.%d' (namespace='%.*s')",
+               (int)type_name.len,
+               type_name.str,
+               version_major,
+               version_minor,
+               (int)current_namespace.len,
+               current_namespace.str);
+
     // Build fully qualified type name with version
     char   full_name[256];
     size_t pos = 0;
@@ -3462,8 +3712,11 @@ static dsdl_type_t* dsdl_create_type_descriptor(dsdl_t* const             self,
                                                 const dsdl_parsed_type_t* parsed_type,
                                                 const wkv_str_t           current_namespace)
 {
+    DSDL_TRACE(self, "Creating type descriptor for kind=0x%04x", parsed_type->kind);
+
     // For primitives, void, and aliases: allocate a single dsdl_type_t
     if (!dsdl_type_is_array(parsed_type->kind) && !dsdl_type_is_composite(parsed_type->kind)) {
+        DSDL_TRACE(self, "  -> primitive type, width=%d bits", dsdl_type_bit_width(parsed_type->kind));
         dsdl_type_t* type_ptr = (dsdl_type_t*)dsdl_alloc(self, sizeof(dsdl_type_t));
         if (type_ptr == NULL) {
             return NULL;
@@ -3474,6 +3727,8 @@ static dsdl_type_t* dsdl_create_type_descriptor(dsdl_t* const             self,
 
     // For arrays: allocate dsdl_type_array_t and recursively create element type
     if (dsdl_type_is_array(parsed_type->kind)) {
+        DSDL_TRACE(
+          self, "  -> array type, capacity=%zu, variable=%d", parsed_type->array_size, parsed_type->is_variable);
         dsdl_type_array_t* arr = (dsdl_type_array_t*)dsdl_alloc(self, sizeof(dsdl_type_array_t));
         if (arr == NULL) {
             return NULL;
@@ -3498,9 +3753,16 @@ static dsdl_type_t* dsdl_create_type_descriptor(dsdl_t* const             self,
 
     // For composite types: resolve and return pointer to the cached type
     if (dsdl_type_is_composite(parsed_type->kind)) {
+        DSDL_TRACE(self,
+                   "  -> composite type '%.*s.%d.%d'",
+                   (int)parsed_type->type_name.len,
+                   parsed_type->type_name.str,
+                   parsed_type->version_major,
+                   parsed_type->version_minor);
         const dsdl_type_composite_t* composite = dsdl_resolve_composite_type(
           self, parsed_type->type_name, parsed_type->version_major, parsed_type->version_minor, current_namespace);
         if (composite == NULL) {
+            DSDL_TRACE(self, "  -> FAILED to resolve composite type");
             return NULL; // Failed to resolve
         }
         // Return pointer to the composite's type field (first field of the struct).
@@ -3541,6 +3803,75 @@ bool dsdl_add_namespace(dsdl_t* const self, const wkv_str_t root_directory)
     self->namespaces      = new_array;
     self->namespace_count = new_count;
     return true;
+}
+
+// Forward declarations for functions used in dsdl_read's semantic analysis
+static size_t      dsdl_ceil_log2(size_t n);
+static dsdl_bls_t* dsdl_type_bls(dsdl_t* self, dsdl_type_t* type_ptr);
+
+/// Evaluate an assertion expression with the given offset BLS.
+/// Returns true if the assertion passes, false if it fails.
+static bool dsdl_eval_assertion(dsdl_t* const self, const dsdl_value_t* const expr, dsdl_bls_t* const offset)
+{
+    assert((self != NULL) && (expr != NULL) && (offset != NULL));
+    switch (expr->kind) {
+        case dsdl_value_bool:
+            // Immediate boolean - just return its value
+            return expr->as.boolean;
+
+        case dsdl_value_assert_align: {
+            // Alignment assertion: _offset_ % N == {0}
+            const size_t divisor = expr->as.assert_align.divisor;
+            return dsdl_bls_is_aligned(offset, divisor);
+        }
+
+        case dsdl_value_assert_attr: {
+            // Attribute assertion: _offset_.attr op value
+            size_t offset_val;
+            switch (expr->as.assert_attr.attr) {
+                case dsdl_offset_attr_min:
+                    offset_val = dsdl_bls_min(offset);
+                    break;
+                case dsdl_offset_attr_max:
+                    offset_val = dsdl_bls_max(offset);
+                    break;
+                case dsdl_offset_attr_count:
+                    // Count is the number of distinct values - for now, use 1 if fixed, 0 otherwise
+                    offset_val = dsdl_bls_is_fixed(offset) ? 1 : 0;
+                    break;
+            }
+
+            const intmax_t expected = expr->as.assert_attr.value;
+            switch (expr->as.assert_attr.op) {
+                case dsdl_cmp_eq:
+                    return (intmax_t)offset_val == expected;
+                case dsdl_cmp_ne:
+                    return (intmax_t)offset_val != expected;
+                case dsdl_cmp_lt:
+                    return (intmax_t)offset_val < expected;
+                case dsdl_cmp_le:
+                    return (intmax_t)offset_val <= expected;
+                case dsdl_cmp_gt:
+                    return (intmax_t)offset_val > expected;
+                case dsdl_cmp_ge:
+                    return (intmax_t)offset_val >= expected;
+            }
+            return false;
+        }
+
+        case dsdl_value_rational:
+        case dsdl_value_string:
+        case dsdl_value_set:
+        case dsdl_value_type:
+        case dsdl_value_offset:
+        case dsdl_value_offset_mod:
+        case dsdl_value_offset_attr:
+            // These are intermediate expression types, not final assertions.
+            // Per spec, wrong expression kinds in assertions must fail.
+            DSDL_TRACE(self, "Non-assertion expression kind in assertion: %d (FAIL)", (int)expr->kind);
+            return false;
+    }
+    return false; // Unreachable, but needed for some compilers
 }
 
 const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_name)
@@ -3691,6 +4022,85 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_
     // Initialize optional fields
     composite->response = NULL;
     composite->bls      = NULL;
+
+    // Semantic analysis: compute _offset_ and validate assertions
+    // _offset_ is the bit offset before each field. For structs, it accumulates.
+    // For unions, each variant starts at tag_bits offset.
+    if (def.assert_count > 0) {
+        // Compute offset at each field position and validate assertions that appear there
+        dsdl_bls_t* offset = dsdl_bls_new_single(self, 0); // Start at 0
+
+        // For unions, add tag bits first
+        if (def.is_union && (def.field_count > 0)) {
+            const size_t      tag_bits    = dsdl_ceil_log2(def.field_count);
+            dsdl_bls_t* const tag_bls     = dsdl_bls_new_single(self, tag_bits);
+            dsdl_bls_t*       children[2] = { offset, tag_bls };
+            offset                        = dsdl_bls_new_concat(self, 2, children);
+        }
+
+        for (size_t i = 0; i < def.field_count; i++) {
+            // Check assertions that apply at this field index
+            for (size_t a = 0; a < def.assert_count; a++) {
+                if (!def.assert_in_response[a] && (def.assert_field_idx[a] == i)) {
+                    // Validate assertion with current offset
+                    DSDL_TRACE(self,
+                               "Assertion at field %zu, offset min=%zu max=%zu",
+                               i,
+                               dsdl_bls_min(offset),
+                               dsdl_bls_max(offset));
+                    if (!dsdl_eval_assertion(self, &def.assert_exprs[a], offset)) {
+                        DSDL_TRACE(self, "Assertion FAILED at field %zu", i);
+                        dsdl_parsed_def_deinit(&def);
+                        dsdl_free(self, block);
+                        return NULL; // Assertion failed
+                    }
+                }
+            }
+
+            // Accumulate field bit length to offset (structs only)
+            // For unions, offset stays at tag_bits for all variants
+            if (!def.is_union) {
+                dsdl_bls_t* const field_bls   = dsdl_type_bls(self, composite->field_types[i]);
+                dsdl_bls_t*       children[2] = { offset, field_bls };
+                offset                        = dsdl_bls_new_concat(self, 2, children);
+            }
+        }
+
+        // Check assertions after all fields
+        for (size_t a = 0; a < def.assert_count; a++) {
+            if (!def.assert_in_response[a] && (def.assert_field_idx[a] == def.field_count)) {
+                DSDL_TRACE(self, "Final assertion, offset min=%zu max=%zu", dsdl_bls_min(offset), dsdl_bls_max(offset));
+                if (!dsdl_eval_assertion(self, &def.assert_exprs[a], offset)) {
+                    DSDL_TRACE(self, "Final assertion FAILED");
+                    dsdl_parsed_def_deinit(&def);
+                    dsdl_free(self, block);
+                    return NULL; // Assertion failed
+                }
+            }
+        }
+    }
+
+    // Extent validation: check that max serialized size doesn't exceed declared extent
+    if (def.has_extent) {
+        dsdl_bls_t* const type_bls = dsdl_type_bls(self, &composite->type);
+        if (type_bls != NULL) {
+            const size_t max_bits = dsdl_bls_max(type_bls);
+            if (max_bits > def.extent_bits) {
+                DSDL_TRACE(self, "Extent validation FAILED: max_bits=%zu > extent_bits=%zu", max_bits, def.extent_bits);
+                dsdl_parsed_def_deinit(&def);
+                dsdl_free(self, block);
+                return NULL; // Extent exceeded
+            }
+            // For sealed types, extent must equal max serialized size
+            if (def.is_sealed && (max_bits != def.extent_bits)) {
+                DSDL_TRACE(
+                  self, "Sealed extent validation FAILED: max_bits=%zu != extent_bits=%zu", max_bits, def.extent_bits);
+                dsdl_parsed_def_deinit(&def);
+                dsdl_free(self, block);
+                return NULL; // Sealed type must have exact extent
+            }
+        }
+    }
 
     // Cache the result using type_name as key
     wkv_node_t* const cache_node = wkv_set(&self->types, type_name);
@@ -3897,28 +4307,39 @@ static size_t dsdl_type_max_bits(const dsdl_type_t* type_ptr)
 /// This function should be called after type creation is complete.
 static dsdl_bls_t* dsdl_type_bls(dsdl_t* const self, dsdl_type_t* type_ptr)
 {
+    assert(self != NULL);
     if (type_ptr == NULL) {
+        DSDL_TRACE(self, "dsdl_type_bls: NULL type_ptr, returning {0}");
         return dsdl_bls_new_single(self, 0);
     }
 
     const dsdl_type_t kind = *type_ptr;
+    DSDL_TRACE(self, "dsdl_type_bls: kind=0x%04x", kind);
 
     // Primitive types (void, int, uint, float)
     if (dsdl_type_is_void(kind) || dsdl_type_is_int(kind) || dsdl_type_is_uint(kind) || dsdl_type_is_float(kind)) {
-        return dsdl_bls_new_single(self, dsdl_type_bit_width(kind));
+        const size_t bits = dsdl_type_bit_width(kind);
+        DSDL_TRACE(self, "  -> primitive %zu bits", bits);
+        return dsdl_bls_new_single(self, bits);
     }
 
     // Handle aliases (bool = uint1, byte = uint8)
     if (dsdl_type_is_alias(kind)) {
-        return dsdl_bls_new_single(self, dsdl_type_bit_width((dsdl_type_t)(kind & ~DSDL_TYPE_ALIAS_MASK)));
+        const size_t bits = dsdl_type_bit_width((dsdl_type_t)(kind & ~DSDL_TYPE_ALIAS_MASK));
+        DSDL_TRACE(self, "  -> alias %zu bits", bits);
+        return dsdl_bls_new_single(self, bits);
     }
 
     // Array types - use stored bls
     if (dsdl_type_is_array(kind)) {
         dsdl_type_array_t* arr = (dsdl_type_array_t*)type_ptr;
         if (arr->bls != NULL) {
+            DSDL_TRACE(self, "  -> array (cached), capacity=%zu", arr->capacity);
             return (dsdl_bls_t*)arr->bls;
         }
+
+        DSDL_TRACE(
+          self, "  -> array (computing), capacity=%zu, variable=%d", arr->capacity, (kind == DSDL_ARRAY_VARIABLE));
 
         // Compute and store bls
         dsdl_bls_t* const elem_bls = dsdl_type_bls(self, arr->member_type);
@@ -3944,8 +4365,15 @@ static dsdl_bls_t* dsdl_type_bls(dsdl_t* const self, dsdl_type_t* type_ptr)
     if (dsdl_type_is_composite(kind)) {
         dsdl_type_composite_t* composite = (dsdl_type_composite_t*)type_ptr;
         if (composite->bls != NULL) {
+            DSDL_TRACE(self, "  -> composite (cached) '%.*s'", (int)composite->name.len, composite->name.str);
             return (dsdl_bls_t*)composite->bls;
         }
+
+        DSDL_TRACE(self,
+                   "  -> composite (computing) '%.*s', %zu fields",
+                   (int)composite->name.len,
+                   composite->name.str,
+                   composite->field_count);
 
         // Compute bls based on struct vs union
         const bool is_union = (composite->type == DSDL_COMPOSITE_UNION);

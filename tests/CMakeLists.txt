@@ -35,12 +35,14 @@ target_link_libraries(dsdl_test_internals INTERFACE m)
 # Trace implementation (provides dsdl_trace() for DSDL_CONFIG_TRACE)
 # ------------------------------------------------------------------------------
 add_library(dsdl_trace STATIC
-    ${CMAKE_SOURCE_DIR}/dsdl_trace_stderr.c
+    dsdl_trace_stderr.c
 )
 target_include_directories(dsdl_trace PUBLIC
     ${CMAKE_SOURCE_DIR}
     ${CMAKE_SOURCE_DIR}/lib
 )
+# Enable tracing for test builds
+target_compile_definitions(dsdl_trace PUBLIC DSDL_CONFIG_TRACE=1)
 
 # ------------------------------------------------------------------------------
 # Test executable - Main test suite (C) - Public API tests
