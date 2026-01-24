@@ -35,47 +35,19 @@ extern "C"
 typedef uint16_t dsdl_type_t;
 
 // Void types (void1..void64)
-#define DSDL_VOID1  ((dsdl_type_t)0x0001)
-#define DSDL_VOID2  ((dsdl_type_t)0x0002)
-#define DSDL_VOID3  ((dsdl_type_t)0x0003)
-#define DSDL_VOID4  ((dsdl_type_t)0x0004)
-#define DSDL_VOID5  ((dsdl_type_t)0x0005)
-#define DSDL_VOID6  ((dsdl_type_t)0x0006)
-#define DSDL_VOID7  ((dsdl_type_t)0x0007)
-#define DSDL_VOID8  ((dsdl_type_t)0x0008)
-#define DSDL_VOID16 ((dsdl_type_t)0x0010)
-#define DSDL_VOID32 ((dsdl_type_t)0x0020)
-#define DSDL_VOID64 ((dsdl_type_t)0x0040)
+#define DSDL_VOID(w) ((dsdl_type_t)(0x0000 + (w)))
 
 // Signed integer types (int2..int64)
-#define DSDL_INT2  ((dsdl_type_t)0x0102)
-#define DSDL_INT3  ((dsdl_type_t)0x0103)
-#define DSDL_INT4  ((dsdl_type_t)0x0104)
-#define DSDL_INT5  ((dsdl_type_t)0x0105)
-#define DSDL_INT6  ((dsdl_type_t)0x0106)
-#define DSDL_INT7  ((dsdl_type_t)0x0107)
-#define DSDL_INT8  ((dsdl_type_t)0x0108)
-#define DSDL_INT16 ((dsdl_type_t)0x0110)
-#define DSDL_INT32 ((dsdl_type_t)0x0120)
-#define DSDL_INT64 ((dsdl_type_t)0x0140)
+#define DSDL_INT(w) ((dsdl_type_t)(0x0100 + (w)))
 
 // Unsigned integer types (uint1..uint64)
-#define DSDL_UINT1  ((dsdl_type_t)0x0201)
-#define DSDL_UINT2  ((dsdl_type_t)0x0202)
-#define DSDL_UINT3  ((dsdl_type_t)0x0203)
-#define DSDL_UINT4  ((dsdl_type_t)0x0204)
-#define DSDL_UINT5  ((dsdl_type_t)0x0205)
-#define DSDL_UINT6  ((dsdl_type_t)0x0206)
-#define DSDL_UINT7  ((dsdl_type_t)0x0207)
-#define DSDL_UINT8  ((dsdl_type_t)0x0208)
-#define DSDL_UINT16 ((dsdl_type_t)0x0210)
-#define DSDL_UINT32 ((dsdl_type_t)0x0220)
-#define DSDL_UINT64 ((dsdl_type_t)0x0240)
+#define DSDL_UINT(w) ((dsdl_type_t)(0x0200 + (w)))
 
 // Floating point types
-#define DSDL_FLOAT16 ((dsdl_type_t)0x0510)
-#define DSDL_FLOAT32 ((dsdl_type_t)0x0520)
-#define DSDL_FLOAT64 ((dsdl_type_t)0x0540)
+#define DSDL_FLOAT(w) ((dsdl_type_t)(0x0500 + (w)))
+#define DSDL_FLOAT16  DSDL_FLOAT(16)
+#define DSDL_FLOAT32  DSDL_FLOAT(32)
+#define DSDL_FLOAT64  DSDL_FLOAT(64)
 
 // Array types
 #define DSDL_ARRAY_FIXED    ((dsdl_type_t)0x0A00)
@@ -87,9 +59,9 @@ typedef uint16_t dsdl_type_t;
 #define DSDL_COMPOSITE_RPC    ((dsdl_type_t)0x0F02)
 
 // Aliases (bits above 0xFFF indicate alias, mask with 0x0FFF for base type)
-#define DSDL_BOOL ((dsdl_type_t)0x1201) ///< Alias for uint1
-#define DSDL_BYTE ((dsdl_type_t)0x1208) ///< Alias for uint8
-#define DSDL_UTF8 ((dsdl_type_t)0x2208) ///< Alias for variable uint8 array
+#define DSDL_BOOL ((dsdl_type_t)(0x1000U + DSDL_UINT(1)))
+#define DSDL_BYTE ((dsdl_type_t)(0x1000U + DSDL_UINT(8)))
+#define DSDL_UTF8 ((dsdl_type_t)(0x2000U + DSDL_UINT(8)))
 
 // Type category masks and checks
 #define DSDL_TYPE_CATEGORY_MASK ((dsdl_type_t)0x0F00)

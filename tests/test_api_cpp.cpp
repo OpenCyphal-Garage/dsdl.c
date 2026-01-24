@@ -73,36 +73,36 @@ static void test_cpp_api_add_namespace()
 static void test_cpp_type_helpers()
 {
     // Test inline type helper functions
-    TEST_ASSERT_TRUE(dsdl_type_is_void(DSDL_VOID8));
-    TEST_ASSERT_FALSE(dsdl_type_is_void(DSDL_INT8));
+    TEST_ASSERT_TRUE(dsdl_type_is_void(DSDL_VOID(8)));
+    TEST_ASSERT_FALSE(dsdl_type_is_void(DSDL_INT(8)));
 
-    TEST_ASSERT_TRUE(dsdl_type_is_int(DSDL_INT32));
-    TEST_ASSERT_FALSE(dsdl_type_is_int(DSDL_UINT32));
+    TEST_ASSERT_TRUE(dsdl_type_is_int(DSDL_INT(32)));
+    TEST_ASSERT_FALSE(dsdl_type_is_int(DSDL_UINT(32)));
 
-    TEST_ASSERT_TRUE(dsdl_type_is_uint(DSDL_UINT64));
+    TEST_ASSERT_TRUE(dsdl_type_is_uint(DSDL_UINT(64)));
     TEST_ASSERT_FALSE(dsdl_type_is_uint(DSDL_FLOAT64));
 
     TEST_ASSERT_TRUE(dsdl_type_is_float(DSDL_FLOAT32));
-    TEST_ASSERT_FALSE(dsdl_type_is_float(DSDL_INT32));
+    TEST_ASSERT_FALSE(dsdl_type_is_float(DSDL_INT(32)));
 
     TEST_ASSERT_TRUE(dsdl_type_is_array(DSDL_ARRAY_FIXED));
     TEST_ASSERT_TRUE(dsdl_type_is_array(DSDL_ARRAY_VARIABLE));
-    TEST_ASSERT_FALSE(dsdl_type_is_array(DSDL_INT8));
+    TEST_ASSERT_FALSE(dsdl_type_is_array(DSDL_INT(8)));
 
     TEST_ASSERT_TRUE(dsdl_type_is_composite(DSDL_COMPOSITE_STRUCT));
     TEST_ASSERT_TRUE(dsdl_type_is_composite(DSDL_COMPOSITE_UNION));
     TEST_ASSERT_TRUE(dsdl_type_is_composite(DSDL_COMPOSITE_RPC));
-    TEST_ASSERT_FALSE(dsdl_type_is_composite(DSDL_UINT8));
+    TEST_ASSERT_FALSE(dsdl_type_is_composite(DSDL_UINT(8)));
 
     TEST_ASSERT_TRUE(dsdl_type_is_alias(DSDL_BOOL));
     TEST_ASSERT_TRUE(dsdl_type_is_alias(DSDL_BYTE));
-    TEST_ASSERT_FALSE(dsdl_type_is_alias(DSDL_UINT8));
+    TEST_ASSERT_FALSE(dsdl_type_is_alias(DSDL_UINT(8)));
 
     // Test bit width extraction
-    TEST_ASSERT_EQUAL_UINT8(8, dsdl_type_bit_width(DSDL_UINT8));
-    TEST_ASSERT_EQUAL_UINT8(16, dsdl_type_bit_width(DSDL_INT16));
+    TEST_ASSERT_EQUAL_UINT8(8, dsdl_type_bit_width(DSDL_UINT(8)));
+    TEST_ASSERT_EQUAL_UINT8(16, dsdl_type_bit_width(DSDL_INT(16)));
     TEST_ASSERT_EQUAL_UINT8(32, dsdl_type_bit_width(DSDL_FLOAT32));
-    TEST_ASSERT_EQUAL_UINT8(64, dsdl_type_bit_width(DSDL_VOID64));
+    TEST_ASSERT_EQUAL_UINT8(64, dsdl_type_bit_width(DSDL_VOID(64)));
 }
 
 static void test_cpp_wkv_str_usage()

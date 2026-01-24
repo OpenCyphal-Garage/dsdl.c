@@ -1701,7 +1701,7 @@ static bool dsdl_parse_type_void_(dsdl_parser_t* const parser, dsdl_parsed_type_
         return false;
     }
 
-    out_type->kind      = DSDL_VOID1 + bits - 1; // DSDL_VOID1 .. DSDL_VOID64
+    out_type->kind      = DSDL_VOID(bits);
     out_type->bit_width = bits;
     return true;
 }
@@ -1714,7 +1714,7 @@ static bool dsdl_parse_primitive_name_(dsdl_parser_t* const parser, dsdl_parsed_
         if ((bits < 1) || (bits > 64)) {
             return false;
         }
-        out_type->kind      = DSDL_UINT1 + bits - 1;
+        out_type->kind      = DSDL_UINT(bits);
         out_type->bit_width = bits;
         return true;
     }
@@ -1724,7 +1724,7 @@ static bool dsdl_parse_primitive_name_(dsdl_parser_t* const parser, dsdl_parsed_
         if ((bits < 2) || (bits > 64)) {
             return false; // int requires at least 2 bits
         }
-        out_type->kind      = DSDL_INT2 + bits - 2;
+        out_type->kind      = DSDL_INT(bits);
         out_type->bit_width = bits;
         return true;
     }
@@ -1734,13 +1734,7 @@ static bool dsdl_parse_primitive_name_(dsdl_parser_t* const parser, dsdl_parsed_
         if ((bits != 16) && (bits != 32) && (bits != 64)) {
             return false; // Only float16, float32, float64
         }
-        if (bits == 16) {
-            out_type->kind = DSDL_FLOAT16;
-        } else if (bits == 32) {
-            out_type->kind = DSDL_FLOAT32;
-        } else {
-            out_type->kind = DSDL_FLOAT64;
-        }
+        out_type->kind      = DSDL_FLOAT(bits);
         out_type->bit_width = bits;
         return true;
     }
@@ -1772,7 +1766,7 @@ static bool dsdl_parse_type_primitive_(dsdl_parser_t* const parser, dsdl_parsed_
     // Check for "utf8" (alias for uint8)
     if (dsdl_parser_match_(parser, "utf8", 4) && !dsdl_is_ident_cont_(dsdl_parser_peek_(parser, 4))) {
         dsdl_parser_advance_(parser, 4);
-        out_type->kind      = DSDL_UINT8; // utf8 is alias for uint8
+        out_type->kind      = DSDL_UINT(8); // utf8 is alias for uint8
         out_type->bit_width = 8;
         return true;
     }

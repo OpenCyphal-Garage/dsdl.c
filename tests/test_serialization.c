@@ -168,7 +168,7 @@ void test_serialize_uint8(void)
     _dsdl_bitbuf_t buf       = { buffer, 64, 0 };
 
     uint8_t value = 0x42;
-    _dsdl_serialize_primitive(&buf, DSDL_UINT8, &value);
+    _dsdl_serialize_primitive(&buf, DSDL_UINT(8), &value);
 
     TEST_ASSERT_EQUAL_size_t(8, buf.offset_bits);
     TEST_ASSERT_EQUAL_UINT8(0x42, buffer[0]);
@@ -176,7 +176,7 @@ void test_serialize_uint8(void)
     // Deserialize
     buf.offset_bits = 0;
     uint8_t result  = 0;
-    _dsdl_deserialize_primitive(&buf, DSDL_UINT8, &result);
+    _dsdl_deserialize_primitive(&buf, DSDL_UINT(8), &result);
     TEST_ASSERT_EQUAL_UINT8(0x42, result);
 }
 
@@ -186,7 +186,7 @@ void test_serialize_uint32(void)
     _dsdl_bitbuf_t buf       = { buffer, 64, 0 };
 
     uint32_t value = 0x12345678;
-    _dsdl_serialize_primitive(&buf, DSDL_UINT32, &value);
+    _dsdl_serialize_primitive(&buf, DSDL_UINT(32), &value);
 
     TEST_ASSERT_EQUAL_size_t(32, buf.offset_bits);
     // Little-endian: 0x78, 0x56, 0x34, 0x12
@@ -198,7 +198,7 @@ void test_serialize_uint32(void)
     // Deserialize
     buf.offset_bits = 0;
     uint32_t result = 0;
-    _dsdl_deserialize_primitive(&buf, DSDL_UINT32, &result);
+    _dsdl_deserialize_primitive(&buf, DSDL_UINT(32), &result);
     TEST_ASSERT_EQUAL_UINT32(0x12345678, result);
 }
 
@@ -208,14 +208,14 @@ void test_serialize_int16_negative(void)
     _dsdl_bitbuf_t buf       = { buffer, 64, 0 };
 
     int16_t value = -1234; // 0xFB2E in two's complement
-    _dsdl_serialize_primitive(&buf, DSDL_INT16, &value);
+    _dsdl_serialize_primitive(&buf, DSDL_INT(16), &value);
 
     TEST_ASSERT_EQUAL_size_t(16, buf.offset_bits);
 
     // Deserialize
     buf.offset_bits = 0;
     int16_t result  = 0;
-    _dsdl_deserialize_primitive(&buf, DSDL_INT16, &result);
+    _dsdl_deserialize_primitive(&buf, DSDL_INT(16), &result);
     TEST_ASSERT_EQUAL_INT16(-1234, result);
 }
 
@@ -573,8 +573,8 @@ void test_serialize_union(void)
     // Tag requires ceil(log2(2)) = 1 bit
 
     // Allocate type descriptor
-    static dsdl_type_t field_a_type = DSDL_UINT8;
-    static dsdl_type_t field_b_type = DSDL_UINT32;
+    static dsdl_type_t field_a_type = DSDL_UINT(8);
+    static dsdl_type_t field_b_type = DSDL_UINT(32);
 
     static dsdl_type_t* field_types[2];
     field_types[0] = &field_a_type;
