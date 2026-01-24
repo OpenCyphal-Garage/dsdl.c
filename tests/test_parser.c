@@ -3,14 +3,14 @@
 /// This file tests the parser functionality including literals, expressions,
 /// types, and statements.
 
-#include "unity.h"
-
-#include <stdlib.h>
-#include <string.h>
-#include <stdio.h>
-
 // Include the implementation directly for internal access
 #include "dsdl.c"
+
+#include "unity.h"
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 // ============================================================================
 // Test helpers

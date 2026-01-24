@@ -15,6 +15,15 @@
 #include <string.h>
 #include <math.h>
 
+#ifndef DSDL_CONFIG_TRACE
+#define DSDL_CONFIG_TRACE 0
+#endif
+#if DSDL_CONFIG_TRACE
+#define DSDL_TRACE(self, ...) dsdl_trace(self, __FILE__, __LINE__, __func__, __VA_ARGS__)
+#else
+#define DSDL_TRACE(self, ...) (void)self
+#endif
+
 // ============================================================================
 // Internal type definitions
 // ============================================================================
@@ -2887,34 +2896,26 @@ bool dsdl_add_namespace(dsdl_t* const self, const wkv_str_t root_directory)
 
 const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_name)
 {
-#ifdef DSDL_DEBUG_READ
-    fprintf(stderr, "DSDL_READ: type_name='%.*s' (len=%zu)\n", (int)type_name.len, type_name.str, type_name.len);
-#endif
+    DSDL_TRACE(self, "type_name='%.*s' (len=%zu)", (int)type_name.len, type_name.str, type_name.len);
     if ((self == NULL) || (type_name.str == NULL) || (type_name.len == 0)) {
-#ifdef DSDL_DEBUG_READ
-        fprintf(stderr, "DSDL_READ: NULL input\n");
-#endif
+        DSDL_TRACE(self, "NULL input");
         return NULL;
     }
 
     // Parse type name
     dsdl_type_ref_t type_ref;
     if (!dsdl_parse_typename(type_name, &type_ref)) {
-#ifdef DSDL_DEBUG_READ
-        fprintf(stderr, "DSDL_READ: Failed to parse type name\n");
-#endif
+        DSDL_TRACE(self, "Failed to parse type name");
         return NULL; // Malformed type name
     }
-#ifdef DSDL_DEBUG_READ
-    fprintf(stderr,
-            "DSDL_READ: Parsed: namespace='%.*s' type='%.*s' version=%d.%d\n",
-            (int)type_ref.namespace_part.len,
-            type_ref.namespace_part.str,
-            (int)type_ref.type_name.len,
-            type_ref.type_name.str,
-            type_ref.major,
-            type_ref.minor);
-#endif
+    DSDL_TRACE(self,
+               "Parsed: namespace='%.*s' type='%.*s' version=%d.%d",
+               (int)type_ref.namespace_part.len,
+               type_ref.namespace_part.str,
+               (int)type_ref.type_name.len,
+               type_ref.type_name.str,
+               type_ref.major,
+               type_ref.minor);
 
     // Use the original type_name as cache key (includes version)
     // E.g., "mymsgs.Inner.1.0" -> cache key is "mymsgs.Inner.1.0"
@@ -2926,34 +2927,24 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_
     // Locate the DSDL file
     char file_path[512];
     if (!dsdl_locate_file(self, &type_ref, file_path, sizeof(file_path))) {
-#ifdef DSDL_DEBUG_READ
-        fprintf(stderr, "DSDL_READ: Failed to locate file\n");
-#endif
+        DSDL_TRACE(self, "Failed to locate file");
         return NULL; // File not found
     }
-#ifdef DSDL_DEBUG_READ
-    fprintf(stderr, "DSDL_READ: Located file: '%s'\n", file_path);
-#endif
+    DSDL_TRACE(self, "Located file: '%s'", file_path);
 
     // Read file contents
     if (self->read == NULL) {
-#ifdef DSDL_DEBUG_READ
-        fprintf(stderr, "DSDL_READ: No read callback\n");
-#endif
+        DSDL_TRACE(self, "No read callback");
         return NULL; // No read callback
     }
 
     size_t file_size = 0;
     void*  file_data = self->read(self, wkv_key(file_path), &file_size);
     if (file_data == NULL) {
-#ifdef DSDL_DEBUG_READ
-        fprintf(stderr, "DSDL_READ: Failed to read file\n");
-#endif
+        DSDL_TRACE(self, "Failed to read file");
         return NULL; // Failed to read file
     }
-#ifdef DSDL_DEBUG_READ
-    fprintf(stderr, "DSDL_READ: Read %zu bytes\n", file_size);
-#endif
+    DSDL_TRACE(self, "Read %zu bytes", file_size);
 
     // Parse the file
     dsdl_parser_t     parser;
@@ -2963,23 +2954,17 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_
 
     if (!dsdl_parsed_def_init(&def, self)) {
         dsdl_free(self, file_data);
-#ifdef DSDL_DEBUG_READ
-        fprintf(stderr, "DSDL_READ: def init failed\n");
-#endif
+        DSDL_TRACE(self, "def init failed");
         return NULL; // OOM
     }
 
     if (!dsdl_parse_definition(&parser, &def)) {
         dsdl_parsed_def_deinit(&def);
         dsdl_free(self, file_data);
-#ifdef DSDL_DEBUG_READ
-        fprintf(stderr, "DSDL_READ: parse failed\n");
-#endif
+        DSDL_TRACE(self, "parse failed");
         return NULL; // Parse error
     }
-#ifdef DSDL_DEBUG_READ
-    fprintf(stderr, "DSDL_READ: parsed OK, field_count=%zu, sealed=%d\n", def.field_count, def.is_sealed);
-#endif
+    DSDL_TRACE(self, "parsed OK, field_count=%zu, sealed=%d", def.field_count, def.is_sealed);
 
     dsdl_free(self, file_data); // Done with file contents
 
@@ -3001,14 +2986,10 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_
     void* block = dsdl_alloc(self, total_size);
     if (block == NULL) {
         dsdl_parsed_def_deinit(&def);
-#ifdef DSDL_DEBUG_READ
-        fprintf(stderr, "DSDL_READ: alloc failed, size=%zu\n", total_size);
-#endif
+        DSDL_TRACE(self, "alloc failed, size=%zu", total_size);
         return NULL;
     }
-#ifdef DSDL_DEBUG_READ
-    fprintf(stderr, "DSDL_READ: allocated %zu bytes\n", total_size);
-#endif
+    DSDL_TRACE(self, "allocated %zu bytes", total_size);
 
     // Layout the block
     dsdl_type_composite_t* composite = (dsdl_type_composite_t*)block;
@@ -3038,9 +3019,7 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_
         // Create type descriptor for this field
         composite->field_types[i] = dsdl_create_type_descriptor(self, &def.field_types[i], type_ref.namespace_part);
         if (composite->field_types[i] == NULL) {
-#ifdef DSDL_DEBUG_READ
-            fprintf(stderr, "DSDL_READ: type descriptor creation failed for field %zu\n", i);
-#endif
+            DSDL_TRACE(self, "type descriptor creation failed for field %zu", i);
             dsdl_parsed_def_deinit(&def);
             dsdl_free(self, block);
             return NULL;

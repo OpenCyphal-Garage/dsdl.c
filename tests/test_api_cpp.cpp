@@ -8,12 +8,12 @@
 #error "This test requires C++20 or later"
 #endif
 
+#include "dsdl.h"
+
 extern "C"
 {
 #include "unity.h"
 }
-
-#include "dsdl.h"
 
 #include <cstdlib>
 #include <cstring>

@@ -2,13 +2,13 @@
 ///
 /// Tests for dsdl_read() and dependency resolution.
 
+// Include the implementation directly for internal access
+#include "dsdl.c"
+
 #include "unity.h"
 
 #include <stdlib.h>
 #include <string.h>
-
-// Include the implementation directly for internal access
-#include "dsdl.c"
 
 // ============================================================================
 // Test helpers

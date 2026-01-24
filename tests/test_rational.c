@@ -2,12 +2,11 @@
 ///
 /// These tests access internal functions by including dsdl.c directly.
 
-#include "unity.h"
-#include "dsdl.h"
-
 // Include implementation to access internal functions
 // This pattern is used in libcanard/libudpard test suites
 #include "dsdl.c"
+
+#include "unity.h"
 
 // ============================================================================
 // Rational arithmetic tests

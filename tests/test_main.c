@@ -4,8 +4,9 @@
 /// This executable tests public API functions only.
 /// Internal function tests are in separate executables.
 
-#include "unity.h"
 #include "dsdl.h"
+
+#include "unity.h"
 
 #include <stdlib.h>
 

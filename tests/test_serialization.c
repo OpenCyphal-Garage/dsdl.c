@@ -2,14 +2,13 @@
 ///
 /// Tests bit-level serialization and deserialization of DSDL types.
 
+// Include dsdl.c for access to internal functions
+#include "dsdl.c"
+
 #include "unity.h"
-#include "dsdl.h"
 
 #include <stdlib.h>
 #include <string.h>
-
-// Include dsdl.c for access to internal functions
-#include "dsdl.c"
 
 // ============================================================================
 // Test helpers

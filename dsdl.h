@@ -285,6 +285,20 @@ size_t dsdl_serialize(const dsdl_type_composite_t* type, const void* value, size
 /// @return Number of bytes consumed, or 0 on error
 size_t dsdl_deserialize(const dsdl_type_composite_t* type, void* value, size_t input_size, const void* input);
 
+/// For diagnostics and logging only. Usage in production is not recommended.
+/// This function is only required if DSDL_CONFIG_TRACE is defined and is nonzero; otherwise it should be left
+/// undefined.
+extern void dsdl_trace(dsdl_t* const       self,
+                       const char* const   file,
+                       const uint_fast16_t line,
+                       const char* const   func,
+                       const char* const   format,
+                       ...)
+#if defined(__GNUC__) || defined(__clang__)
+  __attribute__((__format__(__printf__, 5, 6)))
+#endif
+  ;
+
 #ifdef __cplusplus
 }
 #endif

@@ -32,6 +32,17 @@ target_include_directories(dsdl_test_internals INTERFACE
 target_link_libraries(dsdl_test_internals INTERFACE m)
 
 # ------------------------------------------------------------------------------
+# Trace implementation (provides dsdl_trace() for DSDL_CONFIG_TRACE)
+# ------------------------------------------------------------------------------
+add_library(dsdl_trace STATIC
+    ${CMAKE_SOURCE_DIR}/dsdl_trace_stderr.c
+)
+target_include_directories(dsdl_trace PUBLIC
+    ${CMAKE_SOURCE_DIR}
+    ${CMAKE_SOURCE_DIR}/lib
+)
+
+# ------------------------------------------------------------------------------
 # Test executable - Main test suite (C) - Public API tests
 # ------------------------------------------------------------------------------
 add_executable(test_dsdl
@@ -60,6 +71,7 @@ add_executable(test_dsdl_serialization
 target_link_libraries(test_dsdl_serialization PRIVATE
     unity
     dsdl_test_internals
+    dsdl_trace
 )
 
 target_compile_definitions(test_dsdl_serialization PRIVATE
@@ -80,6 +92,7 @@ add_executable(test_dsdl_parser
 target_link_libraries(test_dsdl_parser PRIVATE
     unity
     dsdl_test_internals
+    dsdl_trace
 )
 
 target_compile_definitions(test_dsdl_parser PRIVATE
@@ -98,6 +111,7 @@ add_executable(test_dsdl_rational
 target_link_libraries(test_dsdl_rational PRIVATE
     unity
     dsdl_test_internals
+    dsdl_trace
 )
 
 target_compile_definitions(test_dsdl_rational PRIVATE
@@ -141,6 +155,7 @@ add_executable(test_dsdl_internals
 target_link_libraries(test_dsdl_internals PRIVATE
     unity
     dsdl_test_internals
+    dsdl_trace
 )
 
 # Don't link against dsdl library - we include dsdl.c directly
@@ -160,6 +175,7 @@ add_executable(test_dsdl_type_resolution
 target_link_libraries(test_dsdl_type_resolution PRIVATE
     unity
     dsdl_test_internals
+    dsdl_trace
 )
 
 target_compile_definitions(test_dsdl_type_resolution PRIVATE

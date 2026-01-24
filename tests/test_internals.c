@@ -3,12 +3,12 @@
 /// This file includes dsdl.c directly to access internal functions.
 /// Used for testing implementation details that aren't exposed in the public API.
 
+// Include the implementation directly for internal access
+#include "dsdl.c"
+
 #include "unity.h"
 
 #include <stdlib.h>
-
-// Include the implementation directly for internal access
-#include "dsdl.c"
 
 // ============================================================================
 // Setup/Teardown
