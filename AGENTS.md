@@ -45,4 +45,12 @@ The code must not make assumptions about the execution platform (pointer width, 
 
 ## Known issues (incomplete list)
 
-Come back later.
+- DSDL sizes (bit length, extent, etc) are tied to the native `size_t`, which is a mistake because it may cause overflow easily. We need to use `uint64_t` to represent sizes derived from DSDL definitions instead. This does not affect cases where the size is actually limited by the platform capabilities; e.g., `size_t extent` is a mistake because the extent can be arbitrarily large and it will easily cause overflow on a small platform with 16-bit size; OTOH, `size_t field_count` does not require changing because we wouldn't be able to store more than `SIZE_MAX` fields anyway. In the header file specifically, there is only two occurrence where the size needs updating: the extent case mentioned earlier and the array capacity.
+
+- Do not assume that the target platform has `[u]uint8_t` and `[u]int16_t`; use `[u]int_least8_t` and `[u]int_least16_t` instead.
+
+- Use a well-defined macro `DSDL_PATH_SEP` for path separator instead of literal `/`, and allow overriding it such that it defaults to `/` only if not defined.
+
+- Use a well-defined macro `DSDL_PATH_MAX` instead of hardcoded adhoc `char dir_path[512]`, `char full_name[256];`, etc. Allow overriding it with 1024 being the default.
+
+- Remove all other hardcoded size constants, if any.

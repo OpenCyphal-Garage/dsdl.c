@@ -1175,6 +1175,22 @@ static void dsdl_free(dsdl_t* const self, void* const ptr)
     }
 }
 
+/// Free a const char* string that was allocated via realloc.
+/// This helper exists because wkv_str_t.str is const char*, but we need to free
+/// strings returned by the read() callback which are owned by us.
+static void dsdl_free_str(dsdl_t* const self, const char* const str)
+{
+    if (str != NULL) {
+        union
+        {
+            const char* c;
+            void*       m;
+        } u;
+        u.c = str;
+        dsdl_free(self, u.m);
+    }
+}
+
 static void* dsdl_realloc(dsdl_t* const self, void* const ptr, const size_t new_size)
 {
     assert((self != NULL) && (self->realloc != NULL));
@@ -3477,24 +3493,148 @@ static bool dsdl_parse_typename(const wkv_str_t name, dsdl_type_ref_t* const out
     return true;
 }
 
-/// Try to construct and test a file path.
-/// Returns true if the file exists (read() succeeds or returns non-NULL).
-static bool dsdl_try_path(dsdl_t* const   self,
-                          const char*     namespace_root,
-                          const size_t    namespace_root_len,
-                          const wkv_str_t namespace_part,
-                          const wkv_str_t type_name,
-                          const uint8_t   major,
-                          const uint8_t   minor,
-                          char*           out_path,
-                          const size_t    path_capacity)
+/// Parsed DSDL filename components.
+/// Format: [port_id.]TypeName.major.minor.dsdl
+typedef struct
 {
-    // Construct path: namespace_root/namespace/TypeName.major.minor.dsdl
+    wkv_str_t type_name;     ///< e.g., "Heartbeat"
+    uint8_t   major;         ///< Major version
+    uint8_t   minor;         ///< Minor version
+    uint16_t  fixed_port_id; ///< DSDL_FIXED_PORT_ID_NONE if not present
+    bool      valid;         ///< True if parsing succeeded
+} dsdl_parsed_filename_t;
+
+/// Parse a DSDL filename into its components.
+/// Handles format: [port_id.]TypeName.major.minor.dsdl
+///
+/// Examples:
+///   - "Heartbeat.1.0.dsdl" → type_name="Heartbeat", major=1, minor=0, fixed_port_id=NONE
+///   - "7000.FixedPortMessage.1.0.dsdl" → type_name="FixedPortMessage", major=1, minor=0, fixed_port_id=7000
+///
+/// @param filename  Filename to parse (without directory path)
+/// @return Parsed components with valid=true on success, valid=false on failure
+static dsdl_parsed_filename_t dsdl_parse_filename(const wkv_str_t filename)
+{
+    dsdl_parsed_filename_t result = { { 0, NULL }, 0, 0, DSDL_FIXED_PORT_ID_NONE, false };
+
+    // Minimum valid filename: "T.0.0.dsdl" = 10 chars
+    if ((filename.str == NULL) || (filename.len < 10)) {
+        return result;
+    }
+
+    // Check .dsdl suffix
+    if ((filename.len < 5) || (filename.str[filename.len - 5] != '.') || (filename.str[filename.len - 4] != 'd') ||
+        (filename.str[filename.len - 3] != 's') || (filename.str[filename.len - 2] != 'd') ||
+        (filename.str[filename.len - 1] != 'l')) {
+        return result;
+    }
+
+    // Work with the part before ".dsdl"
+    const size_t base_len = filename.len - 5;
+
+    // Find all '.' positions
+    size_t dot_positions[16];
+    size_t dot_count = 0;
+
+    for (size_t i = 0; (i < base_len) && (dot_count < 16); i++) {
+        if (filename.str[i] == '.') {
+            dot_positions[dot_count++] = i;
+        }
+    }
+
+    // Need at least 2 dots for TypeName.major.minor
+    if (dot_count < 2) {
+        return result;
+    }
+
+    // Parse minor version (last component before .dsdl)
+    const size_t    minor_start = dot_positions[dot_count - 1] + 1;
+    const wkv_str_t minor_str   = { base_len - minor_start, filename.str + minor_start };
+    if ((minor_str.len == 0) || !dsdl_is_all_digits(minor_str)) {
+        return result;
+    }
+    const int64_t minor_val = dsdl_parse_int(minor_str);
+    if ((minor_val < 0) || (minor_val > 255)) {
+        return result;
+    }
+
+    // Parse major version (second-to-last component)
+    const size_t major_start = dot_positions[dot_count - 2] + 1;
+    const size_t major_end   = dot_positions[dot_count - 1];
+    if (major_start >= major_end) {
+        return result;
+    }
+    const wkv_str_t major_str = { major_end - major_start, filename.str + major_start };
+    if ((major_str.len == 0) || !dsdl_is_all_digits(major_str)) {
+        return result;
+    }
+    const int64_t major_val = dsdl_parse_int(major_str);
+    if ((major_val < 0) || (major_val > 255)) {
+        return result;
+    }
+
+    result.major = (uint8_t)major_val;
+    result.minor = (uint8_t)minor_val;
+
+    // Now handle the part before major.minor
+    // It could be: "TypeName" or "port_id.TypeName"
+    if (dot_count == 2) {
+        // Format: TypeName.major.minor.dsdl
+        result.type_name = (wkv_str_t){ dot_positions[0], filename.str };
+        if (result.type_name.len == 0) {
+            return result;
+        }
+    } else {
+        // At least 3 dots: could be port_id.TypeName.major.minor.dsdl
+        // Or namespace like: sub.Type.major.minor.dsdl (but we don't expect namespaces in filename)
+        // Check if first component is all digits (port ID)
+        const wkv_str_t first_component = { dot_positions[0], filename.str };
+
+        if (dsdl_is_all_digits(first_component) && (first_component.len > 0)) {
+            // First component is port ID
+            const int64_t port_val = dsdl_parse_int(first_component);
+            if ((port_val >= 0) && (port_val <= 65534)) {
+                result.fixed_port_id = (uint16_t)port_val;
+
+                // Type name is between first dot and major dot
+                const size_t name_start = dot_positions[0] + 1;
+                const size_t name_end   = dot_positions[dot_count - 2];
+                if (name_start >= name_end) {
+                    return result;
+                }
+                result.type_name = (wkv_str_t){ name_end - name_start, filename.str + name_start };
+            } else {
+                return result; // Invalid port ID
+            }
+        } else {
+            // First component is not a port ID - type name may contain dots (unusual but handle it)
+            // Type name is everything before major.minor
+            result.type_name = (wkv_str_t){ dot_positions[dot_count - 2], filename.str };
+        }
+    }
+
+    // Validate type name starts with uppercase (DSDL requirement)
+    if ((result.type_name.len == 0) || (result.type_name.str[0] < 'A') || (result.type_name.str[0] > 'Z')) {
+        return result;
+    }
+
+    result.valid = true;
+    return result;
+}
+
+/// Construct the directory path for a type's namespace.
+/// Returns the length of the constructed path, or 0 on error.
+static size_t dsdl_build_dir_path(const char*     namespace_root,
+                                  const size_t    namespace_root_len,
+                                  const wkv_str_t namespace_part,
+                                  char*           out_path,
+                                  const size_t    path_capacity)
+{
     size_t pos = 0;
 
     // Add namespace root
     if ((pos + namespace_root_len) >= path_capacity) {
-        return false;
+        return 0;
     }
     memcpy(out_path + pos, namespace_root, namespace_root_len);
     pos += namespace_root_len;
@@ -3502,7 +3642,7 @@ static bool dsdl_try_path(dsdl_t* const   self,
     // Add separator if needed
     if ((namespace_root_len > 0) && (namespace_root[namespace_root_len - 1] != '/')) {
         if ((pos + 1) >= path_capacity) {
-            return false;
+            return 0;
         }
         out_path[pos++] = '/';
     }
@@ -3510,91 +3650,56 @@ static bool dsdl_try_path(dsdl_t* const   self,
     // Add namespace part (with dots replaced by slashes)
     if (namespace_part.len > 0) {
         if ((pos + namespace_part.len) >= path_capacity) {
-            return false;
+            return 0;
         }
         for (size_t i = 0; i < namespace_part.len; i++) {
             out_path[pos++] = (namespace_part.str[i] == '.') ? '/' : namespace_part.str[i];
         }
 
-        // Add separator after namespace
+        // Add trailing separator
         if ((pos + 1) >= path_capacity) {
-            return false;
+            return 0;
         }
         out_path[pos++] = '/';
     }
 
-    // Add type name
-    if ((pos + type_name.len) >= path_capacity) {
-        return false;
-    }
-    memcpy(out_path + pos, type_name.str, type_name.len);
-    pos += type_name.len;
-
-    // Add version: .major.minor.dsdl
-    // Format: ".%u.%u.dsdl" - max is ".255.255.dsdl" = 13 chars
-    if ((pos + 13) >= path_capacity) {
-        return false;
-    }
-
-    // Simple integer to string conversion for major
-    out_path[pos++] = '.';
-    if (major >= 100) {
-        out_path[pos++] = (char)('0' + (major / 100));
-    }
-    if (major >= 10) {
-        out_path[pos++] = (char)('0' + ((major / 10) % 10));
-    }
-    out_path[pos++] = (char)('0' + (major % 10));
-
-    // Simple integer to string conversion for minor
-    out_path[pos++] = '.';
-    if (minor >= 100) {
-        out_path[pos++] = (char)('0' + (minor / 100));
-    }
-    if (minor >= 10) {
-        out_path[pos++] = (char)('0' + ((minor / 10) % 10));
-    }
-    out_path[pos++] = (char)('0' + (minor % 10));
-
-    // Add .dsdl extension
-    if ((pos + 6) >= path_capacity) {
-        return false;
-    }
-    memcpy(out_path + pos, ".dsdl", 5);
-    pos += 5;
     out_path[pos] = '\0';
-
-    // Try to read the file to check if it exists
-    if (self->read != NULL) {
-        size_t size   = 0;
-        void*  buffer = self->read(self, (wkv_str_t){ pos, out_path }, &size);
-        if (buffer != NULL) {
-            // File exists! Free the buffer and return success
-            dsdl_free(self, buffer);
-            return true;
-        }
-    }
-
-    return false;
+    return pos;
 }
 
-/// Locate a DSDL file in registered namespace roots.
+/// Locate a DSDL file in registered namespace roots using directory listing.
 ///
 /// Constructs the filesystem path from the type name and searches all registered
-/// namespace directories. Handles version resolution.
+/// namespace directories. Handles version resolution by listing directory contents.
 ///
-/// @param self     Parser state with registered namespaces
-/// @param type_ref Parsed type reference with namespace, name, and version
-/// @param out_path Output buffer for the full file path (caller-allocated)
-/// @param path_capacity Size of out_path buffer
+/// @param self              Parser state with registered namespaces
+/// @param type_ref          Parsed type reference with namespace, name, and version
+/// @param out_path          Output buffer for the full file path (caller-allocated)
+/// @param path_capacity     Size of out_path buffer
+/// @param out_fixed_port_id Output for fixed port-ID from filename (can be NULL)
+/// @param out_major         Output for resolved major version (can be NULL)
+/// @param out_minor         Output for resolved minor version (can be NULL)
 /// @return true if file found, false otherwise
 static bool dsdl_locate_file(dsdl_t* const          self,
                              const dsdl_type_ref_t* type_ref,
                              char*                  out_path,
-                             const size_t           path_capacity)
+                             const size_t           path_capacity,
+                             uint16_t*              out_fixed_port_id,
+                             uint8_t*               out_major,
+                             uint8_t*               out_minor)
 {
     if ((self == NULL) || (type_ref == NULL) || (out_path == NULL) || (path_capacity == 0)) {
         return false;
+    }
+
+    if (out_fixed_port_id != NULL) {
+        *out_fixed_port_id = DSDL_FIXED_PORT_ID_NONE;
+    }
+    if (out_major != NULL) {
+        *out_major = 0;
+    }
+    if (out_minor != NULL) {
+        *out_minor = 0;
     }
 
     DSDL_TRACE(self,
@@ -3614,56 +3719,106 @@ static bool dsdl_locate_file(dsdl_t* const          self,
         const char* const namespace_root     = ns->str;
         const size_t      namespace_root_len = ns->len;
 
-        // Version resolution strategy:
-        // - If both major and minor specified: try exact match
-        // - If only major specified: try minor from 255 down to 0
-        // - If neither specified: try major from 255 down to 0, minor from 255 down to 0
+        // Build directory path for this namespace
+        char   dir_path[512];
+        size_t dir_len =
+          dsdl_build_dir_path(namespace_root, namespace_root_len, type_ref->namespace_part, dir_path, sizeof(dir_path));
+        if (dir_len == 0) {
+            continue;
+        }
 
-        if (type_ref->has_major && type_ref->has_minor) {
-            // Exact version specified
-            if (dsdl_try_path(self,
-                              namespace_root,
-                              namespace_root_len,
-                              type_ref->namespace_part,
-                              type_ref->type_name,
-                              type_ref->major,
-                              type_ref->minor,
-                              out_path,
-                              path_capacity)) {
-                return true;
+        // Use list() for version resolution and port-ID discovery
+        wkv_str_t* entries = self->list(self, (wkv_str_t){ dir_len, dir_path });
+        if (entries != NULL) {
+            // Track best matching version
+            bool    found      = false;
+            uint8_t best_major = 0;
+            uint8_t best_minor = 0;
+            size_t  best_idx   = 0;
+
+            // Iterate through directory entries
+            for (size_t i = 0; entries[i].str != NULL; i++) {
+                const dsdl_parsed_filename_t parsed = dsdl_parse_filename(entries[i]);
+                if (!parsed.valid) {
+                    continue; // Skip invalid filenames
+                }
+
+                // Check if type name matches
+                if ((parsed.type_name.len != type_ref->type_name.len) ||
+                    (memcmp(parsed.type_name.str, type_ref->type_name.str, parsed.type_name.len) != 0)) {
+                    continue; // Type name doesn't match
+                }
+
+                // Version matching logic
+                bool version_match = false;
+
+                if (type_ref->has_major && type_ref->has_minor) {
+                    // Exact version required
+                    version_match = (parsed.major == type_ref->major) && (parsed.minor == type_ref->minor);
+                } else if (type_ref->has_major) {
+                    // Major must match, pick highest minor
+                    if (parsed.major == type_ref->major) {
+                        if (!found || (parsed.minor > best_minor)) {
+                            version_match = true;
+                        }
+                    }
+                } else {
+                    // No version constraint, pick highest major.minor
+                    if (!found || (parsed.major > best_major) ||
+                        ((parsed.major == best_major) && (parsed.minor > best_minor))) {
+                        version_match = true;
+                    }
+                }
+
+                if (version_match) {
+                    found      = true;
+                    best_major = parsed.major;
+                    best_minor = parsed.minor;
+                    best_idx   = i;
+                }
             }
-        } else if (type_ref->has_major) {
-            // Major specified, find latest minor
-            for (int minor = 255; minor >= 0; minor--) {
-                if (dsdl_try_path(self,
-                                  namespace_root,
-                                  namespace_root_len,
-                                  type_ref->namespace_part,
-                                  type_ref->type_name,
-                                  type_ref->major,
-                                  (uint8_t)minor,
-                                  out_path,
-                                  path_capacity)) {
+
+            if (found) {
+                // Construct full path
+                const wkv_str_t* best_filename = &entries[best_idx];
+                if ((dir_len + best_filename->len + 1) <= path_capacity) {
+                    memcpy(out_path, dir_path, dir_len);
+                    memcpy(out_path + dir_len, best_filename->str, best_filename->len);
+                    out_path[dir_len + best_filename->len] = '\0';
+
+                    // Extract fixed port-ID and set resolved version
+                    if (out_fixed_port_id != NULL) {
+                        const dsdl_parsed_filename_t best_parsed = dsdl_parse_filename(*best_filename);
+                        *out_fixed_port_id                       = best_parsed.fixed_port_id;
+                    }
+                    if (out_major != NULL) {
+                        *out_major = best_major;
+                    }
+                    if (out_minor != NULL) {
+                        *out_minor = best_minor;
+                    }
+
+                    // Free all entries
+                    for (size_t i = 0; entries[i].str != NULL; i++) {
+                        dsdl_free_str(self, entries[i].str);
+                    }
+                    dsdl_free(self, entries);
+
+                    DSDL_TRACE(self,
+                               "Found: '%s' (port_id=%u, v%u.%u)",
+                               out_path,
+                               out_fixed_port_id ? *out_fixed_port_id : DSDL_FIXED_PORT_ID_NONE,
+                               best_major,
+                               best_minor);
                     return true;
                 }
             }
-        } else {
-            // No version specified, find latest major.minor
-            for (int major = 255; major >= 0; major--) {
-                for (int minor = 255; minor >= 0; minor--) {
-                    if (dsdl_try_path(self,
-                                      namespace_root,
-                                      namespace_root_len,
-                                      type_ref->namespace_part,
-                                      type_ref->type_name,
-                                      (uint8_t)major,
-                                      (uint8_t)minor,
-                                      out_path,
-                                      path_capacity)) {
-                        return true;
-                    }
-                }
+
+            // Free all entries
+            for (size_t i = 0; entries[i].str != NULL; i++) {
+                dsdl_free_str(self, entries[i].str);
             }
+            dsdl_free(self, entries);
         }
     }
 
@@ -3941,12 +4096,17 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_
     }
 
     // Locate the DSDL file
-    char file_path[512];
-    if (!dsdl_locate_file(self, &type_ref, file_path, sizeof(file_path))) {
+    char     file_path[512];
+    uint16_t fixed_port_id  = DSDL_FIXED_PORT_ID_NONE;
+    uint8_t  resolved_major = 0;
+    uint8_t  resolved_minor = 0;
+    if (!dsdl_locate_file(
+          self, &type_ref, file_path, sizeof(file_path), &fixed_port_id, &resolved_major, &resolved_minor)) {
         DSDL_TRACE(self, "Failed to locate file");
         return NULL; // File not found
     }
-    DSDL_TRACE(self, "Located file: '%s'", file_path);
+    DSDL_TRACE(
+      self, "Located file: '%s' (fixed_port_id=%u, v%u.%u)", file_path, fixed_port_id, resolved_major, resolved_minor);
 
     // Read file contents
     if (self->read == NULL) {
@@ -3954,35 +4114,34 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_
         return NULL; // No read callback
     }
 
-    size_t file_size = 0;
-    void*  file_data = self->read(self, wkv_key(file_path), &file_size);
-    if (file_data == NULL) {
+    wkv_str_t file_content = self->read(self, wkv_key(file_path));
+    if (file_content.str == NULL) {
         DSDL_TRACE(self, "Failed to read file");
         return NULL; // Failed to read file
     }
-    DSDL_TRACE(self, "Read %zu bytes", file_size);
+    DSDL_TRACE(self, "Read %zu bytes", file_content.len);
 
     // Parse the file
     dsdl_parser_t     parser;
     dsdl_parsed_def_t def;
 
-    dsdl_parser_init(&parser, self, (const char*)file_data, file_size);
+    dsdl_parser_init(&parser, self, file_content.str, file_content.len);
 
     if (!dsdl_parsed_def_init(&def, self)) {
-        dsdl_free(self, file_data);
+        dsdl_free_str(self, file_content.str);
         DSDL_TRACE(self, "def init failed");
         return NULL; // OOM
     }
 
     if (!dsdl_parse_definition(&parser, &def)) {
         dsdl_parsed_def_deinit(&def);
-        dsdl_free(self, file_data);
+        dsdl_free_str(self, file_content.str);
         DSDL_TRACE(self, "parse failed");
         return NULL; // Parse error
     }
     DSDL_TRACE(self, "parsed OK, field_count=%zu, sealed=%d", def.field_count, def.is_sealed);
 
-    dsdl_free(self, file_data); // Done with file contents
+    dsdl_free_str(self, file_content.str); // Done with file contents
 
     // Convert parsed definition to dsdl_type_composite_t
     // Calculate total size needed for single allocation
@@ -4048,16 +4207,17 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_
     composite->type =
       def.is_union ? DSDL_COMPOSITE_UNION : (def.is_service ? DSDL_COMPOSITE_RPC : DSDL_COMPOSITE_STRUCT);
 
-    // Use version from parsed type_ref
-    composite->version[0] = type_ref.major;
-    composite->version[1] = type_ref.minor;
+    // Use version from file resolution (resolved_major/minor come from the actual file found)
+    composite->version[0] = resolved_major;
+    composite->version[1] = resolved_minor;
 
     // Set extent
     composite->extent = def.has_extent ? def.extent_bits / 8 : 0; // Convert bits to bytes
 
     // Initialize optional fields
-    composite->response = NULL;
-    composite->bls      = NULL;
+    composite->response      = NULL;
+    composite->bls           = NULL;
+    composite->fixed_port_id = fixed_port_id;
 
     // Semantic analysis: compute _offset_ and validate assertions
     // _offset_ is the bit offset before each field. For structs, it accumulates.

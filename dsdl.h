@@ -79,11 +79,14 @@ static inline uint8_t dsdl_type_bit_width(dsdl_type_t t) { return (uint8_t)(t & 
 
 typedef struct dsdl_type_array_t
 {
-    dsdl_type_t  type;        ///< Always the first field; here DSDL_ARRAY_*
-    size_t       capacity;    ///< Maximum number of elements (from type definition)
-    dsdl_type_t* member_type; ///< Points to any of dsdl_type_*; castable to dsdl_type_t* for type identification.
-    void*        bls;         ///< Internal: symbolic bit length set (dsdl_bls_t*)
+    dsdl_type_t        type;        ///< Always the first field; here DSDL_ARRAY_*
+    size_t             capacity;    ///< Maximum number of elements (from type definition)
+    dsdl_type_t*       member_type; ///< Points to any of dsdl_type_*; castable to dsdl_type_t* for type identification.
+    struct dsdl_bls_t* bls;         ///< Internal: symbolic bit length set.
 } dsdl_type_array_t;
+
+/// Represents the absence of a fixed port-ID. Few types have it.
+#define DSDL_FIXED_PORT_ID_NONE 0xFFFFU
 
 /// Composite type descriptor (struct, union, or RPC-service).
 ///
@@ -103,10 +106,11 @@ typedef struct dsdl_type_composite_t
     wkv_str_t*    field_names; ///< Array of field names
     dsdl_type_t** field_types; ///< Array of pointers to dsdl_type_t*, dsdl_type_array_t*, dsdl_type_composite_t*, ...
 
-    struct dsdl_type_composite_t*
-      response; ///< In RPC-service types this field contains the response type. NULL otherwise.
+    struct dsdl_type_composite_t* response; ///< In RPC-service types contains the response type. NULL otherwise.
 
-    void* bls; ///< Internal: symbolic bit length set (dsdl_bls_t*)
+    uint16_t fixed_port_id; ///< If not set, DSDL_FIXED_PORT_ID_NONE.
+
+    struct dsdl_bls_t* bls; ///< Internal: symbolic bit length set.
 } dsdl_type_composite_t;
 
 // ============================================================================
@@ -207,11 +211,16 @@ struct dsdl_t
     /// Compatible with standard realloc(), or use O1Heap for deterministic real-time allocation.
     void* (*realloc)(dsdl_t* self, void* pointer, size_t new_size);
 
-    /// File reader callback.
-    /// Read the entire file at the given path. The returned buffer is allocated
-    /// via the realloc callback and will be freed by the library after parsing.
-    /// Returns NULL on error (file not found, OOM, etc.).
-    void* (*read)(dsdl_t* self, wkv_str_t path, size_t* out_size);
+    /// Read the entire file at the given path.
+    /// The returned str buffer is allocated via the realloc callback and will be freed by the library after parsing.
+    /// Returns {.str=NULL, .len=0} on error (file not found, OOM, etc.).
+    wkv_str_t (*read)(dsdl_t* self, wkv_str_t path);
+
+    /// List directory. Returns a heap-allocated array of heap-allocated names.
+    /// Returns NULL on error (not a directory, bad path, OOM, etc.).
+    /// The last entry in the array has {.str=NULL, .len=0}.
+    /// The library will free each item's .str and the array itself.
+    wkv_str_t* (*list)(dsdl_t* self, wkv_str_t path);
 };
 
 // ============================================================================

@@ -7,6 +7,7 @@
 
 #include "unity.h"
 
+#include <dirent.h>
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
@@ -27,20 +28,20 @@ static void* test_realloc(dsdl_t* self, void* ptr, size_t new_size)
     return realloc(ptr, new_size);
 }
 
-static void* test_read_file(dsdl_t* self, wkv_str_t path, size_t* out_size)
+static wkv_str_t test_read_file(dsdl_t* self, wkv_str_t path)
 {
-    (void)self;
+    wkv_str_t result = { 0, NULL };
 
     char path_buf[512];
     if (path.len >= sizeof(path_buf)) {
-        return NULL;
+        return result;
     }
     memcpy(path_buf, path.str, path.len);
     path_buf[path.len] = '\0';
 
     FILE* f = fopen(path_buf, "rb");
     if (f == NULL) {
-        return NULL;
+        return result;
     }
 
     fseek(f, 0, SEEK_END);
@@ -49,13 +50,13 @@ static void* test_read_file(dsdl_t* self, wkv_str_t path, size_t* out_size)
 
     if (size < 0) {
         fclose(f);
-        return NULL;
+        return result;
     }
 
-    void* buffer = self->realloc(self, NULL, (size_t)size);
+    char* buffer = (char*)self->realloc(self, NULL, (size_t)size);
     if (buffer == NULL) {
         fclose(f);
-        return NULL;
+        return result;
     }
 
     const size_t read_count = fread(buffer, 1, (size_t)size, f);
@@ -63,17 +64,77 @@ static void* test_read_file(dsdl_t* self, wkv_str_t path, size_t* out_size)
 
     if (read_count != (size_t)size) {
         self->realloc(self, buffer, 0);
+        return result;
+    }
+
+    result.len = (size_t)size;
+    result.str = buffer;
+    return result;
+}
+
+static wkv_str_t* test_list_dir(dsdl_t* self, wkv_str_t path)
+{
+    char path_buf[512];
+    if (path.len >= sizeof(path_buf)) {
+        return NULL;
+    }
+    memcpy(path_buf, path.str, path.len);
+    path_buf[path.len] = '\0';
+
+    DIR* dir = opendir(path_buf);
+    if (dir == NULL) {
         return NULL;
     }
 
-    *out_size = (size_t)size;
-    return buffer;
+    size_t         count = 0;
+    struct dirent* entry;
+    while ((entry = readdir(dir)) != NULL) {
+        if ((strcmp(entry->d_name, ".") == 0) || (strcmp(entry->d_name, "..") == 0)) {
+            continue;
+        }
+        count++;
+    }
+
+    wkv_str_t* result = (wkv_str_t*)self->realloc(self, NULL, (count + 1) * sizeof(wkv_str_t));
+    if (result == NULL) {
+        closedir(dir);
+        return NULL;
+    }
+
+    rewinddir(dir);
+    size_t idx = 0;
+    while ((entry = readdir(dir)) != NULL) {
+        if ((strcmp(entry->d_name, ".") == 0) || (strcmp(entry->d_name, "..") == 0)) {
+            continue;
+        }
+        const size_t name_len  = strlen(entry->d_name);
+        char*        name_copy = (char*)self->realloc(self, NULL, name_len);
+        if (name_copy == NULL) {
+            for (size_t i = 0; i < idx; i++) {
+                self->realloc(self, (void*)result[i].str, 0);
+            }
+            self->realloc(self, result, 0);
+            closedir(dir);
+            return NULL;
+        }
+        memcpy(name_copy, entry->d_name, name_len);
+        result[idx].len = name_len;
+        result[idx].str = name_copy;
+        idx++;
+    }
+
+    result[idx].len = 0;
+    result[idx].str = NULL;
+
+    closedir(dir);
+    return result;
 }
 
 static void setup_dsdl(void)
 {
     dsdl_new(&g_dsdl, test_realloc);
     g_dsdl.read = test_read_file;
+    g_dsdl.list = test_list_dir;
 }
 
 static void teardown_dsdl(void) { dsdl_destroy(&g_dsdl); }

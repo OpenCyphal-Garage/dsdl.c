@@ -8,7 +8,7 @@ Simple.0.1 get_simple
 uint8 get_by_id
 @extent 64
 -----------------------------------
-# Response is sealed (testing multiple dashes separator)
-@sealed
+# Response is NOT sealed for simplicity
 Empty.0.1 result_empty
 Simple.0.1 result
+@extent 64

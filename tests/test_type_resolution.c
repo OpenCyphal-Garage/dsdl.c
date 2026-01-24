@@ -7,6 +7,7 @@
 
 #include "unity.h"
 
+#include <dirent.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -27,22 +28,22 @@ static void* test_realloc(dsdl_t* self, void* ptr, size_t new_size)
     return realloc(ptr, new_size);
 }
 
-/// Standard file reader for tests
-static void* test_read_file(dsdl_t* self, wkv_str_t path, size_t* out_size)
+/// Standard file reader for tests - returns wkv_str_t
+static wkv_str_t test_read_file(dsdl_t* self, wkv_str_t path)
 {
-    (void)self;
+    wkv_str_t result = { 0, NULL };
 
     // Null-terminate path
     char path_buf[512];
     if (path.len >= sizeof(path_buf)) {
-        return NULL;
+        return result;
     }
     memcpy(path_buf, path.str, path.len);
     path_buf[path.len] = '\0';
 
     FILE* f = fopen(path_buf, "rb");
     if (f == NULL) {
-        return NULL;
+        return result;
     }
 
     // Get file size
@@ -52,14 +53,14 @@ static void* test_read_file(dsdl_t* self, wkv_str_t path, size_t* out_size)
 
     if (size < 0) {
         fclose(f);
-        return NULL;
+        return result;
     }
 
     // Allocate buffer
-    void* buffer = self->realloc(self, NULL, (size_t)size);
+    char* buffer = (char*)self->realloc(self, NULL, (size_t)size);
     if (buffer == NULL) {
         fclose(f);
-        return NULL;
+        return result;
     }
 
     // Read file
@@ -68,17 +69,85 @@ static void* test_read_file(dsdl_t* self, wkv_str_t path, size_t* out_size)
 
     if (read_count != (size_t)size) {
         self->realloc(self, buffer, 0);
+        return result;
+    }
+
+    result.len = (size_t)size;
+    result.str = buffer;
+    return result;
+}
+
+/// Standard directory lister for tests
+static wkv_str_t* test_list_dir(dsdl_t* self, wkv_str_t path)
+{
+    // Null-terminate path
+    char path_buf[512];
+    if (path.len >= sizeof(path_buf)) {
+        return NULL;
+    }
+    memcpy(path_buf, path.str, path.len);
+    path_buf[path.len] = '\0';
+
+    DIR* dir = opendir(path_buf);
+    if (dir == NULL) {
         return NULL;
     }
 
-    *out_size = (size_t)size;
-    return buffer;
+    // First pass: count entries
+    size_t         count = 0;
+    struct dirent* entry;
+    while ((entry = readdir(dir)) != NULL) {
+        // Skip . and ..
+        if ((strcmp(entry->d_name, ".") == 0) || (strcmp(entry->d_name, "..") == 0)) {
+            continue;
+        }
+        count++;
+    }
+
+    // Allocate array (count + 1 for NULL terminator)
+    wkv_str_t* result = (wkv_str_t*)self->realloc(self, NULL, (count + 1) * sizeof(wkv_str_t));
+    if (result == NULL) {
+        closedir(dir);
+        return NULL;
+    }
+
+    // Second pass: copy entries
+    rewinddir(dir);
+    size_t idx = 0;
+    while ((entry = readdir(dir)) != NULL) {
+        if ((strcmp(entry->d_name, ".") == 0) || (strcmp(entry->d_name, "..") == 0)) {
+            continue;
+        }
+        const size_t name_len  = strlen(entry->d_name);
+        char*        name_copy = (char*)self->realloc(self, NULL, name_len);
+        if (name_copy == NULL) {
+            // Cleanup on OOM
+            for (size_t i = 0; i < idx; i++) {
+                self->realloc(self, (void*)result[i].str, 0);
+            }
+            self->realloc(self, result, 0);
+            closedir(dir);
+            return NULL;
+        }
+        memcpy(name_copy, entry->d_name, name_len);
+        result[idx].len = name_len;
+        result[idx].str = name_copy;
+        idx++;
+    }
+
+    // NULL terminator
+    result[idx].len = 0;
+    result[idx].str = NULL;
+
+    closedir(dir);
+    return result;
 }
 
 static void setup_dsdl(void)
 {
     dsdl_new(&g_dsdl, test_realloc);
     g_dsdl.read = test_read_file;
+    g_dsdl.list = test_list_dir;
 }
 
 static void teardown_dsdl(void) { dsdl_destroy(&g_dsdl); }
@@ -276,6 +345,201 @@ static void test_bit_length_set_variable_array(void)
 }
 
 // ============================================================================
+// Fixed port-ID tests
+// ============================================================================
+
+static void test_load_message_with_fixed_port_id(void)
+{
+    setup_dsdl();
+
+    TEST_ASSERT_TRUE(dsdl_add_namespace(&g_dsdl, wkv_key("test_dsdl_root_namespaces")));
+
+    // Load message type with fixed port-ID in filename: 7000.FixedPortMessage.1.0.dsdl
+    const dsdl_type_composite_t* msg = dsdl_read(&g_dsdl, wkv_key("validation.FixedPortMessage.1.0"));
+    TEST_ASSERT_NOT_NULL(msg);
+
+    // Check that the fixed port-ID was extracted from the filename
+    TEST_ASSERT_EQUAL_UINT16(7000, msg->fixed_port_id);
+
+    // Check version
+    TEST_ASSERT_EQUAL_UINT8(1, msg->version[0]);
+    TEST_ASSERT_EQUAL_UINT8(0, msg->version[1]);
+
+    teardown_dsdl();
+}
+
+static void test_load_service_with_fixed_port_id(void)
+{
+    setup_dsdl();
+
+    TEST_ASSERT_TRUE(dsdl_add_namespace(&g_dsdl, wkv_key("test_dsdl_root_namespaces")));
+
+    // Load service type with fixed port-ID in filename: 300.FixedPortService.0.1.dsdl
+    const dsdl_type_composite_t* svc = dsdl_read(&g_dsdl, wkv_key("validation.FixedPortService.0.1"));
+    TEST_ASSERT_NOT_NULL(svc);
+
+    // Check that the fixed port-ID was extracted from the filename
+    TEST_ASSERT_EQUAL_UINT16(300, svc->fixed_port_id);
+
+    // Check version
+    TEST_ASSERT_EQUAL_UINT8(0, svc->version[0]);
+    TEST_ASSERT_EQUAL_UINT8(1, svc->version[1]);
+
+    // Note: Service type handling (RPC vs UNION) is tested separately
+    // This test focuses on fixed port-ID extraction from filename
+
+    teardown_dsdl();
+}
+
+static void test_load_type_without_fixed_port_id(void)
+{
+    setup_dsdl();
+
+    TEST_ASSERT_TRUE(dsdl_add_namespace(&g_dsdl, wkv_key("test_dsdl_root_namespaces")));
+
+    // Load a type without fixed port-ID: Empty.0.1.dsdl
+    const dsdl_type_composite_t* t = dsdl_read(&g_dsdl, wkv_key("validation.Empty.0.1"));
+    TEST_ASSERT_NOT_NULL(t);
+
+    // Check that fixed_port_id is NONE
+    TEST_ASSERT_EQUAL_UINT16(DSDL_FIXED_PORT_ID_NONE, t->fixed_port_id);
+
+    teardown_dsdl();
+}
+
+// ============================================================================
+// Version resolution tests
+// ============================================================================
+
+static void test_version_resolution_exact(void)
+{
+    setup_dsdl();
+
+    TEST_ASSERT_TRUE(dsdl_add_namespace(&g_dsdl, wkv_key("test_dsdl_root_namespaces")));
+
+    // Request exact version 0.1
+    const dsdl_type_composite_t* v01 = dsdl_read(&g_dsdl, wkv_key("validation.Versioned.0.1"));
+    TEST_ASSERT_NOT_NULL(v01);
+    TEST_ASSERT_EQUAL_UINT8(0, v01->version[0]);
+    TEST_ASSERT_EQUAL_UINT8(1, v01->version[1]);
+
+    // Request exact version 1.0
+    const dsdl_type_composite_t* v10 = dsdl_read(&g_dsdl, wkv_key("validation.Versioned.1.0"));
+    TEST_ASSERT_NOT_NULL(v10);
+    TEST_ASSERT_EQUAL_UINT8(1, v10->version[0]);
+    TEST_ASSERT_EQUAL_UINT8(0, v10->version[1]);
+
+    teardown_dsdl();
+}
+
+static void test_version_resolution_major_only(void)
+{
+    setup_dsdl();
+
+    TEST_ASSERT_TRUE(dsdl_add_namespace(&g_dsdl, wkv_key("test_dsdl_root_namespaces")));
+
+    // Request major version 1 - should find the highest minor for major 1 (1.0 is the only one)
+    const dsdl_type_composite_t* v1 = dsdl_read(&g_dsdl, wkv_key("validation.Versioned.1"));
+    TEST_ASSERT_NOT_NULL(v1);
+    TEST_ASSERT_EQUAL_UINT8(1, v1->version[0]);
+    TEST_ASSERT_EQUAL_UINT8(0, v1->version[1]);
+
+    // Request major version 0 - should find 0.1
+    const dsdl_type_composite_t* v0 = dsdl_read(&g_dsdl, wkv_key("validation.Versioned.0"));
+    TEST_ASSERT_NOT_NULL(v0);
+    TEST_ASSERT_EQUAL_UINT8(0, v0->version[0]);
+    TEST_ASSERT_EQUAL_UINT8(1, v0->version[1]);
+
+    teardown_dsdl();
+}
+
+static void test_version_resolution_no_version(void)
+{
+    setup_dsdl();
+
+    TEST_ASSERT_TRUE(dsdl_add_namespace(&g_dsdl, wkv_key("test_dsdl_root_namespaces")));
+
+    // Request without version - should find the highest major.minor (255.255)
+    const dsdl_type_composite_t* v = dsdl_read(&g_dsdl, wkv_key("validation.Versioned"));
+    TEST_ASSERT_NOT_NULL(v);
+    TEST_ASSERT_EQUAL_UINT8(255, v->version[0]);
+    TEST_ASSERT_EQUAL_UINT8(255, v->version[1]);
+
+    teardown_dsdl();
+}
+
+static void test_version_resolution_versioned_v2(void)
+{
+    setup_dsdl();
+
+    TEST_ASSERT_TRUE(dsdl_add_namespace(&g_dsdl, wkv_key("test_dsdl_root_namespaces")));
+
+    // VersionedV2 has 1.0 and 2.0, so requesting major 2 should give 2.0
+    const dsdl_type_composite_t* v2 = dsdl_read(&g_dsdl, wkv_key("validation.VersionedV2.2"));
+    TEST_ASSERT_NOT_NULL(v2);
+    TEST_ASSERT_EQUAL_UINT8(2, v2->version[0]);
+    TEST_ASSERT_EQUAL_UINT8(0, v2->version[1]);
+
+    // Requesting without version should give the highest: 2.0
+    const dsdl_type_composite_t* latest = dsdl_read(&g_dsdl, wkv_key("validation.VersionedV2"));
+    TEST_ASSERT_NOT_NULL(latest);
+    TEST_ASSERT_EQUAL_UINT8(2, latest->version[0]);
+    TEST_ASSERT_EQUAL_UINT8(0, latest->version[1]);
+
+    teardown_dsdl();
+}
+
+// ============================================================================
+// Filename parsing tests (internal function)
+// ============================================================================
+
+static void test_parse_filename_basic(void)
+{
+    // Test parsing a basic filename
+    dsdl_parsed_filename_t p = dsdl_parse_filename(wkv_key("Heartbeat.1.0.dsdl"));
+    TEST_ASSERT_TRUE(p.valid);
+    TEST_ASSERT_EQUAL_size_t(9, p.type_name.len);
+    TEST_ASSERT_EQUAL_STRING_LEN("Heartbeat", p.type_name.str, 9);
+    TEST_ASSERT_EQUAL_UINT8(1, p.major);
+    TEST_ASSERT_EQUAL_UINT8(0, p.minor);
+    TEST_ASSERT_EQUAL_UINT16(DSDL_FIXED_PORT_ID_NONE, p.fixed_port_id);
+}
+
+static void test_parse_filename_with_port_id(void)
+{
+    // Test parsing filename with fixed port-ID
+    dsdl_parsed_filename_t p = dsdl_parse_filename(wkv_key("7000.FixedPortMessage.1.0.dsdl"));
+    TEST_ASSERT_TRUE(p.valid);
+    TEST_ASSERT_EQUAL_size_t(16, p.type_name.len);
+    TEST_ASSERT_EQUAL_STRING_LEN("FixedPortMessage", p.type_name.str, 16);
+    TEST_ASSERT_EQUAL_UINT8(1, p.major);
+    TEST_ASSERT_EQUAL_UINT8(0, p.minor);
+    TEST_ASSERT_EQUAL_UINT16(7000, p.fixed_port_id);
+}
+
+static void test_parse_filename_invalid(void)
+{
+    // Test various invalid filenames
+    dsdl_parsed_filename_t p;
+
+    // Missing .dsdl extension
+    p = dsdl_parse_filename(wkv_key("Heartbeat.1.0"));
+    TEST_ASSERT_FALSE(p.valid);
+
+    // Too short
+    p = dsdl_parse_filename(wkv_key("T.0.0.dsd"));
+    TEST_ASSERT_FALSE(p.valid);
+
+    // Type name doesn't start with uppercase
+    p = dsdl_parse_filename(wkv_key("heartbeat.1.0.dsdl"));
+    TEST_ASSERT_FALSE(p.valid);
+
+    // Non-numeric version
+    p = dsdl_parse_filename(wkv_key("Type.a.0.dsdl"));
+    TEST_ASSERT_FALSE(p.valid);
+}
+
+// ============================================================================
 // Main
 // ============================================================================
 
@@ -295,6 +559,22 @@ int main(void)
     RUN_TEST(test_serialized_footprint_nested);
     RUN_TEST(test_bit_length_set_simple);
     RUN_TEST(test_bit_length_set_variable_array);
+
+    // Fixed port-ID tests
+    RUN_TEST(test_load_message_with_fixed_port_id);
+    RUN_TEST(test_load_service_with_fixed_port_id);
+    RUN_TEST(test_load_type_without_fixed_port_id);
+
+    // Version resolution tests
+    RUN_TEST(test_version_resolution_exact);
+    RUN_TEST(test_version_resolution_major_only);
+    RUN_TEST(test_version_resolution_no_version);
+    RUN_TEST(test_version_resolution_versioned_v2);
+
+    // Filename parsing tests
+    RUN_TEST(test_parse_filename_basic);
+    RUN_TEST(test_parse_filename_with_port_id);
+    RUN_TEST(test_parse_filename_invalid);
 
     return UNITY_END();
 }
