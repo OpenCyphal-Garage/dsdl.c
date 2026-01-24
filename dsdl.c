@@ -16,10 +16,8 @@
 #include <string.h>
 #include <math.h>
 
-#ifndef DSDL_CONFIG_TRACE
-#define DSDL_CONFIG_TRACE 0
-#endif
 #if DSDL_CONFIG_TRACE
+#include <inttypes.h>
 #define DSDL_TRACE(self, ...) dsdl_trace(self, __FILE__, __LINE__, __func__, __VA_ARGS__)
 #else
 #define DSDL_TRACE(self, ...) (void)self
@@ -45,34 +43,15 @@ typedef struct
 /// Expression value types for compile-time evaluation.
 typedef enum
 {
-    dsdl_value_rational,     ///< Numeric value (integer or rational)
-    dsdl_value_string,       ///< Unicode string
-    dsdl_value_bool,         ///< Boolean
-    dsdl_value_set,          ///< Set of values
-    dsdl_value_type,         ///< Serializable metatype reference
-    dsdl_value_offset,       ///< The _offset_ pseudo-variable (deferred BLS)
-    dsdl_value_offset_mod,   ///< _offset_ % N (deferred modulo)
-    dsdl_value_offset_attr,  ///< _offset_.min/max/count (deferred attribute)
-    dsdl_value_assert_align, ///< Deferred assertion: _offset_ % N == {0}
-    dsdl_value_assert_attr,  ///< Deferred assertion: _offset_.attr op value
+    dsdl_value_rational, ///< Numeric value (integer or rational)
+    dsdl_value_string,   ///< Unicode string
+    dsdl_value_bool,     ///< Boolean
+    dsdl_value_set,      ///< Set of values
+    dsdl_value_type,     ///< Serializable metatype reference
 } dsdl_value_kind_t;
-
-/// Offset attribute kinds for dsdl_value_offset_attr
-typedef enum
-{
-    dsdl_offset_attr_min,   ///< _offset_.min
-    dsdl_offset_attr_max,   ///< _offset_.max
-    dsdl_offset_attr_count, ///< _offset_.count
-} dsdl_offset_attr_kind_t;
 
 /// Forward declaration for recursive type.
 typedef struct dsdl_value_t dsdl_value_t;
-
-/// Deferred assertion for alignment check: _offset_ % divisor == {0}
-typedef struct
-{
-    size_t divisor; ///< The divisor N in _offset_ % N
-} dsdl_assert_align_t;
 
 /// Comparison operator for deferred assertions
 typedef enum
@@ -84,14 +63,6 @@ typedef enum
     dsdl_cmp_gt, ///< >
     dsdl_cmp_ge, ///< >=
 } dsdl_cmp_op_t;
-
-/// Deferred assertion for attribute comparison: _offset_.attr op value
-typedef struct
-{
-    dsdl_offset_attr_kind_t attr;  ///< Which attribute (min, max, count)
-    dsdl_cmp_op_t           op;    ///< Comparison operator
-    intmax_t                value; ///< The value to compare against
-} dsdl_assert_attr_t;
 
 /// Runtime value during expression evaluation.
 struct dsdl_value_t
@@ -107,11 +78,7 @@ struct dsdl_value_t
             size_t        count;
             dsdl_value_t* elements;
         } set;
-        void*                   type_ref;     ///< dsdl_value_type (pointer to dsdl_type_composite_t)
-        size_t                  mod_divisor;  ///< dsdl_value_offset_mod: the divisor N in _offset_ % N
-        dsdl_offset_attr_kind_t offset_attr;  ///< dsdl_value_offset_attr: which attribute
-        dsdl_assert_align_t     assert_align; ///< dsdl_value_assert_align
-        dsdl_assert_attr_t      assert_attr;  ///< dsdl_value_assert_attr
+        void* type_ref; ///< dsdl_value_type (pointer to dsdl_type_composite_t)
     } as;
 };
 
@@ -487,8 +454,8 @@ struct dsdl_bls_t
     {
         struct
         { ///< nullary: concrete values (small sets, e.g., primitives)
-            size_t  count;
-            size_t* values; ///< Sorted array of distinct values
+            size_t    count;
+            uint64_t* values; ///< Sorted array of distinct values
         } nullary;
         struct
         { ///< concat: children summed (struct)
@@ -498,12 +465,12 @@ struct dsdl_bls_t
         struct
         { ///< repeat: child * k (fixed array)
             dsdl_bls_t* child;
-            size_t      k;
+            uint64_t    k;
         } repeat;
         struct
         { ///< repeat_range: child * [0..k_max] (variable array)
             dsdl_bls_t* child;
-            size_t      k_max;
+            uint64_t    k_max;
         } repeat_range;
         struct
         { ///< union: set union of children
@@ -513,33 +480,33 @@ struct dsdl_bls_t
         struct
         { ///< pad: align child to boundary
             dsdl_bls_t* child;
-            size_t      alignment;
+            uint64_t    alignment;
         } pad;
     } data;
     /// Cached values (SIZE_MAX = not computed yet)
-    size_t cached_min;
-    size_t cached_max;
+    uint64_t cached_min;
+    uint64_t cached_max;
 };
 
 /// Sentinel value indicating "not yet computed" for cached min/max.
-#define DSDL_BLS_NOT_COMPUTED SIZE_MAX
+#define DSDL_BLS_NOT_COMPUTED UINT64_MAX
 
 // Forward declarations for bls operations
-static size_t dsdl_bls_min(dsdl_bls_t* bls);
-static size_t dsdl_bls_max(dsdl_bls_t* bls);
+static uint64_t dsdl_bls_min(dsdl_bls_t* bls);
+static uint64_t dsdl_bls_max(dsdl_bls_t* bls);
 
 /// Create a nullary (leaf) bit length set with a single value.
-static dsdl_bls_t* dsdl_bls_new_single(dsdl_t* const dsdl, const size_t value)
+static dsdl_bls_t* dsdl_bls_new_single(dsdl_t* const dsdl, const uint64_t value)
 {
     assert(dsdl != NULL);
-    dsdl_bls_t* const bls = (dsdl_bls_t*)dsdl_alloc(dsdl, sizeof(dsdl_bls_t) + sizeof(size_t));
+    dsdl_bls_t* const bls = (dsdl_bls_t*)dsdl_alloc(dsdl, sizeof(dsdl_bls_t) + sizeof(uint64_t));
     if (bls == NULL) {
         return NULL;
     }
     bls->kind               = dsdl_bls_nullary;
     bls->data.nullary.count = 1;
     // Store value immediately after the struct
-    bls->data.nullary.values    = (size_t*)(bls + 1);
+    bls->data.nullary.values    = (uint64_t*)(bls + 1);
     bls->data.nullary.values[0] = value;
     bls->cached_min             = value;
     bls->cached_max             = value;
@@ -548,19 +515,19 @@ static dsdl_bls_t* dsdl_bls_new_single(dsdl_t* const dsdl, const size_t value)
 
 /// Create a nullary bit length set from an array of values.
 /// Values need not be sorted; will be sorted and deduplicated.
-static dsdl_bls_t* dsdl_bls_new_set(dsdl_t* const dsdl, const size_t count, const size_t* const values)
+static dsdl_bls_t* dsdl_bls_new_set(dsdl_t* const dsdl, const size_t count, const uint64_t* const values)
 {
     assert((dsdl != NULL) && ((values != NULL) || (count == 0)));
     if (count == 0) {
         return NULL; // Empty sets are invalid
     }
     // Allocate space for struct + values
-    dsdl_bls_t* const bls = (dsdl_bls_t*)dsdl_alloc(dsdl, sizeof(dsdl_bls_t) + count * sizeof(size_t));
+    dsdl_bls_t* const bls = (dsdl_bls_t*)dsdl_alloc(dsdl, sizeof(dsdl_bls_t) + count * sizeof(uint64_t));
     if (bls == NULL) {
         return NULL;
     }
     bls->kind                = dsdl_bls_nullary;
-    bls->data.nullary.values = (size_t*)(bls + 1);
+    bls->data.nullary.values = (uint64_t*)(bls + 1);
 
     // Copy and sort values (simple insertion sort for small sets)
     size_t n = 0;
@@ -619,7 +586,7 @@ static dsdl_bls_t* dsdl_bls_new_concat(dsdl_t* const dsdl, const size_t count, d
 
 /// Create a fixed repetition: child repeated k times.
 /// Represents fixed-length array: element[k]
-static dsdl_bls_t* dsdl_bls_new_repeat(dsdl_t* const dsdl, dsdl_bls_t* const child, const size_t k)
+static dsdl_bls_t* dsdl_bls_new_repeat(dsdl_t* const dsdl, dsdl_bls_t* const child, const uint64_t k)
 {
     assert(dsdl != NULL);
     if (k == 0) {
@@ -643,7 +610,7 @@ static dsdl_bls_t* dsdl_bls_new_repeat(dsdl_t* const dsdl, dsdl_bls_t* const chi
 
 /// Create a range repetition: child repeated 0 to k_max times.
 /// Represents variable-length array: element[<=k_max]
-static dsdl_bls_t* dsdl_bls_new_repeat_range(dsdl_t* const dsdl, dsdl_bls_t* const child, const size_t k_max)
+static dsdl_bls_t* dsdl_bls_new_repeat_range(dsdl_t* const dsdl, dsdl_bls_t* const child, const uint64_t k_max)
 {
     assert((dsdl != NULL) && (child != NULL));
     dsdl_bls_t* const bls = (dsdl_bls_t*)dsdl_alloc(dsdl, sizeof(dsdl_bls_t));
@@ -660,7 +627,7 @@ static dsdl_bls_t* dsdl_bls_new_repeat_range(dsdl_t* const dsdl, dsdl_bls_t* con
 
 /// Create a union (set union) of bit length sets.
 /// Represents union variants: max of all alternatives
-static dsdl_bls_t* dsdl_bls_new_unite(dsdl_t* const dsdl, const size_t count, dsdl_bls_t** const children)
+static dsdl_bls_t* dsdl_bls_new_unite(dsdl_t* const dsdl, const uint64_t count, dsdl_bls_t** const children)
 {
     assert((dsdl != NULL) && ((children != NULL) || (count == 0)));
     if (count == 0) {
@@ -686,7 +653,7 @@ static dsdl_bls_t* dsdl_bls_new_unite(dsdl_t* const dsdl, const size_t count, ds
 
 /// Create a padding operator: align child to boundary.
 /// Adds 0 to (alignment-1) padding bits.
-static dsdl_bls_t* dsdl_bls_new_pad(dsdl_t* const dsdl, dsdl_bls_t* const child, const size_t alignment)
+static dsdl_bls_t* dsdl_bls_new_pad(dsdl_t* const dsdl, dsdl_bls_t* const child, const uint64_t alignment)
 {
     assert((dsdl != NULL) && (child != NULL));
     if (alignment <= 1) {
@@ -705,13 +672,13 @@ static dsdl_bls_t* dsdl_bls_new_pad(dsdl_t* const dsdl, dsdl_bls_t* const child,
 }
 
 /// Helper: round up x to next multiple of alignment.
-static size_t dsdl_align_up(const size_t x, const size_t alignment)
+static uint64_t dsdl_align_up(const uint64_t x, const uint64_t alignment)
 {
     return ((x + alignment - 1) / alignment) * alignment;
 }
 
 /// Compute minimum value in a bit length set.
-static size_t dsdl_bls_min(dsdl_bls_t* const bls)
+static uint64_t dsdl_bls_min(dsdl_bls_t* const bls)
 {
     if (bls == NULL) {
         return 0;
@@ -720,7 +687,7 @@ static size_t dsdl_bls_min(dsdl_bls_t* const bls)
         return bls->cached_min;
     }
 
-    size_t result = 0;
+    uint64_t result = 0;
     switch (bls->kind) {
         case dsdl_bls_nullary:
             result = bls->data.nullary.values[0]; // Already sorted
@@ -745,7 +712,7 @@ static size_t dsdl_bls_min(dsdl_bls_t* const bls)
         case dsdl_bls_union: {
             result = SIZE_MAX;
             for (size_t i = 0; i < bls->data.set_union.count; i++) {
-                const size_t child_min = dsdl_bls_min(bls->data.set_union.children[i]);
+                const uint64_t child_min = dsdl_bls_min(bls->data.set_union.children[i]);
                 if (child_min < result) {
                     result = child_min;
                 }
@@ -763,7 +730,7 @@ static size_t dsdl_bls_min(dsdl_bls_t* const bls)
 }
 
 /// Compute maximum value in a bit length set.
-static size_t dsdl_bls_max(dsdl_bls_t* const bls)
+static uint64_t dsdl_bls_max(dsdl_bls_t* const bls)
 {
     if (bls == NULL) {
         return 0;
@@ -772,7 +739,7 @@ static size_t dsdl_bls_max(dsdl_bls_t* const bls)
         return bls->cached_max;
     }
 
-    size_t result = 0;
+    uint64_t result = 0;
     switch (bls->kind) {
         case dsdl_bls_nullary:
             result = bls->data.nullary.values[bls->data.nullary.count - 1]; // Already sorted
@@ -797,7 +764,7 @@ static size_t dsdl_bls_max(dsdl_bls_t* const bls)
         case dsdl_bls_union: {
             result = 0;
             for (size_t i = 0; i < bls->data.set_union.count; i++) {
-                const size_t child_max = dsdl_bls_max(bls->data.set_union.children[i]);
+                const uint64_t child_max = dsdl_bls_max(bls->data.set_union.children[i]);
                 if (child_max > result) {
                     result = child_max;
                 }
@@ -820,7 +787,10 @@ static bool dsdl_bls_is_fixed(dsdl_bls_t* const bls) { return dsdl_bls_min(bls) 
 /// Compute modulo of all values in a bit length set.
 /// Returns the count of unique results, stores results in out_values (must have space for 'divisor' elements).
 /// This is the key operation for checking alignment without combinatorial explosion.
-static size_t dsdl_bls_modulo(dsdl_t* const dsdl, dsdl_bls_t* const bls, const size_t divisor, size_t* const out_values)
+static uint64_t dsdl_bls_modulo(dsdl_t* const     dsdl,
+                                dsdl_bls_t* const bls,
+                                const uint64_t    divisor,
+                                uint64_t* const   out_values)
 {
     assert(dsdl != NULL);
     if ((bls == NULL) || (divisor == 0)) {
@@ -832,14 +802,14 @@ static size_t dsdl_bls_modulo(dsdl_t* const dsdl, dsdl_bls_t* const bls, const s
     uint64_t   seen_bitmap[8] = { 0 };
     const bool use_bitmap     = divisor <= sizeof(seen_bitmap) * 8;
 
-    size_t count = 0;
+    uint64_t count = 0;
 
     switch (bls->kind) {
         case dsdl_bls_nullary: {
             for (size_t i = 0; i < bls->data.nullary.count; i++) {
-                const size_t r = bls->data.nullary.values[i] % divisor;
+                const uint64_t r = bls->data.nullary.values[i] % divisor;
                 if (use_bitmap) {
-                    const size_t   idx = r / 64;
+                    const uint64_t idx = r / 64;
                     const uint64_t bit = ((uint64_t)1) << (r % 64);
                     if ((seen_bitmap[idx] & bit) == 0) {
                         seen_bitmap[idx] |= bit;
@@ -848,7 +818,7 @@ static size_t dsdl_bls_modulo(dsdl_t* const dsdl, dsdl_bls_t* const bls, const s
                 } else {
                     // Linear scan for large divisors
                     bool found = false;
-                    for (size_t j = 0; j < count; j++) {
+                    for (uint64_t j = 0; j < count; j++) {
                         if (out_values[j] == r) {
                             found = true;
                             break;
@@ -869,25 +839,25 @@ static size_t dsdl_bls_modulo(dsdl_t* const dsdl, dsdl_bls_t* const bls, const s
             count         = 1;
 
             // Allocate temp array for child modulos
-            size_t* const child_mods = (size_t*)dsdl_alloc(dsdl, divisor * sizeof(size_t));
+            uint64_t* const child_mods = (uint64_t*)dsdl_alloc(dsdl, divisor * sizeof(uint64_t));
             if (child_mods == NULL) {
                 return 0; // OOM
             }
 
             for (size_t i = 0; i < bls->data.concat.count; i++) {
                 // Get child's modulo values
-                const size_t child_count = dsdl_bls_modulo(dsdl, bls->data.concat.children[i], divisor, child_mods);
+                const uint64_t child_count = dsdl_bls_modulo(dsdl, bls->data.concat.children[i], divisor, child_mods);
 
                 // Compute new modulo set: {(a + b) % divisor | a in current, b in child}
-                size_t new_count = 0;
+                uint64_t new_count = 0;
                 if (use_bitmap) {
                     memset(seen_bitmap, 0, sizeof(seen_bitmap));
                 }
-                for (size_t j = 0; j < count; j++) {
-                    for (size_t k = 0; k < child_count; k++) {
-                        const size_t r = (out_values[j] + child_mods[k]) % divisor;
+                for (uint64_t j = 0; j < count; j++) {
+                    for (uint64_t k = 0; k < child_count; k++) {
+                        const uint64_t r = (out_values[j] + child_mods[k]) % divisor;
                         if (use_bitmap) {
-                            const size_t   idx = r / 64;
+                            const uint64_t idx = r / 64;
                             const uint64_t bit = ((uint64_t)1) << (r % 64);
                             if ((seen_bitmap[idx] & bit) == 0) {
                                 seen_bitmap[idx] |= bit;
@@ -895,7 +865,7 @@ static size_t dsdl_bls_modulo(dsdl_t* const dsdl, dsdl_bls_t* const bls, const s
                             }
                         } else {
                             bool found = false;
-                            for (size_t m = 0; m < new_count; m++) {
+                            for (uint64_t m = 0; m < new_count; m++) {
                                 if (out_values[m] == r) {
                                     found = true;
                                     break;
@@ -916,31 +886,31 @@ static size_t dsdl_bls_modulo(dsdl_t* const dsdl, dsdl_bls_t* const bls, const s
         case dsdl_bls_repeat: {
             // For repeat(k), we need k-multicombinations of child modulos summed.
             // Optimization: for k >= divisor, pattern repeats, so use equivalent_k.
-            const size_t k            = bls->data.repeat.k;
-            const size_t equivalent_k = (k < divisor) ? k : (divisor + k % divisor);
+            const uint64_t k            = bls->data.repeat.k;
+            const uint64_t equivalent_k = (k < divisor) ? k : (divisor + k % divisor);
 
             // Get child's modulo values
-            size_t* const child_mods = (size_t*)dsdl_alloc(dsdl, divisor * sizeof(size_t));
+            uint64_t* const child_mods = (uint64_t*)dsdl_alloc(dsdl, divisor * sizeof(uint64_t));
             if (child_mods == NULL) {
                 return 0; // OOM
             }
-            const size_t child_count = dsdl_bls_modulo(dsdl, bls->data.repeat.child, divisor, child_mods);
+            const uint64_t child_count = dsdl_bls_modulo(dsdl, bls->data.repeat.child, divisor, child_mods);
 
             // Start with {0} (k=0 gives 0, but k>=1 here since we don't reach this for k=0)
             // Actually for repeat, k is fixed, so we need k iterations of adding child_mods.
             out_values[0] = 0;
             count         = 1;
 
-            for (size_t rep = 0; rep < equivalent_k; rep++) {
-                size_t new_count = 0;
+            for (uint64_t rep = 0; rep < equivalent_k; rep++) {
+                uint64_t new_count = 0;
                 if (use_bitmap) {
                     memset(seen_bitmap, 0, sizeof(seen_bitmap));
                 }
-                for (size_t j = 0; j < count; j++) {
-                    for (size_t k2 = 0; k2 < child_count; k2++) {
-                        const size_t r = (out_values[j] + child_mods[k2]) % divisor;
+                for (uint64_t j = 0; j < count; j++) {
+                    for (uint64_t k2 = 0; k2 < child_count; k2++) {
+                        const uint64_t r = (out_values[j] + child_mods[k2]) % divisor;
                         if (use_bitmap) {
-                            const size_t   idx = r / 64;
+                            const uint64_t idx = r / 64;
                             const uint64_t bit = ((uint64_t)1) << (r % 64);
                             if ((seen_bitmap[idx] & bit) == 0) {
                                 seen_bitmap[idx] |= bit;
@@ -948,7 +918,7 @@ static size_t dsdl_bls_modulo(dsdl_t* const dsdl, dsdl_bls_t* const bls, const s
                             }
                         } else {
                             bool found = false;
-                            for (size_t m = 0; m < new_count; m++) {
+                            for (uint64_t m = 0; m < new_count; m++) {
                                 if (out_values[m] == r) {
                                     found = true;
                                     break;
@@ -969,15 +939,15 @@ static size_t dsdl_bls_modulo(dsdl_t* const dsdl, dsdl_bls_t* const bls, const s
         case dsdl_bls_repeat_range: {
             // For repeat_range(k_max), we include all k in [0, k_max].
             // Optimization: for k_max >= divisor, pattern repeats.
-            const size_t k_max            = bls->data.repeat_range.k_max;
-            const size_t equivalent_k_max = (k_max < divisor) ? k_max : (divisor + k_max % divisor);
+            const uint64_t k_max            = bls->data.repeat_range.k_max;
+            const uint64_t equivalent_k_max = (k_max < divisor) ? k_max : (divisor + k_max % divisor);
 
             // Get child's modulo values
-            size_t* const child_mods = (size_t*)dsdl_alloc(dsdl, divisor * sizeof(size_t));
+            uint64_t* const child_mods = (uint64_t*)dsdl_alloc(dsdl, divisor * sizeof(uint64_t));
             if (child_mods == NULL) {
                 return 0; // OOM
             }
-            const size_t child_count = dsdl_bls_modulo(dsdl, bls->data.repeat_range.child, divisor, child_mods);
+            const uint64_t child_count = dsdl_bls_modulo(dsdl, bls->data.repeat_range.child, divisor, child_mods);
 
             // Include k=0 case: {0}
             out_values[0] = 0;
@@ -987,23 +957,23 @@ static size_t dsdl_bls_modulo(dsdl_t* const dsdl, dsdl_bls_t* const bls, const s
             }
 
             // Running set of sums for current k
-            size_t* const running = (size_t*)dsdl_alloc(dsdl, divisor * sizeof(size_t));
+            uint64_t* const running = (uint64_t*)dsdl_alloc(dsdl, divisor * sizeof(uint64_t));
             if (running == NULL) {
                 dsdl_free(dsdl, child_mods);
                 return 0; // OOM
             }
-            running[0]           = 0;
-            size_t running_count = 1;
+            running[0]             = 0;
+            uint64_t running_count = 1;
 
-            for (size_t k = 1; k <= equivalent_k_max; k++) {
+            for (uint64_t k = 1; k <= equivalent_k_max; k++) {
                 // Add one more child to running sums
-                size_t   new_running_count = 0;
+                uint64_t new_running_count = 0;
                 uint64_t running_bitmap[8] = { 0 };
 
-                for (size_t j = 0; j < running_count; j++) {
-                    for (size_t m = 0; m < child_count; m++) {
-                        const size_t   r   = (running[j] + child_mods[m]) % divisor;
-                        const size_t   idx = r / 64;
+                for (uint64_t j = 0; j < running_count; j++) {
+                    for (uint64_t m = 0; m < child_count; m++) {
+                        const uint64_t r   = (running[j] + child_mods[m]) % divisor;
+                        const uint64_t idx = r / 64;
                         const uint64_t bit = ((uint64_t)1) << (r % 64);
                         if ((running_bitmap[idx] & bit) == 0) {
                             running_bitmap[idx] |= bit;
@@ -1014,10 +984,10 @@ static size_t dsdl_bls_modulo(dsdl_t* const dsdl, dsdl_bls_t* const bls, const s
                 running_count = new_running_count;
 
                 // Add to output (union with existing)
-                for (size_t j = 0; j < running_count; j++) {
-                    const size_t r = running[j];
+                for (uint64_t j = 0; j < running_count; j++) {
+                    const uint64_t r = running[j];
                     if (use_bitmap) {
-                        const size_t   idx = r / 64;
+                        const uint64_t idx = r / 64;
                         const uint64_t bit = ((uint64_t)1) << (r % 64);
                         if ((seen_bitmap[idx] & bit) == 0) {
                             seen_bitmap[idx] |= bit;
@@ -1025,7 +995,7 @@ static size_t dsdl_bls_modulo(dsdl_t* const dsdl, dsdl_bls_t* const bls, const s
                         }
                     } else {
                         bool found = false;
-                        for (size_t m = 0; m < count; m++) {
+                        for (uint64_t m = 0; m < count; m++) {
                             if (out_values[m] == r) {
                                 found = true;
                                 break;
@@ -1044,16 +1014,17 @@ static size_t dsdl_bls_modulo(dsdl_t* const dsdl, dsdl_bls_t* const bls, const s
 
         case dsdl_bls_union: {
             // Union: collect all modulos from all children
-            size_t* const child_mods = (size_t*)dsdl_alloc(dsdl, divisor * sizeof(size_t));
+            uint64_t* const child_mods = (uint64_t*)dsdl_alloc(dsdl, divisor * sizeof(uint64_t));
             if (child_mods == NULL) {
                 return 0; // OOM
             }
             for (size_t i = 0; i < bls->data.set_union.count; i++) {
-                const size_t child_count = dsdl_bls_modulo(dsdl, bls->data.set_union.children[i], divisor, child_mods);
-                for (size_t j = 0; j < child_count; j++) {
-                    const size_t r = child_mods[j];
+                const uint64_t child_count =
+                  dsdl_bls_modulo(dsdl, bls->data.set_union.children[i], divisor, child_mods);
+                for (uint64_t j = 0; j < child_count; j++) {
+                    const uint64_t r = child_mods[j];
                     if (use_bitmap) {
-                        const size_t   idx = r / 64;
+                        const uint64_t idx = r / 64;
                         const uint64_t bit = ((uint64_t)1) << (r % 64);
                         if ((seen_bitmap[idx] & bit) == 0) {
                             seen_bitmap[idx] |= bit;
@@ -1061,7 +1032,7 @@ static size_t dsdl_bls_modulo(dsdl_t* const dsdl, dsdl_bls_t* const bls, const s
                         }
                     } else {
                         bool found = false;
-                        for (size_t m = 0; m < count; m++) {
+                        for (uint64_t m = 0; m < count; m++) {
                             if (out_values[m] == r) {
                                 found = true;
                                 break;
@@ -1079,22 +1050,22 @@ static size_t dsdl_bls_modulo(dsdl_t* const dsdl, dsdl_bls_t* const bls, const s
 
         case dsdl_bls_pad: {
             // Padding: round each child value up to alignment, then take modulo
-            const size_t alignment = bls->data.pad.alignment;
+            const uint64_t alignment = bls->data.pad.alignment;
             // We need child % lcm(alignment, divisor), but that's complex.
             // Simpler: get child modulo (lcm), apply padding, then modulo divisor.
-            const size_t lcm = (alignment * divisor) / dsdl_gcd(alignment, divisor);
+            const uint64_t lcm = (alignment * divisor) / dsdl_gcd(alignment, divisor);
 
-            size_t* const child_mods = (size_t*)dsdl_alloc(dsdl, lcm * sizeof(size_t));
+            uint64_t* const child_mods = (uint64_t*)dsdl_alloc(dsdl, lcm * sizeof(uint64_t));
             if (child_mods == NULL) {
                 return 0; // OOM
             }
-            const size_t child_count = dsdl_bls_modulo(dsdl, bls->data.pad.child, lcm, child_mods);
+            const uint64_t child_count = dsdl_bls_modulo(dsdl, bls->data.pad.child, lcm, child_mods);
 
-            for (size_t i = 0; i < child_count; i++) {
-                const size_t padded = dsdl_align_up(child_mods[i], alignment);
-                const size_t r      = padded % divisor;
+            for (uint64_t i = 0; i < child_count; i++) {
+                const uint64_t padded = dsdl_align_up(child_mods[i], alignment);
+                const uint64_t r      = padded % divisor;
                 if (use_bitmap) {
-                    const size_t   idx = r / 64;
+                    const uint64_t idx = r / 64;
                     const uint64_t bit = ((uint64_t)1) << (r % 64);
                     if ((seen_bitmap[idx] & bit) == 0) {
                         seen_bitmap[idx] |= bit;
@@ -1102,7 +1073,7 @@ static size_t dsdl_bls_modulo(dsdl_t* const dsdl, dsdl_bls_t* const bls, const s
                     }
                 } else {
                     bool found = false;
-                    for (size_t j = 0; j < count; j++) {
+                    for (uint64_t j = 0; j < count; j++) {
                         if (out_values[j] == r) {
                             found = true;
                             break;
@@ -1123,18 +1094,18 @@ static size_t dsdl_bls_modulo(dsdl_t* const dsdl, dsdl_bls_t* const bls, const s
 
 /// Check if all values in a bit length set are aligned at the given boundary.
 /// Returns true iff {x % alignment} == {0} for all x in the set.
-static bool dsdl_bls_is_aligned(dsdl_t* const dsdl, dsdl_bls_t* const bls, const size_t alignment)
+static bool dsdl_bls_is_aligned(dsdl_t* const dsdl, dsdl_bls_t* const bls, const uint64_t alignment)
 {
     assert(dsdl != NULL);
     if ((bls == NULL) || (alignment <= 1)) {
         return true;
     }
-    size_t* const mods = (size_t*)dsdl_alloc(dsdl, alignment * sizeof(size_t));
+    uint64_t* const mods = (uint64_t*)dsdl_alloc(dsdl, alignment * sizeof(uint64_t));
     if (mods == NULL) {
         return false; // OOM - conservative: assume not aligned
     }
-    const size_t count  = dsdl_bls_modulo(dsdl, bls, alignment, mods);
-    const bool   result = (count == 1) && (mods[0] == 0);
+    const uint64_t count  = dsdl_bls_modulo(dsdl, bls, alignment, mods);
+    const bool     result = (count == 1) && (mods[0] == 0);
     dsdl_free(dsdl, mods);
     return result;
 }
@@ -2245,12 +2216,12 @@ static bool dsdl_apply_binary_op(const dsdl_op_t           op,
 
     // _offset_ modulo operation: _offset_ % N -> dsdl_value_offset_mod
     if ((left->kind == dsdl_value_offset) && (right->kind == dsdl_value_rational) && (op == dsdl_op_mod)) {
-        if (dsdl_rational_is_int(right->as.rational) && (right->as.rational.num > 0)) {
-            result->kind           = dsdl_value_offset_mod;
-            result->as.mod_divisor = (size_t)right->as.rational.num;
+        if (right->as.rational.den != 0) {
+            result->kind        = dsdl_value_offset_mod;
+            result->as.rational = right->as.rational;
             return true;
         }
-        return false; // Modulo divisor must be positive integer
+        return false; // Modulo divisor must be valid (non-zero denominator)
     }
 
     // _offset_ attribute arithmetic: _offset_.min / N, _offset_.max / N, etc.
@@ -2272,8 +2243,8 @@ static bool dsdl_apply_binary_op(const dsdl_op_t           op,
             // Check if right is {0} - the common alignment check pattern
             if ((right->as.set.count == 1) && (right->as.set.elements[0].kind == dsdl_value_rational) &&
                 (right->as.set.elements[0].as.rational.num == 0) && (right->as.set.elements[0].as.rational.den == 1)) {
-                result->kind                    = dsdl_value_assert_align;
-                result->as.assert_align.divisor = left->as.mod_divisor;
+                result->kind                = dsdl_value_rational;
+                result->as.rational.divisor = left->as.rational;
                 return true;
             }
         }
@@ -2505,21 +2476,21 @@ static bool dsdl_parse_expression(dsdl_parser_t* const parser, dsdl_value_t* con
 /// This is an intermediate representation before converting to dsdl_type_t.
 typedef struct
 {
-    dsdl_type_t kind;          ///< DSDL_xxx type kind constant (DSDL_ARRAY_* for arrays)
-    dsdl_type_t element_kind;  ///< For arrays: the element type kind (primitive or composite marker)
-    uint8_t     bit_width;     ///< Bit width for primitives/void
-    bool        is_saturated;  ///< true = saturated (default), false = truncated
-    bool        is_variable;   ///< For arrays: is variable-length
-    bool        is_inclusive;  ///< For variable arrays: inclusive vs exclusive
-    size_t      array_size;    ///< Array capacity (max size for variable, fixed size for fixed)
-    wkv_str_t   type_name;     ///< For composite types: full type name
-    uint8_t     version_major; ///< For versioned types
-    uint8_t     version_minor; ///< For versioned types
+    dsdl_type_t   kind;          ///< DSDL_xxx type kind constant (DSDL_ARRAY_* for arrays)
+    dsdl_type_t   element_kind;  ///< For arrays: the element type kind (primitive or composite marker)
+    uint_least8_t bit_width;     ///< Bit width for primitives/void
+    bool          is_saturated;  ///< true = saturated (default), false = truncated
+    bool          is_variable;   ///< For arrays: is variable-length
+    bool          is_inclusive;  ///< For variable arrays: inclusive vs exclusive
+    uint64_t      array_size;    ///< Array capacity (max size for variable, fixed size for fixed)
+    wkv_str_t     type_name;     ///< For composite types: full type name
+    uint_least8_t version_major; ///< For versioned types
+    uint_least8_t version_minor; ///< For versioned types
 } dsdl_parsed_type_t;
 
 /// Parse a bit length suffix (1-64).
 /// Returns 0 on failure, otherwise the bit length.
-static uint8_t dsdl_parse_bit_length(dsdl_parser_t* const parser)
+static uint_least8_t dsdl_parse_bit_length(dsdl_parser_t* const parser)
 {
     if (!dsdl_is_digit(dsdl_parser_peek(parser, 0))) {
         return 0;
@@ -2529,16 +2500,16 @@ static uint8_t dsdl_parse_bit_length(dsdl_parser_t* const parser)
         return 0; // Bit length can't start with 0
     }
 
-    size_t value = 0;
+    uint64_t value = 0;
     while (dsdl_is_digit(dsdl_parser_peek(parser, 0))) {
-        value = value * 10 + (size_t)(dsdl_parser_peek(parser, 0) - '0');
+        value = value * 10 + (uint64_t)(dsdl_parser_peek(parser, 0) - '0');
         dsdl_parser_advance(parser, 1);
         if (value > 64) {
             return 0; // Overflow - bit length too large
         }
     }
 
-    return (uint8_t)value;
+    return (uint_least8_t)value;
 }
 
 /// Parse a void type: void[1-64]
@@ -2548,7 +2519,7 @@ static bool dsdl_parse_type_void(dsdl_parser_t* const parser, dsdl_parsed_type_t
         return false;
     }
 
-    const uint8_t bits = dsdl_parse_bit_length(parser);
+    const uint_least8_t bits = dsdl_parse_bit_length(parser);
     if ((bits < 1) || (bits > 64)) {
         return false;
     }
@@ -2562,7 +2533,7 @@ static bool dsdl_parse_type_void(dsdl_parser_t* const parser, dsdl_parsed_type_t
 static bool dsdl_parse_primitive_name(dsdl_parser_t* const parser, dsdl_parsed_type_t* const out_type)
 {
     if (dsdl_parser_accept(parser, "uint", 4)) {
-        const uint8_t bits = dsdl_parse_bit_length(parser);
+        const uint_least8_t bits = dsdl_parse_bit_length(parser);
         if ((bits < 1) || (bits > 64)) {
             return false;
         }
@@ -2572,7 +2543,7 @@ static bool dsdl_parse_primitive_name(dsdl_parser_t* const parser, dsdl_parsed_t
     }
 
     if (dsdl_parser_accept(parser, "int", 3)) {
-        const uint8_t bits = dsdl_parse_bit_length(parser);
+        const uint_least8_t bits = dsdl_parse_bit_length(parser);
         if ((bits < 2) || (bits > 64)) {
             return false; // int requires at least 2 bits
         }
@@ -2582,7 +2553,7 @@ static bool dsdl_parse_primitive_name(dsdl_parser_t* const parser, dsdl_parsed_t
     }
 
     if (dsdl_parser_accept(parser, "float", 5)) {
-        const uint8_t bits = dsdl_parse_bit_length(parser);
+        const uint_least8_t bits = dsdl_parse_bit_length(parser);
         if ((bits != 16) && (bits != 32) && (bits != 64)) {
             return false; // Only float16, float32, float64
         }
@@ -2703,8 +2674,8 @@ static bool dsdl_parse_type_versioned(dsdl_parser_t* const parser, dsdl_parsed_t
     out_type->kind          = DSDL_COMPOSITE_STRUCT; // Placeholder until we resolve
     out_type->type_name.str = first.str;
     out_type->type_name.len = type_name_end - start_pos;
-    out_type->version_major = (uint8_t)major_r.num;
-    out_type->version_minor = (uint8_t)minor_r.num;
+    out_type->version_major = (uint_least8_t)major_r.num;
+    out_type->version_minor = (uint_least8_t)minor_r.num;
 
     return true;
 }
@@ -2775,7 +2746,7 @@ static bool dsdl_parse_type_array(dsdl_parser_t* const parser, dsdl_parsed_type_
         return false;
     }
 
-    out_type->array_size = (size_t)size_val.as.rational.num;
+    out_type->array_size = (uint64_t)size_val.as.rational.num;
 
     dsdl_parser_skip_ws(parser);
 
@@ -3003,11 +2974,11 @@ struct dsdl_parsed_def_t
     wkv_str_t*          response_field_names;
 
     // Directives
-    bool   has_extent;
-    size_t extent_bits;
-    bool   is_sealed;
-    bool   is_deprecated;
-    bool   is_union;
+    bool     has_extent;
+    uint64_t extent_bits;
+    bool     is_sealed;
+    bool     is_deprecated;
+    bool     is_union;
 
     // Assertions (@assert directives)
     // Each assertion is stored with the field index at which it appeared,
@@ -3246,7 +3217,7 @@ static bool dsdl_parse_definition(dsdl_parser_t* const parser, dsdl_parsed_def_t
                         return false; // Invalid extent
                     }
                     out_def->has_extent  = true;
-                    out_def->extent_bits = (size_t)stmt.value.as.rational.num;
+                    out_def->extent_bits = (uint64_t)stmt.value.as.rational.num;
                 } else if ((stmt.name.len == 10) && (memcmp(stmt.name.str, "deprecated", 10) == 0)) {
                     out_def->is_deprecated = true;
                 } else if ((stmt.name.len == 5) && (memcmp(stmt.name.str, "union", 5) == 0)) {
@@ -3342,13 +3313,13 @@ void dsdl_destroy(dsdl_t* const self)
 /// Parsed type name components
 typedef struct
 {
-    wkv_str_t full_name;      ///< Full name including namespace (e.g., "uavcan.node.Heartbeat")
-    wkv_str_t namespace_part; ///< Namespace portion (e.g., "uavcan.node")
-    wkv_str_t type_name;      ///< Just the type name (e.g., "Heartbeat")
-    uint8_t   major;          ///< Major version
-    uint8_t   minor;          ///< Minor version
-    bool      has_major;      ///< True if major version was specified
-    bool      has_minor;      ///< True if minor version was specified
+    wkv_str_t     full_name;      ///< Full name including namespace (e.g., "uavcan.node.Heartbeat")
+    wkv_str_t     namespace_part; ///< Namespace portion (e.g., "uavcan.node")
+    wkv_str_t     type_name;      ///< Just the type name (e.g., "Heartbeat")
+    uint_least8_t major;          ///< Major version
+    uint_least8_t minor;          ///< Minor version
+    bool          has_major;      ///< True if major version was specified
+    bool          has_minor;      ///< True if minor version was specified
 } dsdl_type_ref_t;
 
 /// Check if a string consists entirely of decimal digits.
@@ -3444,8 +3415,8 @@ static bool dsdl_parse_typename(const wkv_str_t name, dsdl_type_ref_t* const out
                 const int64_t minor_val = dsdl_parse_int(last_component);
 
                 if ((major_val >= 0) && (major_val <= 255) && (minor_val >= 0) && (minor_val <= 255)) {
-                    out->major     = (uint8_t)major_val;
-                    out->minor     = (uint8_t)minor_val;
+                    out->major     = (uint_least8_t)major_val;
+                    out->minor     = (uint_least8_t)minor_val;
                     out->has_major = true;
                     out->has_minor = true;
                     version_dots   = 2;
@@ -3462,7 +3433,7 @@ static bool dsdl_parse_typename(const wkv_str_t name, dsdl_type_ref_t* const out
         if (dsdl_is_all_digits(last_component)) {
             const int64_t major_val = dsdl_parse_int(last_component);
             if ((major_val >= 0) && (major_val <= 255)) {
-                out->major     = (uint8_t)major_val;
+                out->major     = (uint_least8_t)major_val;
                 out->has_major = true;
                 version_dots   = 1;
             }
@@ -3497,11 +3468,11 @@ static bool dsdl_parse_typename(const wkv_str_t name, dsdl_type_ref_t* const out
 /// Format: [port_id.]TypeName.major.minor.dsdl
 typedef struct
 {
-    wkv_str_t type_name;     ///< e.g., "Heartbeat"
-    uint8_t   major;         ///< Major version
-    uint8_t   minor;         ///< Minor version
-    uint16_t  fixed_port_id; ///< DSDL_FIXED_PORT_ID_NONE if not present
-    bool      valid;         ///< True if parsing succeeded
+    wkv_str_t      type_name;     ///< e.g., "Heartbeat"
+    uint_least8_t  major;         ///< Major version
+    uint_least8_t  minor;         ///< Minor version
+    uint_least16_t fixed_port_id; ///< DSDL_FIXED_PORT_ID_NONE if not present
+    bool           valid;         ///< True if parsing succeeded
 } dsdl_parsed_filename_t;
 
 /// Parse a DSDL filename into its components.
@@ -3573,8 +3544,8 @@ static dsdl_parsed_filename_t dsdl_parse_filename(const wkv_str_t filename)
         return result;
     }
 
-    result.major = (uint8_t)major_val;
-    result.minor = (uint8_t)minor_val;
+    result.major = (uint_least8_t)major_val;
+    result.minor = (uint_least8_t)minor_val;
 
     // Now handle the part before major.minor
     // It could be: "TypeName" or "port_id.TypeName"
@@ -3594,7 +3565,7 @@ static dsdl_parsed_filename_t dsdl_parse_filename(const wkv_str_t filename)
             // First component is port ID
             const int64_t port_val = dsdl_parse_int(first_component);
             if ((port_val >= 0) && (port_val <= 65534)) {
-                result.fixed_port_id = (uint16_t)port_val;
+                result.fixed_port_id = (uint_least16_t)port_val;
 
                 // Type name is between first dot and major dot
                 const size_t name_start = dot_positions[0] + 1;
@@ -3640,27 +3611,27 @@ static size_t dsdl_build_dir_path(const char*     namespace_root,
     pos += namespace_root_len;
 
     // Add separator if needed
-    if ((namespace_root_len > 0) && (namespace_root[namespace_root_len - 1] != '/')) {
+    if ((namespace_root_len > 0) && (namespace_root[namespace_root_len - 1] != DSDL_PATH_SEP)) {
         if ((pos + 1) >= path_capacity) {
             return 0;
         }
-        out_path[pos++] = '/';
+        out_path[pos++] = DSDL_PATH_SEP;
     }
 
-    // Add namespace part (with dots replaced by slashes)
+    // Add namespace part (with dots replaced by path separators)
     if (namespace_part.len > 0) {
         if ((pos + namespace_part.len) >= path_capacity) {
             return 0;
         }
         for (size_t i = 0; i < namespace_part.len; i++) {
-            out_path[pos++] = (namespace_part.str[i] == '.') ? '/' : namespace_part.str[i];
+            out_path[pos++] = (namespace_part.str[i] == '.') ? DSDL_PATH_SEP : namespace_part.str[i];
         }
 
         // Add trailing separator
         if ((pos + 1) >= path_capacity) {
             return 0;
         }
-        out_path[pos++] = '/';
+        out_path[pos++] = DSDL_PATH_SEP;
     }
 
     out_path[pos] = '\0';
@@ -3684,9 +3655,9 @@ static bool dsdl_locate_file(dsdl_t* const          self,
                              const dsdl_type_ref_t* type_ref,
                              char*                  out_path,
                              const size_t           path_capacity,
-                             uint16_t*              out_fixed_port_id,
-                             uint8_t*               out_major,
-                             uint8_t*               out_minor)
+                             uint_least16_t*        out_fixed_port_id,
+                             uint_least8_t*         out_major,
+                             uint_least8_t*         out_minor)
 {
     if ((self == NULL) || (type_ref == NULL) || (out_path == NULL) || (path_capacity == 0)) {
         return false;
@@ -3720,7 +3691,7 @@ static bool dsdl_locate_file(dsdl_t* const          self,
         const size_t      namespace_root_len = ns->len;
 
         // Build directory path for this namespace
-        char   dir_path[512];
+        char   dir_path[DSDL_PATH_MAX];
         size_t dir_len =
           dsdl_build_dir_path(namespace_root, namespace_root_len, type_ref->namespace_part, dir_path, sizeof(dir_path));
         if (dir_len == 0) {
@@ -3731,10 +3702,10 @@ static bool dsdl_locate_file(dsdl_t* const          self,
         wkv_str_t* entries = self->list(self, (wkv_str_t){ dir_len, dir_path });
         if (entries != NULL) {
             // Track best matching version
-            bool    found      = false;
-            uint8_t best_major = 0;
-            uint8_t best_minor = 0;
-            size_t  best_idx   = 0;
+            bool          found      = false;
+            uint_least8_t best_major = 0;
+            uint_least8_t best_minor = 0;
+            size_t        best_idx   = 0;
 
             // Iterate through directory entries
             for (size_t i = 0; entries[i].str != NULL; i++) {
@@ -3827,11 +3798,11 @@ static bool dsdl_locate_file(dsdl_t* const          self,
 
 /// Resolve a composite type reference, loading it if necessary.
 /// Returns NULL if the type cannot be found or loaded.
-static const dsdl_type_composite_t* dsdl_resolve_composite_type(dsdl_t* const   self,
-                                                                const wkv_str_t type_name,
-                                                                const uint8_t   version_major,
-                                                                const uint8_t   version_minor,
-                                                                const wkv_str_t current_namespace)
+static const dsdl_type_composite_t* dsdl_resolve_composite_type(dsdl_t* const       self,
+                                                                const wkv_str_t     type_name,
+                                                                const uint_least8_t version_major,
+                                                                const uint_least8_t version_minor,
+                                                                const wkv_str_t     current_namespace)
 {
     assert((self != NULL) && (type_name.str != NULL));
     DSDL_TRACE(self,
@@ -3844,7 +3815,7 @@ static const dsdl_type_composite_t* dsdl_resolve_composite_type(dsdl_t* const   
                current_namespace.str);
 
     // Build fully qualified type name with version
-    char   full_name[256];
+    char   full_name[DSDL_PATH_MAX];
     size_t pos = 0;
 
     // If type_name doesn't contain a dot, it's relative to current_namespace
@@ -3997,8 +3968,8 @@ bool dsdl_add_namespace(dsdl_t* const self, const wkv_str_t root_directory)
 }
 
 // Forward declarations for functions used in dsdl_read's semantic analysis
-static size_t      dsdl_ceil_log2(size_t n);
-static dsdl_bls_t* dsdl_type_bls(dsdl_t* self, dsdl_type_t* type_ptr);
+static uint_least8_t dsdl_ceil_log2(uint64_t n);
+static dsdl_bls_t*   dsdl_type_bls(dsdl_t* self, dsdl_type_t* type_ptr);
 
 /// Evaluate an assertion expression with the given offset BLS.
 /// Returns true if the assertion passes, false if it fails.
@@ -4012,13 +3983,17 @@ static bool dsdl_eval_assertion(dsdl_t* const self, const dsdl_value_t* const ex
 
         case dsdl_value_assert_align: {
             // Alignment assertion: _offset_ % N == {0}
-            const size_t divisor = expr->as.assert_align.divisor;
-            return dsdl_bls_is_aligned(self, offset, divisor);
+            // Divisor must be a positive integer for alignment check
+            const dsdl_rational_t divisor = expr->as.rational;
+            if (!dsdl_rational_is_int(divisor) || (divisor.num <= 0)) {
+                return false; // Invalid divisor for alignment check
+            }
+            return dsdl_bls_is_aligned(self, offset, (uint64_t)divisor.num);
         }
 
         case dsdl_value_assert_attr: {
             // Attribute assertion: _offset_.attr op value
-            size_t offset_val;
+            uint64_t offset_val;
             switch (expr->as.assert_attr.attr) {
                 case dsdl_offset_attr_min:
                     offset_val = dsdl_bls_min(offset);
@@ -4096,10 +4071,10 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_
     }
 
     // Locate the DSDL file
-    char     file_path[512];
-    uint16_t fixed_port_id  = DSDL_FIXED_PORT_ID_NONE;
-    uint8_t  resolved_major = 0;
-    uint8_t  resolved_minor = 0;
+    char           file_path[DSDL_PATH_MAX];
+    uint_least16_t fixed_port_id  = DSDL_FIXED_PORT_ID_NONE;
+    uint_least8_t  resolved_major = 0;
+    uint_least8_t  resolved_minor = 0;
     if (!dsdl_locate_file(
           self, &type_ref, file_path, sizeof(file_path), &fixed_port_id, &resolved_major, &resolved_minor)) {
         DSDL_TRACE(self, "Failed to locate file");
@@ -4228,10 +4203,10 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_
 
         // For unions, add tag bits first
         if (def.is_union && (def.field_count > 0)) {
-            const size_t      tag_bits    = dsdl_ceil_log2(def.field_count);
-            dsdl_bls_t* const tag_bls     = dsdl_bls_new_single(self, tag_bits);
-            dsdl_bls_t*       children[2] = { offset, tag_bls };
-            offset                        = dsdl_bls_new_concat(self, 2, children);
+            const uint_least8_t tag_bits    = dsdl_ceil_log2(def.field_count);
+            dsdl_bls_t* const   tag_bls     = dsdl_bls_new_single(self, tag_bits);
+            dsdl_bls_t*         children[2] = { offset, tag_bls };
+            offset                          = dsdl_bls_new_concat(self, 2, children);
         }
 
         for (size_t i = 0; i < def.field_count; i++) {
@@ -4280,17 +4255,22 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_
     if (def.has_extent) {
         dsdl_bls_t* const type_bls = dsdl_type_bls(self, &composite->type);
         if (type_bls != NULL) {
-            const size_t max_bits = dsdl_bls_max(type_bls);
+            const uint64_t max_bits = dsdl_bls_max(type_bls);
             if (max_bits > def.extent_bits) {
-                DSDL_TRACE(self, "Extent validation FAILED: max_bits=%zu > extent_bits=%zu", max_bits, def.extent_bits);
+                DSDL_TRACE(self,
+                           "Extent validation FAILED: max_bits=%" PRIu64 " > extent_bits=%" PRIu64,
+                           max_bits,
+                           def.extent_bits);
                 dsdl_parsed_def_deinit(&def);
                 dsdl_free(self, block);
                 return NULL; // Extent exceeded
             }
             // For sealed types, extent must equal max serialized size
             if (def.is_sealed && (max_bits != def.extent_bits)) {
-                DSDL_TRACE(
-                  self, "Sealed extent validation FAILED: max_bits=%zu != extent_bits=%zu", max_bits, def.extent_bits);
+                DSDL_TRACE(self,
+                           "Sealed extent validation FAILED: max_bits=%" PRIu64 " != extent_bits=%" PRIu64,
+                           max_bits,
+                           def.extent_bits);
                 dsdl_parsed_def_deinit(&def);
                 dsdl_free(self, block);
                 return NULL; // Sealed type must have exact extent
@@ -4317,13 +4297,13 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_
 
 /// Calculate ceil(log2(n)) for n > 0. Returns 0 for n <= 1.
 /// Used for array length prefix and union tag bit widths.
-static size_t dsdl_ceil_log2(const size_t n)
+static uint_least8_t dsdl_ceil_log2(const uint64_t n)
 {
     if (n <= 1) {
         return 0;
     }
-    size_t result = 0;
-    size_t val    = n - 1; // -1 because we want ceil, not floor
+    uint_least8_t result = 0;
+    uint64_t      val    = n - 1; // -1 because we want ceil, not floor
     while (val > 0) {
         val >>= 1;
         result++;
@@ -4333,17 +4313,17 @@ static size_t dsdl_ceil_log2(const size_t n)
 
 /// Calculate the bit width of the length prefix for a variable-length array.
 /// For capacity C (max elements), prefix is ceil(log2(C + 1)) bits.
-static size_t dsdl_array_length_prefix_bits(const size_t capacity) { return dsdl_ceil_log2(capacity + 1); }
+static uint_least8_t dsdl_array_length_prefix_bits(const uint64_t capacity) { return dsdl_ceil_log2(capacity + 1); }
 
 /// Calculate the bit width of the union tag for a union with N alternatives.
 /// Tag is ceil(log2(N)) bits.
-static size_t dsdl_union_tag_bits(const size_t field_count) { return dsdl_ceil_log2(field_count); }
+static uint_least8_t dsdl_union_tag_bits(const size_t field_count) { return dsdl_ceil_log2(field_count); }
 
 /// Forward declaration for recursive type size calculation.
-static size_t dsdl_type_max_bits(const dsdl_type_t* type_ptr);
+static uint64_t dsdl_type_max_bits(const dsdl_type_t* type_ptr);
 
 /// Calculate the maximum serialized size in bits for a composite type.
-static size_t dsdl_composite_max_bits(const dsdl_type_composite_t* const composite)
+static uint64_t dsdl_composite_max_bits(const dsdl_type_composite_t* const composite)
 {
     if (composite == NULL) {
         return 0;
@@ -4353,11 +4333,11 @@ static size_t dsdl_composite_max_bits(const dsdl_type_composite_t* const composi
 
     if (is_union) {
         // Union: tag bits + max of all field bit sizes (no padding for sealed types)
-        const size_t tag_bits = dsdl_union_tag_bits(composite->field_count);
+        const uint64_t tag_bits = dsdl_union_tag_bits(composite->field_count);
 
-        size_t max_field_bits = 0;
-        for (size_t i = 0; i < composite->field_count; i++) {
-            const size_t field_bits = dsdl_type_max_bits(composite->field_types[i]);
+        uint64_t max_field_bits = 0;
+        for (uint64_t i = 0; i < composite->field_count; i++) {
+            const uint64_t field_bits = dsdl_type_max_bits(composite->field_types[i]);
             if (field_bits > max_field_bits) {
                 max_field_bits = field_bits;
             }
@@ -4366,8 +4346,8 @@ static size_t dsdl_composite_max_bits(const dsdl_type_composite_t* const composi
         return tag_bits + max_field_bits;
     } else {
         // Struct: sum of all field bit sizes (no padding between fields for sealed types)
-        size_t total_bits = 0;
-        for (size_t i = 0; i < composite->field_count; i++) {
+        uint64_t total_bits = 0;
+        for (uint64_t i = 0; i < composite->field_count; i++) {
             total_bits += dsdl_type_max_bits(composite->field_types[i]);
         }
         return total_bits;
@@ -4377,7 +4357,7 @@ static size_t dsdl_composite_max_bits(const dsdl_type_composite_t* const composi
 /// Calculate the native storage size in bytes for a single value of the given type.
 /// This is the size of the C type used to represent the value, not the serialized bit size.
 /// For arrays of primitives/composites, this returns the element size for iterating.
-static size_t dsdl_type_native_size(const dsdl_type_t* type_ptr)
+static uint64_t dsdl_type_native_size(const dsdl_type_t* type_ptr)
 {
     if (type_ptr == NULL) {
         return 0;
@@ -4397,7 +4377,7 @@ static size_t dsdl_type_native_size(const dsdl_type_t* type_ptr)
 
     // Integers (signed and unsigned) - use int_leastX_t sizes
     if (dsdl_type_is_int(kind) || dsdl_type_is_uint(kind) || (kind == DSDL_BYTE)) {
-        const size_t bits = dsdl_type_bit_width(kind);
+        const uint64_t bits = dsdl_type_bit_width(kind);
         if (bits <= 8) {
             return sizeof(uint_least8_t);
         } else if (bits <= 16) {
@@ -4411,7 +4391,7 @@ static size_t dsdl_type_native_size(const dsdl_type_t* type_ptr)
 
     // Floats
     if (dsdl_type_is_float(kind)) {
-        const size_t bits = dsdl_type_bit_width(kind);
+        const uint64_t bits = dsdl_type_bit_width(kind);
         if (bits <= 32) {
             return sizeof(float);
         } else {
@@ -4453,7 +4433,7 @@ static size_t dsdl_type_native_size(const dsdl_type_t* type_ptr)
 
 /// Calculate the maximum serialized size in bits for any type.
 /// The type_ptr can point to a dsdl_type_t (primitive), dsdl_type_array_t, or dsdl_type_composite_t.
-static size_t dsdl_type_max_bits(const dsdl_type_t* type_ptr)
+static uint64_t dsdl_type_max_bits(const dsdl_type_t* type_ptr)
 {
     if (type_ptr == NULL) {
         return 0;
@@ -4475,12 +4455,12 @@ static size_t dsdl_type_max_bits(const dsdl_type_t* type_ptr)
     // Array types
     if (dsdl_type_is_array(kind)) {
         const dsdl_type_array_t* arr          = (const dsdl_type_array_t*)type_ptr;
-        const size_t             element_bits = dsdl_type_max_bits(arr->member_type);
-        const size_t             total_bits   = arr->capacity * element_bits;
+        const uint64_t           element_bits = dsdl_type_max_bits(arr->member_type);
+        const uint64_t           total_bits   = arr->capacity * element_bits;
 
         if (kind == DSDL_ARRAY_VARIABLE) {
             // Variable-length array: length prefix + elements
-            const size_t prefix_bits = dsdl_array_length_prefix_bits(arr->capacity);
+            const uint64_t prefix_bits = dsdl_array_length_prefix_bits(arr->capacity);
             return prefix_bits + total_bits;
         } else {
             // Fixed-length array: just the elements
@@ -4514,14 +4494,14 @@ static dsdl_bls_t* dsdl_type_bls(dsdl_t* const self, dsdl_type_t* type_ptr)
 
     // Primitive types (void, int, uint, float)
     if (dsdl_type_is_void(kind) || dsdl_type_is_int(kind) || dsdl_type_is_uint(kind) || dsdl_type_is_float(kind)) {
-        const size_t bits = dsdl_type_bit_width(kind);
+        const uint64_t bits = dsdl_type_bit_width(kind);
         DSDL_TRACE(self, "  -> primitive %zu bits", bits);
         return dsdl_bls_new_single(self, bits);
     }
 
     // Handle aliases (bool = uint1, byte = uint8)
     if (dsdl_type_is_alias(kind)) {
-        const size_t bits = dsdl_type_bit_width((dsdl_type_t)(kind & ~DSDL_TYPE_ALIAS_MASK));
+        const uint64_t bits = dsdl_type_bit_width((dsdl_type_t)(kind & ~DSDL_TYPE_ALIAS_MASK));
         DSDL_TRACE(self, "  -> alias %zu bits", bits);
         return dsdl_bls_new_single(self, bits);
     }
@@ -4545,7 +4525,7 @@ static dsdl_bls_t* dsdl_type_bls(dsdl_t* const self, dsdl_type_t* type_ptr)
 
         if (kind == DSDL_ARRAY_VARIABLE) {
             // Variable-length: length_prefix + repeat_range(element, capacity)
-            const size_t      prefix_bits = dsdl_array_length_prefix_bits(arr->capacity);
+            const uint64_t    prefix_bits = dsdl_array_length_prefix_bits(arr->capacity);
             dsdl_bls_t* const prefix_bls  = dsdl_bls_new_single(self, prefix_bits);
             dsdl_bls_t* const var_bls     = dsdl_bls_new_repeat_range(self, elem_bls, arr->capacity);
             dsdl_bls_t*       children[2] = { prefix_bls, var_bls };
@@ -4576,7 +4556,7 @@ static dsdl_bls_t* dsdl_type_bls(dsdl_t* const self, dsdl_type_t* type_ptr)
 
         if (is_union) {
             // Union: tag + union of all variant bit length sets
-            const size_t      tag_bits = dsdl_union_tag_bits(composite->field_count);
+            const uint64_t    tag_bits = dsdl_union_tag_bits(composite->field_count);
             dsdl_bls_t* const tag_bls  = dsdl_bls_new_single(self, tag_bits);
 
             // Collect variant bit length sets
@@ -4584,7 +4564,7 @@ static dsdl_bls_t* dsdl_type_bls(dsdl_t* const self, dsdl_type_t* type_ptr)
             if (variants == NULL) {
                 return NULL;
             }
-            for (size_t i = 0; i < composite->field_count; i++) {
+            for (uint64_t i = 0; i < composite->field_count; i++) {
                 variants[i] = dsdl_type_bls(self, composite->field_types[i]);
             }
             dsdl_bls_t* const variants_bls = dsdl_bls_new_unite(self, composite->field_count, variants);
@@ -4598,7 +4578,7 @@ static dsdl_bls_t* dsdl_type_bls(dsdl_t* const self, dsdl_type_t* type_ptr)
             if (fields == NULL) {
                 return NULL;
             }
-            for (size_t i = 0; i < composite->field_count; i++) {
+            for (uint64_t i = 0; i < composite->field_count; i++) {
                 fields[i] = dsdl_type_bls(self, composite->field_types[i]);
             }
             composite->bls = dsdl_bls_new_concat(self, composite->field_count, fields);
@@ -4610,13 +4590,13 @@ static dsdl_bls_t* dsdl_type_bls(dsdl_t* const self, dsdl_type_t* type_ptr)
     return dsdl_bls_new_single(self, 0);
 }
 
-size_t dsdl_serialized_footprint(const dsdl_type_composite_t* const type)
+uint64_t dsdl_serialized_footprint(const dsdl_type_composite_t* const type)
 {
     if (type == NULL) {
         return 0;
     }
 
-    const size_t max_bits = dsdl_composite_max_bits(type);
+    const uint64_t max_bits = dsdl_composite_max_bits(type);
 
     // For non-sealed composites, a 32-bit delimiter header is prepended when nested
     // However, for the top-level type, we return just the content size.
@@ -4633,15 +4613,15 @@ size_t dsdl_serialized_footprint(const dsdl_type_composite_t* const type)
 /// Tracks current bit position within a byte array.
 typedef struct
 {
-    uint8_t* data;          ///< Pointer to the byte buffer
-    size_t   capacity_bits; ///< Total capacity in bits
-    size_t   offset_bits;   ///< Current bit position
-    bool     error;         ///< Set on deserialization error (e.g., array overflow)
+    unsigned char* data;          ///< Pointer to the byte buffer
+    uint64_t       capacity_bits; ///< Total capacity in bits
+    uint64_t       offset_bits;   ///< Current bit position
+    bool           error;         ///< Set on deserialization error (e.g., array overflow)
 } dsdl_bitbuf_t;
 
 /// Write up to 64 bits to the buffer, little-endian.
 /// Bits are written starting from the LSB of the value.
-static void dsdl_bitbuf_write(dsdl_bitbuf_t* const buf, uint64_t value, size_t bits)
+static void dsdl_bitbuf_write(dsdl_bitbuf_t* const buf, uint64_t value, uint64_t bits)
 {
     if ((buf == NULL) || (bits == 0)) {
         return;
@@ -4652,17 +4632,18 @@ static void dsdl_bitbuf_write(dsdl_bitbuf_t* const buf, uint64_t value, size_t b
             return; // Buffer overflow - stop writing
         }
 
-        const size_t byte_index    = buf->offset_bits / 8;
-        const size_t bit_in_byte   = buf->offset_bits % 8;
-        const size_t bits_in_byte  = 8 - bit_in_byte;
-        const size_t bits_to_write = (bits < bits_in_byte) ? bits : bits_in_byte;
+        const uint64_t byte_index    = buf->offset_bits / 8;
+        const uint64_t bit_in_byte   = buf->offset_bits % 8;
+        const uint64_t bits_in_byte  = 8 - bit_in_byte;
+        const uint64_t bits_to_write = (bits < bits_in_byte) ? bits : bits_in_byte;
 
         // Mask for the bits we're writing
-        const uint8_t mask = (uint8_t)((1U << bits_to_write) - 1U);
-        const uint8_t val  = (uint8_t)(value & mask);
+        const unsigned char mask = (unsigned char)((1U << bits_to_write) - 1U);
+        const unsigned char val  = (unsigned char)(value & mask);
 
         // Clear target bits and write
-        buf->data[byte_index] = (uint8_t)((buf->data[byte_index] & ~(mask << bit_in_byte)) | (val << bit_in_byte));
+        buf->data[byte_index] =
+          (unsigned char)((buf->data[byte_index] & ~(mask << bit_in_byte)) | (val << bit_in_byte));
 
         buf->offset_bits += bits_to_write;
         value >>= bits_to_write;
@@ -4672,14 +4653,14 @@ static void dsdl_bitbuf_write(dsdl_bitbuf_t* const buf, uint64_t value, size_t b
 
 /// Read up to 64 bits from the buffer, little-endian.
 /// If the buffer is exhausted, remaining bits are treated as zero (implicit zero extension).
-static uint64_t dsdl_bitbuf_read(dsdl_bitbuf_t* const buf, size_t bits)
+static uint64_t dsdl_bitbuf_read(dsdl_bitbuf_t* const buf, uint64_t bits)
 {
     if ((buf == NULL) || (bits == 0) || (bits > 64)) {
         return 0;
     }
 
     uint64_t value     = 0;
-    size_t   bit_shift = 0;
+    uint64_t bit_shift = 0;
 
     while (bits > 0) {
         if (buf->offset_bits >= buf->capacity_bits) {
@@ -4687,14 +4668,14 @@ static uint64_t dsdl_bitbuf_read(dsdl_bitbuf_t* const buf, size_t bits)
             break;
         }
 
-        const size_t byte_index   = buf->offset_bits / 8;
-        const size_t bit_in_byte  = buf->offset_bits % 8;
-        const size_t bits_in_byte = 8 - bit_in_byte;
-        const size_t bits_to_read = (bits < bits_in_byte) ? bits : bits_in_byte;
+        const uint64_t byte_index   = buf->offset_bits / 8;
+        const uint64_t bit_in_byte  = buf->offset_bits % 8;
+        const uint64_t bits_in_byte = 8 - bit_in_byte;
+        const uint64_t bits_to_read = (bits < bits_in_byte) ? bits : bits_in_byte;
 
         // Mask for the bits we're reading
-        const uint8_t mask = (uint8_t)((1U << bits_to_read) - 1U);
-        const uint8_t val  = (uint8_t)((buf->data[byte_index] >> bit_in_byte) & mask);
+        const unsigned char mask = (unsigned char)((1U << bits_to_read) - 1U);
+        const unsigned char val  = (unsigned char)((buf->data[byte_index] >> bit_in_byte) & mask);
 
         value |= ((uint64_t)val << bit_shift);
 
@@ -4712,7 +4693,7 @@ static void dsdl_bitbuf_align_write(dsdl_bitbuf_t* const buf)
     if (buf == NULL) {
         return;
     }
-    const size_t remainder = buf->offset_bits % 8;
+    const uint64_t remainder = buf->offset_bits % 8;
     if (remainder != 0) {
         dsdl_bitbuf_write(buf, 0, 8 - remainder);
     }
@@ -4724,7 +4705,7 @@ static void dsdl_bitbuf_align_read(dsdl_bitbuf_t* const buf)
     if (buf == NULL) {
         return;
     }
-    const size_t remainder = buf->offset_bits % 8;
+    const uint64_t remainder = buf->offset_bits % 8;
     if (remainder != 0) {
         buf->offset_bits += 8 - remainder;
     }
@@ -4805,7 +4786,7 @@ static void dsdl_serialize_primitive(dsdl_bitbuf_t* const buf, const dsdl_type_t
         return;
     }
 
-    const size_t bits = dsdl_type_bit_width(type);
+    const uint64_t bits = dsdl_type_bit_width(type);
     if (bits == 0) {
         return;
     }
@@ -4848,13 +4829,13 @@ static void dsdl_serialize_primitive(dsdl_bitbuf_t* const buf, const dsdl_type_t
         // Read the value based on size, then write the appropriate number of bits
         uint64_t raw = 0;
         if (bits <= 8) {
-            raw = *(const uint8_t*)value;
+            raw = *(const uint_least8_t*)value;
         } else if (bits <= 16) {
-            raw = *(const uint16_t*)value;
+            raw = *(const uint_least16_t*)value;
         } else if (bits <= 32) {
-            raw = *(const uint32_t*)value;
+            raw = *(const uint_least32_t*)value;
         } else {
-            raw = *(const uint64_t*)value;
+            raw = *(const uint_least64_t*)value;
         }
         dsdl_bitbuf_write(buf, raw, bits);
         return;
@@ -4868,7 +4849,7 @@ static void dsdl_deserialize_primitive(dsdl_bitbuf_t* const buf, const dsdl_type
         return;
     }
 
-    const size_t bits = dsdl_type_bit_width(type);
+    const uint64_t bits = dsdl_type_bit_width(type);
     if (bits == 0) {
         return;
     }
@@ -4918,13 +4899,13 @@ static void dsdl_deserialize_primitive(dsdl_bitbuf_t* const buf, const dsdl_type
 
         // Store based on size
         if (bits <= 8) {
-            *(uint8_t*)value = (uint8_t)raw;
+            *(uint_least8_t*)value = (uint_least8_t)raw;
         } else if (bits <= 16) {
-            *(uint16_t*)value = (uint16_t)raw;
+            *(uint_least16_t*)value = (uint_least16_t)raw;
         } else if (bits <= 32) {
-            *(uint32_t*)value = (uint32_t)raw;
+            *(uint_least32_t*)value = (uint_least32_t)raw;
         } else {
-            *(uint64_t*)value = raw;
+            *(uint_least64_t*)value = raw;
         }
         return;
     }
@@ -4955,7 +4936,7 @@ static void dsdl_serialize_composite_content(dsdl_bitbuf_t* const               
         }
 
         // Write tag bits
-        const size_t tag_bits = dsdl_union_tag_bits(composite->field_count);
+        const uint_least8_t tag_bits = dsdl_union_tag_bits(composite->field_count);
         dsdl_bitbuf_write(buf, tag, tag_bits);
 
         // Serialize selected variant (skip void fields when finding the value)
@@ -5014,8 +4995,8 @@ static void dsdl_deserialize_composite_content(dsdl_bitbuf_t* const             
         dsdl_value_union_t* uval = (dsdl_value_union_t*)value_ptr;
 
         // Read tag
-        const size_t tag_bits = dsdl_union_tag_bits(composite->field_count);
-        size_t       tag      = (size_t)dsdl_bitbuf_read(buf, tag_bits);
+        const uint_least8_t tag_bits = dsdl_union_tag_bits(composite->field_count);
+        size_t              tag      = (size_t)dsdl_bitbuf_read(buf, tag_bits);
 
         if (tag >= composite->field_count) {
             tag = 0; // Invalid tag, default to first variant
@@ -5094,25 +5075,25 @@ static void dsdl_serialize_type(dsdl_bitbuf_t* const buf, const dsdl_type_t* con
         const dsdl_type_array_t* arr = (const dsdl_type_array_t*)type_ptr;
 
         // Get native storage size of each element
-        const size_t element_size = dsdl_type_native_size(arr->member_type);
+        const uint64_t element_size = dsdl_type_native_size(arr->member_type);
 
         if (kind == DSDL_ARRAY_VARIABLE) {
             // Variable array: value is dsdl_value_array_variable_t*
             const dsdl_value_array_variable_t* var = (const dsdl_value_array_variable_t*)value;
 
             // Write length prefix
-            const size_t prefix_bits  = dsdl_array_length_prefix_bits(arr->capacity);
-            const size_t actual_count = (var->count <= arr->capacity) ? var->count : arr->capacity;
+            const uint_least8_t prefix_bits  = dsdl_array_length_prefix_bits(arr->capacity);
+            const uint64_t      actual_count = (var->count <= arr->capacity) ? var->count : arr->capacity;
             dsdl_bitbuf_write(buf, actual_count, prefix_bits);
 
             // Write elements from members pointer
-            for (size_t i = 0; i < actual_count; i++) {
+            for (uint64_t i = 0; i < actual_count; i++) {
                 const void* elem = (const char*)var->members + (i * element_size);
                 dsdl_serialize_type(buf, arr->member_type, elem);
             }
         } else {
             // Fixed array: value is void* pointing directly to elements
-            for (size_t i = 0; i < arr->capacity; i++) {
+            for (uint64_t i = 0; i < arr->capacity; i++) {
                 const void* elem = (const char*)value + (i * element_size);
                 dsdl_serialize_type(buf, arr->member_type, elem);
             }
@@ -5148,10 +5129,10 @@ static void dsdl_serialize_type(dsdl_bitbuf_t* const buf, const dsdl_type_t* con
             const size_t content_bytes = (buf->offset_bits - content_start + 7) / 8;
             if (delimiter_byte_pos + 4 <= buf->capacity_bits / 8) {
                 // Write delimiter (little-endian 32-bit)
-                buf->data[delimiter_byte_pos + 0] = (uint8_t)(content_bytes & 0xFF);
-                buf->data[delimiter_byte_pos + 1] = (uint8_t)((content_bytes >> 8) & 0xFF);
-                buf->data[delimiter_byte_pos + 2] = (uint8_t)((content_bytes >> 16) & 0xFF);
-                buf->data[delimiter_byte_pos + 3] = (uint8_t)((content_bytes >> 24) & 0xFF);
+                buf->data[delimiter_byte_pos + 0] = (unsigned char)(content_bytes & 0xFFU);
+                buf->data[delimiter_byte_pos + 1] = (unsigned char)((content_bytes >> 8) & 0xFFU);
+                buf->data[delimiter_byte_pos + 2] = (unsigned char)((content_bytes >> 16) & 0xFFU);
+                buf->data[delimiter_byte_pos + 3] = (unsigned char)((content_bytes >> 24) & 0xFFU);
             }
         }
         return;
@@ -5186,15 +5167,15 @@ static void dsdl_deserialize_type(dsdl_bitbuf_t* const buf, const dsdl_type_t* c
         const dsdl_type_array_t* arr = (const dsdl_type_array_t*)type_ptr;
 
         // Get native storage size of each element
-        const size_t element_size = dsdl_type_native_size(arr->member_type);
+        const uint64_t element_size = dsdl_type_native_size(arr->member_type);
 
         if (kind == DSDL_ARRAY_VARIABLE) {
             // Variable array: value is dsdl_value_array_variable_t*
             dsdl_value_array_variable_t* var = (dsdl_value_array_variable_t*)value;
 
             // Read length prefix
-            const size_t prefix_bits    = dsdl_array_length_prefix_bits(arr->capacity);
-            size_t       count_from_msg = (size_t)dsdl_bitbuf_read(buf, prefix_bits);
+            const uint_least8_t prefix_bits    = dsdl_array_length_prefix_bits(arr->capacity);
+            uint64_t            count_from_msg = dsdl_bitbuf_read(buf, prefix_bits);
 
             // Clamp to type capacity (message can't exceed type definition)
             if (count_from_msg > arr->capacity) {
@@ -5211,13 +5192,13 @@ static void dsdl_deserialize_type(dsdl_bitbuf_t* const buf, const dsdl_type_t* c
             var->count = count_from_msg;
 
             // Read elements into members buffer
-            for (size_t i = 0; i < count_from_msg; i++) {
+            for (uint64_t i = 0; i < count_from_msg; i++) {
                 void* elem = (char*)var->members + (i * element_size);
                 dsdl_deserialize_type(buf, arr->member_type, elem);
             }
         } else {
             // Fixed array: value is void* pointing directly to elements
-            for (size_t i = 0; i < arr->capacity; i++) {
+            for (uint64_t i = 0; i < arr->capacity; i++) {
                 void* elem = (char*)value + (i * element_size);
                 dsdl_deserialize_type(buf, arr->member_type, elem);
             }
@@ -5240,13 +5221,13 @@ static void dsdl_deserialize_type(dsdl_bitbuf_t* const buf, const dsdl_type_t* c
             const uint32_t delimiter = (uint32_t)dsdl_bitbuf_read(buf, 32);
 
             // Remember where content starts
-            const size_t content_start_bits = buf->offset_bits;
+            const uint64_t content_start_bits = buf->offset_bits;
 
             // Deserialize content
             dsdl_deserialize_composite_content(buf, composite, value);
 
             // Skip to end of delimited content (in case there's extra data from newer version)
-            const size_t content_end_bits = content_start_bits + ((size_t)delimiter * 8);
+            const uint64_t content_end_bits = content_start_bits + ((uint64_t)delimiter * 8);
             if (content_end_bits > buf->offset_bits) {
                 buf->offset_bits = content_end_bits;
             }
@@ -5275,7 +5256,7 @@ size_t dsdl_serialize(const dsdl_type_composite_t* const type,
     memset(output, 0, output_size);
 
     dsdl_bitbuf_t buf = {
-        .data          = (uint8_t*)output,
+        .data          = (unsigned char*)output,
         .capacity_bits = output_size * 8,
         .offset_bits   = 0,
     };
@@ -5297,7 +5278,7 @@ size_t dsdl_deserialize(const dsdl_type_composite_t* const type,
     }
 
     dsdl_bitbuf_t buf = {
-        .data          = (uint8_t*)(uintptr_t)input, // Cast away const for the buffer struct
+        .data          = (unsigned char*)(uintptr_t)input, // Cast away const for the buffer struct
         .capacity_bits = input_size * 8,
         .offset_bits   = 0,
         .error         = false,

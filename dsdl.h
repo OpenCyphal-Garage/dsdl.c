@@ -15,6 +15,26 @@
 #include <stddef.h>
 #include <stdbool.h>
 
+// ============================================================================
+// Configuration macros (can be overridden before including this header)
+// ============================================================================
+
+/// Path separator character. Override for platforms with different conventions.
+#ifndef DSDL_PATH_SEP
+#define DSDL_PATH_SEP '/'
+#endif
+
+/// Maximum path length for file operations. Override for platforms with different limits.
+#ifndef DSDL_PATH_MAX
+#define DSDL_PATH_MAX 1024
+#endif
+
+/// If enabled, the library will log trace events via dsdl_trace(), which must be implemented in the application.
+/// It is best not to use this in production.
+#ifndef DSDL_CONFIG_TRACE
+#define DSDL_CONFIG_TRACE 0
+#endif
+
 #ifdef __cplusplus
 extern "C"
 {
@@ -68,19 +88,19 @@ typedef uint16_t dsdl_type_t;
 #define DSDL_TYPE_BITWIDTH_MASK ((dsdl_type_t)0x00FF)
 #define DSDL_TYPE_ALIAS_MASK    ((dsdl_type_t)0xF000)
 
-static inline bool    dsdl_type_is_void(dsdl_type_t t) { return (t & DSDL_TYPE_CATEGORY_MASK) == 0x0000U; }
-static inline bool    dsdl_type_is_int(dsdl_type_t t) { return (t & DSDL_TYPE_CATEGORY_MASK) == 0x0100U; }
-static inline bool    dsdl_type_is_uint(dsdl_type_t t) { return (t & DSDL_TYPE_CATEGORY_MASK) == 0x0200U; }
-static inline bool    dsdl_type_is_float(dsdl_type_t t) { return (t & DSDL_TYPE_CATEGORY_MASK) == 0x0500U; }
-static inline bool    dsdl_type_is_array(dsdl_type_t t) { return (t & DSDL_TYPE_CATEGORY_MASK) == 0x0A00U; }
-static inline bool    dsdl_type_is_composite(dsdl_type_t t) { return (t & DSDL_TYPE_CATEGORY_MASK) == 0x0F00U; }
-static inline bool    dsdl_type_is_alias(dsdl_type_t t) { return (t & DSDL_TYPE_ALIAS_MASK) != 0; }
-static inline uint8_t dsdl_type_bit_width(dsdl_type_t t) { return (uint8_t)(t & DSDL_TYPE_BITWIDTH_MASK); }
+static inline bool          dsdl_type_is_void(dsdl_type_t t) { return (t & DSDL_TYPE_CATEGORY_MASK) == 0x0000U; }
+static inline bool          dsdl_type_is_int(dsdl_type_t t) { return (t & DSDL_TYPE_CATEGORY_MASK) == 0x0100U; }
+static inline bool          dsdl_type_is_uint(dsdl_type_t t) { return (t & DSDL_TYPE_CATEGORY_MASK) == 0x0200U; }
+static inline bool          dsdl_type_is_float(dsdl_type_t t) { return (t & DSDL_TYPE_CATEGORY_MASK) == 0x0500U; }
+static inline bool          dsdl_type_is_array(dsdl_type_t t) { return (t & DSDL_TYPE_CATEGORY_MASK) == 0x0A00U; }
+static inline bool          dsdl_type_is_composite(dsdl_type_t t) { return (t & DSDL_TYPE_CATEGORY_MASK) == 0x0F00U; }
+static inline bool          dsdl_type_is_alias(dsdl_type_t t) { return (t & DSDL_TYPE_ALIAS_MASK) != 0; }
+static inline uint_least8_t dsdl_type_bit_width(dsdl_type_t t) { return (uint_least8_t)(t & DSDL_TYPE_BITWIDTH_MASK); }
 
 typedef struct dsdl_type_array_t
 {
     dsdl_type_t        type;        ///< Always the first field; here DSDL_ARRAY_*
-    size_t             capacity;    ///< Maximum number of elements (from type definition)
+    uint64_t           capacity;    ///< Maximum number of elements (from type definition)
     dsdl_type_t*       member_type; ///< Points to any of dsdl_type_*; castable to dsdl_type_t* for type identification.
     struct dsdl_bls_t* bls;         ///< Internal: symbolic bit length set.
 } dsdl_type_array_t;
@@ -99,8 +119,8 @@ typedef struct dsdl_type_composite_t
     wkv_str_t     name;       ///< Fully qualified type name
     uint_least8_t version[2]; ///< [major, minor]
 
-    size_t extent; ///< Maximum serialized size in bytes.
-    bool   sealed; ///< True if @sealed directive present
+    uint64_t extent; ///< Maximum serialized size in bytes.
+    bool     sealed; ///< True if @sealed directive present
 
     size_t        field_count; ///< Number of fields
     wkv_str_t*    field_names; ///< Array of field names
@@ -267,7 +287,7 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* self, wkv_str_t type_name);
 ///
 /// @param type  Type descriptor
 /// @return Maximum serialized size in bytes, which is NOT the same as the extent.
-size_t dsdl_serialized_footprint(const dsdl_type_composite_t* type);
+uint64_t dsdl_serialized_footprint(const dsdl_type_composite_t* type);
 
 /// Serialize a composite type instance to a byte buffer.
 ///

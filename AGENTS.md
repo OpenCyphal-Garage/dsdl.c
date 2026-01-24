@@ -45,12 +45,10 @@ The code must not make assumptions about the execution platform (pointer width, 
 
 ## Known issues (incomplete list)
 
-- DSDL sizes (bit length, extent, etc) are tied to the native `size_t`, which is a mistake because it may cause overflow easily. We need to use `uint64_t` to represent sizes derived from DSDL definitions instead. This does not affect cases where the size is actually limited by the platform capabilities; e.g., `size_t extent` is a mistake because the extent can be arbitrarily large and it will easily cause overflow on a small platform with 16-bit size; OTOH, `size_t field_count` does not require changing because we wouldn't be able to store more than `SIZE_MAX` fields anyway. In the header file specifically, there is only two occurrence where the size needs updating: the extent case mentioned earlier and the array capacity.
+- Fallible API functions, such as deserialize, return zero size to indicate failure, which is nonsense because zero size is a valid size. Unambiguous error reporting is necessary. For example, the serialization function could return `SIZE_MAX`; better ideas welcome.
 
-- Do not assume that the target platform has `[u]uint8_t` and `[u]int16_t`; use `[u]int_least8_t` and `[u]int_least16_t` instead.
+- The serialization and deserialization functions shall validate values and fail on error. For example, an array prefix field cannot contain value exceeding the array capacity, otherwise the serialization/deserialization is not possible (NB! both must check the value, whether it comes from the application or from the serialized representation). Union tag must be less than the number of union fields (again, applies to both serialization and deserialization), etc. Check the full list of checks against Nunavut (Python or C implementation).
 
-- Use a well-defined macro `DSDL_PATH_SEP` for path separator instead of literal `/`, and allow overriding it such that it defaults to `/` only if not defined.
+- IMPORTANT: Adjust the test suite such that it builds & runs both in x86 (`-m32`) and AMD64 (`-m64`) mode!
 
-- Use a well-defined macro `DSDL_PATH_MAX` instead of hardcoded adhoc `char dir_path[512]`, `char full_name[256];`, etc. Allow overriding it with 1024 being the default.
-
-- Remove all other hardcoded size constants, if any.
+- Add a simple QEMU AVR test suite, or adapt the existing test suite to build for QEMU AVR, to ensure that sizes above `SIZE_MAX=65535` are handled correctly.
