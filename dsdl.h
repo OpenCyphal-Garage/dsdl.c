@@ -9,11 +9,11 @@
 #ifndef DSDL_H_INCLUDED
 #define DSDL_H_INCLUDED
 
+#include <wkv.h>
+
 #include <stdint.h>
 #include <stddef.h>
 #include <stdbool.h>
-
-#include "lib/wkv.h"
 
 #ifdef __cplusplus
 extern "C"
@@ -102,7 +102,8 @@ typedef struct dsdl_type_composite_t
     wkv_str_t*    field_names; ///< Array of field names
     dsdl_type_t** field_types; ///< Array of pointers to dsdl_type_t*, dsdl_type_array_t*, dsdl_type_composite_t*, ...
 
-    dsdl_type_composite_t* response; ///< In RPC-service types this field contains the response type. NULL otherwise.
+    struct dsdl_type_composite_t*
+      response; ///< In RPC-service types this field contains the response type. NULL otherwise.
 } dsdl_type_composite_t;
 
 // ============================================================================

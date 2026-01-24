@@ -8,7 +8,6 @@
 /// Copyright (c) OpenCyphal Development Team
 
 #include "dsdl.h"
-#include "wkv.h"
 
 #include <stdint.h>
 #include <stdbool.h>
@@ -3143,6 +3142,83 @@ static size_t _dsdl_composite_max_bits(const dsdl_type_composite_t* const compos
     }
 }
 
+/// Calculate the native storage size in bytes for a single value of the given type.
+/// This is the size of the C type used to represent the value, not the serialized bit size.
+/// For arrays of primitives/composites, this returns the element size for iterating.
+static size_t _dsdl_type_native_size(const dsdl_type_t* type_ptr)
+{
+    if (type_ptr == NULL) {
+        return 0;
+    }
+
+    const dsdl_type_t kind = *type_ptr;
+
+    // Void has no storage
+    if (dsdl_type_is_void(kind)) {
+        return 0;
+    }
+
+    // Bool
+    if (kind == DSDL_BOOL) {
+        return sizeof(bool);
+    }
+
+    // Integers (signed and unsigned) - use int_leastX_t sizes
+    if (dsdl_type_is_int(kind) || dsdl_type_is_uint(kind) || (kind == DSDL_BYTE)) {
+        const size_t bits = dsdl_type_bit_width(kind);
+        if (bits <= 8) {
+            return sizeof(uint_least8_t);
+        } else if (bits <= 16) {
+            return sizeof(uint_least16_t);
+        } else if (bits <= 32) {
+            return sizeof(uint_least32_t);
+        } else {
+            return sizeof(uint_least64_t);
+        }
+    }
+
+    // Floats
+    if (dsdl_type_is_float(kind)) {
+        const size_t bits = dsdl_type_bit_width(kind);
+        if (bits <= 32) {
+            return sizeof(float);
+        } else {
+            return sizeof(double);
+        }
+    }
+
+    // Aliases (UTF8 maps to char)
+    if (dsdl_type_is_alias(kind)) {
+        if (kind == DSDL_UTF8) {
+            return sizeof(char);
+        }
+        // Other aliases - strip alias and recurse
+        const dsdl_type_t base = (dsdl_type_t)(kind & ~DSDL_TYPE_ALIAS_MASK);
+        return _dsdl_type_native_size(&base);
+    }
+
+    // Arrays - the value itself is a pointer (fixed) or dsdl_value_array_variable_t (variable)
+    if (dsdl_type_is_array(kind)) {
+        if (kind == DSDL_ARRAY_VARIABLE) {
+            return sizeof(dsdl_value_array_variable_t);
+        } else {
+            // Fixed array is represented as void* to elements
+            return sizeof(void*);
+        }
+    }
+
+    // Composites - struct or union value wrapper
+    if (dsdl_type_is_composite(kind)) {
+        if (kind == DSDL_COMPOSITE_UNION) {
+            return sizeof(dsdl_value_union_t);
+        } else {
+            return sizeof(dsdl_value_struct_t);
+        }
+    }
+
+    return 0;
+}
+
 /// Calculate the maximum serialized size in bits for any type.
 /// The type_ptr can point to a dsdl_type_t (primitive), dsdl_type_array_t, or dsdl_type_composite_t.
 static size_t _dsdl_type_max_bits(const dsdl_type_t* type_ptr)
@@ -3215,6 +3291,7 @@ typedef struct
     uint8_t* data;          ///< Pointer to the byte buffer
     size_t   capacity_bits; ///< Total capacity in bits
     size_t   offset_bits;   ///< Current bit position
+    bool     error;         ///< Set on deserialization error (e.g., array overflow)
 } _dsdl_bitbuf_t;
 
 /// Write up to 64 bits to the buffer, little-endian.
@@ -3452,16 +3529,17 @@ static void _dsdl_serialize_type(_dsdl_bitbuf_t* buf, const dsdl_type_t* type_pt
 static void _dsdl_deserialize_type(_dsdl_bitbuf_t* buf, const dsdl_type_t* type_ptr, void* value);
 
 /// Serialize composite content (without delimiter header).
+/// For structs, value_ptr points to dsdl_value_struct_t.
+/// For unions, value_ptr points to dsdl_value_union_t.
 static void _dsdl_serialize_composite_content(_dsdl_bitbuf_t* const              buf,
                                               const dsdl_type_composite_t* const composite,
-                                              const void* const                  values)
+                                              const void* const                  value_ptr)
 {
-    // Assume values is an array of pointers to field values
-    const void* const* field_values = (const void* const*)values;
-
     if (composite->type == DSDL_COMPOSITE_UNION) {
-        // Union: First element is the tag (size_t), followed by the value pointer
-        const size_t tag = *(const size_t*)field_values[0];
+        // Union: value_ptr is dsdl_value_union_t*
+        const dsdl_value_union_t* uval = (const dsdl_value_union_t*)value_ptr;
+        const size_t              tag  = uval->tag;
+
         if (tag >= composite->field_count) {
             return; // Invalid tag
         }
@@ -3470,12 +3548,32 @@ static void _dsdl_serialize_composite_content(_dsdl_bitbuf_t* const             
         const size_t tag_bits = _dsdl_union_tag_bits(composite->field_count);
         _dsdl_bitbuf_write(buf, tag, tag_bits);
 
-        // Serialize selected variant
-        _dsdl_serialize_type(buf, composite->field_types[tag], field_values[1]);
+        // Serialize selected variant (skip void fields when finding the value)
+        // Note: unions typically don't have void alternatives, but handle it for completeness
+        const dsdl_type_t* field_type = composite->field_types[tag];
+        if (!dsdl_type_is_void(*field_type)) {
+            _dsdl_serialize_type(buf, field_type, uval->value);
+        } else {
+            // Void field: just write zero bits
+            _dsdl_bitbuf_write(buf, 0, dsdl_type_bit_width(*field_type));
+        }
     } else {
-        // Struct: serialize fields in order
+        // Struct: value_ptr is dsdl_value_struct_t*
+        const dsdl_value_struct_t* sval = (const dsdl_value_struct_t*)value_ptr;
+
+        // The values array contains only non-void fields, so we track a separate value_index
+        size_t value_index = 0;
         for (size_t i = 0; i < composite->field_count; i++) {
-            _dsdl_serialize_type(buf, composite->field_types[i], field_values[i]);
+            const dsdl_type_t* field_type = composite->field_types[i];
+
+            if (dsdl_type_is_void(*field_type)) {
+                // Void field: serialize zero bits, don't consume from values array
+                _dsdl_bitbuf_write(buf, 0, dsdl_type_bit_width(*field_type));
+            } else {
+                // Non-void field: serialize from values array
+                _dsdl_serialize_type(buf, field_type, sval->values[value_index]);
+                value_index++;
+            }
         }
     }
 }
@@ -3484,25 +3582,28 @@ static void _dsdl_serialize_composite_content(_dsdl_bitbuf_t* const             
 /// For delimited (non-sealed) composites, writes a 32-bit delimiter header.
 static void _dsdl_serialize_composite(_dsdl_bitbuf_t* const              buf,
                                       const dsdl_type_composite_t* const composite,
-                                      const void* const                  values)
+                                      const void* const                  value)
 {
-    if ((buf == NULL) || (composite == NULL) || (values == NULL)) {
+    if ((buf == NULL) || (composite == NULL) || (value == NULL)) {
         return;
     }
 
     // Serialize the content
-    _dsdl_serialize_composite_content(buf, composite, values);
+    _dsdl_serialize_composite_content(buf, composite, value);
 }
 
 /// Deserialize composite content (without delimiter header).
+/// For structs, value_ptr points to dsdl_value_struct_t.
+/// For unions, value_ptr points to dsdl_value_union_t.
 static void _dsdl_deserialize_composite_content(_dsdl_bitbuf_t* const              buf,
                                                 const dsdl_type_composite_t* const composite,
-                                                void* const                        values)
+                                                void* const                        value_ptr)
 {
-    void** field_values = (void**)values;
-
     if (composite->type == DSDL_COMPOSITE_UNION) {
-        // Union: Read tag, then deserialize selected variant
+        // Union: value_ptr is dsdl_value_union_t*
+        dsdl_value_union_t* uval = (dsdl_value_union_t*)value_ptr;
+
+        // Read tag
         const size_t tag_bits = _dsdl_union_tag_bits(composite->field_count);
         size_t       tag      = (size_t)_dsdl_bitbuf_read(buf, tag_bits);
 
@@ -3511,14 +3612,33 @@ static void _dsdl_deserialize_composite_content(_dsdl_bitbuf_t* const           
         }
 
         // Store tag
-        *(size_t*)field_values[0] = tag;
+        uval->tag = tag;
 
         // Deserialize selected variant
-        _dsdl_deserialize_type(buf, composite->field_types[tag], field_values[1]);
+        const dsdl_type_t* field_type = composite->field_types[tag];
+        if (!dsdl_type_is_void(*field_type)) {
+            _dsdl_deserialize_type(buf, field_type, uval->value);
+        } else {
+            // Void field: just skip bits
+            (void)_dsdl_bitbuf_read(buf, dsdl_type_bit_width(*field_type));
+        }
     } else {
-        // Struct: deserialize fields in order
+        // Struct: value_ptr is dsdl_value_struct_t*
+        dsdl_value_struct_t* sval = (dsdl_value_struct_t*)value_ptr;
+
+        // The values array contains only non-void fields, so we track a separate value_index
+        size_t value_index = 0;
         for (size_t i = 0; i < composite->field_count; i++) {
-            _dsdl_deserialize_type(buf, composite->field_types[i], field_values[i]);
+            const dsdl_type_t* field_type = composite->field_types[i];
+
+            if (dsdl_type_is_void(*field_type)) {
+                // Void field: skip bits, don't consume from values array
+                (void)_dsdl_bitbuf_read(buf, dsdl_type_bit_width(*field_type));
+            } else {
+                // Non-void field: deserialize into values array
+                _dsdl_deserialize_type(buf, field_type, sval->values[value_index]);
+                value_index++;
+            }
         }
     }
 }
@@ -3526,14 +3646,14 @@ static void _dsdl_deserialize_composite_content(_dsdl_bitbuf_t* const           
 /// Deserialize a composite type (struct or union).
 static void _dsdl_deserialize_composite(_dsdl_bitbuf_t* const              buf,
                                         const dsdl_type_composite_t* const composite,
-                                        void* const                        values)
+                                        void* const                        value)
 {
-    if ((buf == NULL) || (composite == NULL) || (values == NULL)) {
+    if ((buf == NULL) || (composite == NULL) || (value == NULL)) {
         return;
     }
 
     // Deserialize the content
-    _dsdl_deserialize_composite_content(buf, composite, values);
+    _dsdl_deserialize_composite_content(buf, composite, value);
 }
 
 /// Serialize any type (primitive, array, or composite).
@@ -3563,29 +3683,25 @@ static void _dsdl_serialize_type(_dsdl_bitbuf_t* const buf, const dsdl_type_t* c
     if (dsdl_type_is_array(kind)) {
         const dsdl_type_array_t* arr = (const dsdl_type_array_t*)type_ptr;
 
-        // Memory layout:
-        // - Variable arrays: { size_t count; ElementType elements[capacity]; }
-        // - Fixed arrays: { ElementType elements[capacity]; }
-        const size_t element_bits = _dsdl_type_max_bits(arr->member_type);
-        const size_t element_size = (element_bits + 7) / 8; // Storage size in bytes
+        // Get native storage size of each element
+        const size_t element_size = _dsdl_type_native_size(arr->member_type);
 
         if (kind == DSDL_ARRAY_VARIABLE) {
-            // Variable array: count followed by inline elements
-            const size_t count    = *(const size_t*)value;
-            const void*  elements = (const char*)value + sizeof(size_t); // Elements are inline
+            // Variable array: value is dsdl_value_array_variable_t*
+            const dsdl_value_array_variable_t* var = (const dsdl_value_array_variable_t*)value;
 
             // Write length prefix
             const size_t prefix_bits  = _dsdl_array_length_prefix_bits(arr->capacity);
-            const size_t actual_count = (count <= arr->capacity) ? count : arr->capacity;
+            const size_t actual_count = (var->count <= arr->capacity) ? var->count : arr->capacity;
             _dsdl_bitbuf_write(buf, actual_count, prefix_bits);
 
-            // Write elements
+            // Write elements from members pointer
             for (size_t i = 0; i < actual_count; i++) {
-                const void* elem = (const char*)elements + (i * element_size);
+                const void* elem = (const char*)var->members + (i * element_size);
                 _dsdl_serialize_type(buf, arr->member_type, elem);
             }
         } else {
-            // Fixed array: value points directly to elements
+            // Fixed array: value is void* pointing directly to elements
             for (size_t i = 0; i < arr->capacity; i++) {
                 const void* elem = (const char*)value + (i * element_size);
                 _dsdl_serialize_type(buf, arr->member_type, elem);
@@ -3659,31 +3775,38 @@ static void _dsdl_deserialize_type(_dsdl_bitbuf_t* const buf, const dsdl_type_t*
     if (dsdl_type_is_array(kind)) {
         const dsdl_type_array_t* arr = (const dsdl_type_array_t*)type_ptr;
 
-        const size_t element_bits = _dsdl_type_max_bits(arr->member_type);
-        const size_t element_size = (element_bits + 7) / 8;
+        // Get native storage size of each element
+        const size_t element_size = _dsdl_type_native_size(arr->member_type);
 
         if (kind == DSDL_ARRAY_VARIABLE) {
-            // Variable array: read length prefix, then elements
-            const size_t prefix_bits = _dsdl_array_length_prefix_bits(arr->capacity);
-            size_t       count       = (size_t)_dsdl_bitbuf_read(buf, prefix_bits);
+            // Variable array: value is dsdl_value_array_variable_t*
+            dsdl_value_array_variable_t* var = (dsdl_value_array_variable_t*)value;
 
-            if (count > arr->capacity) {
-                count = arr->capacity;
+            // Read length prefix
+            const size_t prefix_bits    = _dsdl_array_length_prefix_bits(arr->capacity);
+            size_t       count_from_msg = (size_t)_dsdl_bitbuf_read(buf, prefix_bits);
+
+            // Clamp to type capacity (message can't exceed type definition)
+            if (count_from_msg > arr->capacity) {
+                count_from_msg = arr->capacity;
             }
 
-            // Store count
-            *(size_t*)value = count;
+            // Fail if user buffer is too small
+            if (count_from_msg > var->count) {
+                buf->error = true;
+                return;
+            }
 
-            // Elements are inline after count
-            void* elements = (char*)value + sizeof(size_t);
+            // Update count to actual deserialized elements
+            var->count = count_from_msg;
 
-            // Read elements
-            for (size_t i = 0; i < count; i++) {
-                void* elem = (char*)elements + (i * element_size);
+            // Read elements into members buffer
+            for (size_t i = 0; i < count_from_msg; i++) {
+                void* elem = (char*)var->members + (i * element_size);
                 _dsdl_deserialize_type(buf, arr->member_type, elem);
             }
         } else {
-            // Fixed array: read all elements
+            // Fixed array: value is void* pointing directly to elements
             for (size_t i = 0; i < arr->capacity; i++) {
                 void* elem = (char*)value + (i * element_size);
                 _dsdl_deserialize_type(buf, arr->member_type, elem);
@@ -3734,7 +3857,7 @@ size_t dsdl_serialize(const dsdl_type_composite_t* const type,
                       const size_t                       output_size,
                       void* const                        output)
 {
-    if ((type == NULL) || (values == NULL) || (output == NULL) || (output_size == 0)) {
+    if ((type == NULL) || (value == NULL) || (output == NULL) || (output_size == 0)) {
         return 0;
     }
 
@@ -3747,8 +3870,8 @@ size_t dsdl_serialize(const dsdl_type_composite_t* const type,
         .offset_bits   = 0,
     };
 
-    // Serialize the composite type with the provided values
-    _dsdl_serialize_composite(&buf, type, values);
+    // Serialize the composite type with the provided value
+    _dsdl_serialize_composite(&buf, type, value);
 
     // Return bytes written (rounded up)
     return (buf.offset_bits + 7) / 8;
@@ -3759,7 +3882,7 @@ size_t dsdl_deserialize(const dsdl_type_composite_t* const type,
                         const size_t                       input_size,
                         const void* const                  input)
 {
-    if ((type == NULL) || (values == NULL) || (input == NULL) || (input_size == 0)) {
+    if ((type == NULL) || (value == NULL) || (input == NULL) || (input_size == 0)) {
         return 0;
     }
 
@@ -3767,11 +3890,15 @@ size_t dsdl_deserialize(const dsdl_type_composite_t* const type,
         .data          = (uint8_t*)(uintptr_t)input, // Cast away const for the buffer struct
         .capacity_bits = input_size * 8,
         .offset_bits   = 0,
+        .error         = false,
     };
 
-    // Deserialize the composite type into the provided values buffer
-    _dsdl_deserialize_composite(&buf, type, values);
+    // Deserialize the composite type into the provided value buffer
+    _dsdl_deserialize_composite(&buf, type, value);
 
-    // Return bytes consumed (rounded up)
+    // Return 0 on error, otherwise bytes consumed (rounded up)
+    if (buf.error) {
+        return 0;
+    }
     return (buf.offset_bits + 7) / 8;
 }
