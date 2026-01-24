@@ -1,7 +1,7 @@
 /// Cyphal DSDL Parser in C
 ///
-/// A compact C99+ implementation of a Cyphal DSDL parser that allows loading
-/// DSDL definitions at runtime without compile-time code generation.
+/// A compact and baremetal-friendly C99+ implementation of a Cyphal DSDL parser that allows loading
+/// DSDL definitions at runtime without compile-time code generation. Can be used in small MCUs.
 ///
 /// Copyright (c) OpenCyphal Development Team
 /// SPDX-License-Identifier: MIT
