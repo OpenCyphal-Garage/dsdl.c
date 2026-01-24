@@ -84,37 +84,37 @@ static void teardown_dsdl(void) { dsdl_destroy(&g_dsdl); }
 
 void test_bitbuf_write_read_byte_aligned(void)
 {
-    uint8_t        buffer[8] = { 0 };
-    _dsdl_bitbuf_t buf       = { buffer, 64, 0, false };
+    uint8_t       buffer[8] = { 0 };
+    dsdl_bitbuf_t buf       = { buffer, 64, 0, false };
 
     // Write 8 bits (byte-aligned)
-    _dsdl_bitbuf_write(&buf, 0xAB, 8);
+    dsdl_bitbuf_write(&buf, 0xAB, 8);
     TEST_ASSERT_EQUAL_UINT8(0xAB, buffer[0]);
     TEST_ASSERT_EQUAL_size_t(8, buf.offset_bits);
 
     // Write another 8 bits
-    _dsdl_bitbuf_write(&buf, 0xCD, 8);
+    dsdl_bitbuf_write(&buf, 0xCD, 8);
     TEST_ASSERT_EQUAL_UINT8(0xCD, buffer[1]);
     TEST_ASSERT_EQUAL_size_t(16, buf.offset_bits);
 
     // Read back
     buf.offset_bits = 0;
-    TEST_ASSERT_EQUAL_UINT64(0xAB, _dsdl_bitbuf_read(&buf, 8));
-    TEST_ASSERT_EQUAL_UINT64(0xCD, _dsdl_bitbuf_read(&buf, 8));
+    TEST_ASSERT_EQUAL_UINT64(0xAB, dsdl_bitbuf_read(&buf, 8));
+    TEST_ASSERT_EQUAL_UINT64(0xCD, dsdl_bitbuf_read(&buf, 8));
 }
 
 void test_bitbuf_write_read_non_aligned(void)
 {
-    uint8_t        buffer[8] = { 0 };
-    _dsdl_bitbuf_t buf       = { buffer, 64, 0, false };
+    uint8_t       buffer[8] = { 0 };
+    dsdl_bitbuf_t buf       = { buffer, 64, 0, false };
 
     // Write 3 bits: 0b101 = 5
-    _dsdl_bitbuf_write(&buf, 5, 3);
+    dsdl_bitbuf_write(&buf, 5, 3);
     TEST_ASSERT_EQUAL_size_t(3, buf.offset_bits);
     TEST_ASSERT_EQUAL_UINT8(0x05, buffer[0]); // 00000101
 
     // Write 5 bits: 0b11010 = 26
-    _dsdl_bitbuf_write(&buf, 26, 5);
+    dsdl_bitbuf_write(&buf, 26, 5);
     TEST_ASSERT_EQUAL_size_t(8, buf.offset_bits);
     // Buffer[0] should be: 101 | 11010 (shifted left 3) = 101 | 10101000 >> 5 bits...
     // Actually: bits 0-2 = 101 (5), bits 3-7 = 11010 (26)
@@ -123,37 +123,37 @@ void test_bitbuf_write_read_non_aligned(void)
 
     // Read back
     buf.offset_bits = 0;
-    TEST_ASSERT_EQUAL_UINT64(5, _dsdl_bitbuf_read(&buf, 3));
-    TEST_ASSERT_EQUAL_UINT64(26, _dsdl_bitbuf_read(&buf, 5));
+    TEST_ASSERT_EQUAL_UINT64(5, dsdl_bitbuf_read(&buf, 3));
+    TEST_ASSERT_EQUAL_UINT64(26, dsdl_bitbuf_read(&buf, 5));
 }
 
 void test_bitbuf_write_cross_byte(void)
 {
-    uint8_t        buffer[8] = { 0 };
-    _dsdl_bitbuf_t buf       = { buffer, 64, 0, false };
+    uint8_t       buffer[8] = { 0 };
+    dsdl_bitbuf_t buf       = { buffer, 64, 0, false };
 
     // Write 4 bits
-    _dsdl_bitbuf_write(&buf, 0xF, 4);
+    dsdl_bitbuf_write(&buf, 0xF, 4);
     TEST_ASSERT_EQUAL_size_t(4, buf.offset_bits);
 
     // Write 16 bits that cross byte boundaries
-    _dsdl_bitbuf_write(&buf, 0x1234, 16);
+    dsdl_bitbuf_write(&buf, 0x1234, 16);
     TEST_ASSERT_EQUAL_size_t(20, buf.offset_bits);
 
     // Read back
     buf.offset_bits = 0;
-    TEST_ASSERT_EQUAL_UINT64(0xF, _dsdl_bitbuf_read(&buf, 4));
-    TEST_ASSERT_EQUAL_UINT64(0x1234, _dsdl_bitbuf_read(&buf, 16));
+    TEST_ASSERT_EQUAL_UINT64(0xF, dsdl_bitbuf_read(&buf, 4));
+    TEST_ASSERT_EQUAL_UINT64(0x1234, dsdl_bitbuf_read(&buf, 16));
 }
 
 void test_bitbuf_implicit_zero_extension(void)
 {
-    uint8_t        buffer[2] = { 0xAB, 0xCD };
-    _dsdl_bitbuf_t buf       = { buffer, 16, 0, false };
+    uint8_t       buffer[2] = { 0xAB, 0xCD };
+    dsdl_bitbuf_t buf       = { buffer, 16, 0, false };
 
     // Read more bits than available - should zero-extend
     buf.offset_bits = 8;
-    uint64_t value  = _dsdl_bitbuf_read(&buf, 16);
+    uint64_t value  = dsdl_bitbuf_read(&buf, 16);
     // First 8 bits from buffer[1] = 0xCD, remaining 8 bits = 0
     TEST_ASSERT_EQUAL_UINT64(0x00CD, value);
 }
@@ -164,11 +164,11 @@ void test_bitbuf_implicit_zero_extension(void)
 
 void test_serialize_uint8(void)
 {
-    uint8_t        buffer[8] = { 0 };
-    _dsdl_bitbuf_t buf       = { buffer, 64, 0, false };
+    uint8_t       buffer[8] = { 0 };
+    dsdl_bitbuf_t buf       = { buffer, 64, 0, false };
 
     uint8_t value = 0x42;
-    _dsdl_serialize_primitive(&buf, DSDL_UINT(8), &value);
+    dsdl_serialize_primitive(&buf, DSDL_UINT(8), &value);
 
     TEST_ASSERT_EQUAL_size_t(8, buf.offset_bits);
     TEST_ASSERT_EQUAL_UINT8(0x42, buffer[0]);
@@ -176,17 +176,17 @@ void test_serialize_uint8(void)
     // Deserialize
     buf.offset_bits = 0;
     uint8_t result  = 0;
-    _dsdl_deserialize_primitive(&buf, DSDL_UINT(8), &result);
+    dsdl_deserialize_primitive(&buf, DSDL_UINT(8), &result);
     TEST_ASSERT_EQUAL_UINT8(0x42, result);
 }
 
 void test_serialize_uint32(void)
 {
-    uint8_t        buffer[8] = { 0 };
-    _dsdl_bitbuf_t buf       = { buffer, 64, 0, false };
+    uint8_t       buffer[8] = { 0 };
+    dsdl_bitbuf_t buf       = { buffer, 64, 0, false };
 
     uint32_t value = 0x12345678;
-    _dsdl_serialize_primitive(&buf, DSDL_UINT(32), &value);
+    dsdl_serialize_primitive(&buf, DSDL_UINT(32), &value);
 
     TEST_ASSERT_EQUAL_size_t(32, buf.offset_bits);
     // Little-endian: 0x78, 0x56, 0x34, 0x12
@@ -198,39 +198,39 @@ void test_serialize_uint32(void)
     // Deserialize
     buf.offset_bits = 0;
     uint32_t result = 0;
-    _dsdl_deserialize_primitive(&buf, DSDL_UINT(32), &result);
+    dsdl_deserialize_primitive(&buf, DSDL_UINT(32), &result);
     TEST_ASSERT_EQUAL_UINT32(0x12345678, result);
 }
 
 void test_serialize_int16_negative(void)
 {
-    uint8_t        buffer[8] = { 0 };
-    _dsdl_bitbuf_t buf       = { buffer, 64, 0, false };
+    uint8_t       buffer[8] = { 0 };
+    dsdl_bitbuf_t buf       = { buffer, 64, 0, false };
 
     int16_t value = -1234; // 0xFB2E in two's complement
-    _dsdl_serialize_primitive(&buf, DSDL_INT(16), &value);
+    dsdl_serialize_primitive(&buf, DSDL_INT(16), &value);
 
     TEST_ASSERT_EQUAL_size_t(16, buf.offset_bits);
 
     // Deserialize
     buf.offset_bits = 0;
     int16_t result  = 0;
-    _dsdl_deserialize_primitive(&buf, DSDL_INT(16), &result);
+    dsdl_deserialize_primitive(&buf, DSDL_INT(16), &result);
     TEST_ASSERT_EQUAL_INT16(-1234, result);
 }
 
 void test_serialize_bool(void)
 {
-    uint8_t        buffer[8] = { 0 };
-    _dsdl_bitbuf_t buf       = { buffer, 64, 0, false };
+    uint8_t       buffer[8] = { 0 };
+    dsdl_bitbuf_t buf       = { buffer, 64, 0, false };
 
     bool value_true  = true;
     bool value_false = false;
 
-    _dsdl_serialize_primitive(&buf, DSDL_BOOL, &value_true);
+    dsdl_serialize_primitive(&buf, DSDL_BOOL, &value_true);
     TEST_ASSERT_EQUAL_size_t(1, buf.offset_bits);
 
-    _dsdl_serialize_primitive(&buf, DSDL_BOOL, &value_false);
+    dsdl_serialize_primitive(&buf, DSDL_BOOL, &value_false);
     TEST_ASSERT_EQUAL_size_t(2, buf.offset_bits);
 
     // Buffer should have: bit0=1, bit1=0 -> 0x01
@@ -240,26 +240,26 @@ void test_serialize_bool(void)
     buf.offset_bits   = 0;
     bool result_true  = false;
     bool result_false = true;
-    _dsdl_deserialize_primitive(&buf, DSDL_BOOL, &result_true);
-    _dsdl_deserialize_primitive(&buf, DSDL_BOOL, &result_false);
+    dsdl_deserialize_primitive(&buf, DSDL_BOOL, &result_true);
+    dsdl_deserialize_primitive(&buf, DSDL_BOOL, &result_false);
     TEST_ASSERT_TRUE(result_true);
     TEST_ASSERT_FALSE(result_false);
 }
 
 void test_serialize_float32(void)
 {
-    uint8_t        buffer[8] = { 0 };
-    _dsdl_bitbuf_t buf       = { buffer, 64, 0, false };
+    uint8_t       buffer[8] = { 0 };
+    dsdl_bitbuf_t buf       = { buffer, 64, 0, false };
 
     float value = 3.14159f;
-    _dsdl_serialize_primitive(&buf, DSDL_FLOAT32, &value);
+    dsdl_serialize_primitive(&buf, DSDL_FLOAT32, &value);
 
     TEST_ASSERT_EQUAL_size_t(32, buf.offset_bits);
 
     // Deserialize
     buf.offset_bits = 0;
     float result    = 0.0f;
-    _dsdl_deserialize_primitive(&buf, DSDL_FLOAT32, &result);
+    dsdl_deserialize_primitive(&buf, DSDL_FLOAT32, &result);
     TEST_ASSERT_FLOAT_WITHIN(0.00001f, 3.14159f, result);
 }
 

@@ -32,7 +32,7 @@ static dsdl_parser_t g_parser;
 static void init_parser(const char* input)
 {
     g_dsdl.realloc = test_realloc;
-    dsdl_parser_init_(&g_parser, &g_dsdl, input, strlen(input));
+    dsdl_parser_init(&g_parser, &g_dsdl, input, strlen(input));
 }
 
 // ============================================================================
@@ -42,7 +42,7 @@ static void init_parser(const char* input)
 static void test_parse_int_decimal(void)
 {
     init_parser("42");
-    dsdl_rational_t r = dsdl_parse_integer_(&g_parser);
+    dsdl_rational_t r = dsdl_parse_integer(&g_parser);
     TEST_ASSERT_EQUAL_INT64(42, r.num);
     TEST_ASSERT_EQUAL_UINT64(1, r.den);
 }
@@ -50,7 +50,7 @@ static void test_parse_int_decimal(void)
 static void test_parse_int_decimal_with_underscores(void)
 {
     init_parser("1_000_000");
-    dsdl_rational_t r = dsdl_parse_integer_(&g_parser);
+    dsdl_rational_t r = dsdl_parse_integer(&g_parser);
     TEST_ASSERT_EQUAL_INT64(1000000, r.num);
     TEST_ASSERT_EQUAL_UINT64(1, r.den);
 }
@@ -58,7 +58,7 @@ static void test_parse_int_decimal_with_underscores(void)
 static void test_parse_int_binary(void)
 {
     init_parser("0b1010");
-    dsdl_rational_t r = dsdl_parse_integer_(&g_parser);
+    dsdl_rational_t r = dsdl_parse_integer(&g_parser);
     TEST_ASSERT_EQUAL_INT64(10, r.num);
     TEST_ASSERT_EQUAL_UINT64(1, r.den);
 }
@@ -66,7 +66,7 @@ static void test_parse_int_binary(void)
 static void test_parse_int_binary_uppercase(void)
 {
     init_parser("0B1111_0000");
-    dsdl_rational_t r = dsdl_parse_integer_(&g_parser);
+    dsdl_rational_t r = dsdl_parse_integer(&g_parser);
     TEST_ASSERT_EQUAL_INT64(0xF0, r.num);
     TEST_ASSERT_EQUAL_UINT64(1, r.den);
 }
@@ -74,7 +74,7 @@ static void test_parse_int_binary_uppercase(void)
 static void test_parse_int_octal(void)
 {
     init_parser("0o755");
-    dsdl_rational_t r = dsdl_parse_integer_(&g_parser);
+    dsdl_rational_t r = dsdl_parse_integer(&g_parser);
     TEST_ASSERT_EQUAL_INT64(0755, r.num);
     TEST_ASSERT_EQUAL_UINT64(1, r.den);
 }
@@ -82,7 +82,7 @@ static void test_parse_int_octal(void)
 static void test_parse_int_hex(void)
 {
     init_parser("0xFF");
-    dsdl_rational_t r = dsdl_parse_integer_(&g_parser);
+    dsdl_rational_t r = dsdl_parse_integer(&g_parser);
     TEST_ASSERT_EQUAL_INT64(255, r.num);
     TEST_ASSERT_EQUAL_UINT64(1, r.den);
 }
@@ -90,7 +90,7 @@ static void test_parse_int_hex(void)
 static void test_parse_int_hex_mixed_case(void)
 {
     init_parser("0xDEAD_beef");
-    dsdl_rational_t r = dsdl_parse_integer_(&g_parser);
+    dsdl_rational_t r = dsdl_parse_integer(&g_parser);
     TEST_ASSERT_EQUAL_INT64(0xDEADBEEF, r.num);
     TEST_ASSERT_EQUAL_UINT64(1, r.den);
 }
@@ -98,7 +98,7 @@ static void test_parse_int_hex_mixed_case(void)
 static void test_parse_int_zero(void)
 {
     init_parser("0");
-    dsdl_rational_t r = dsdl_parse_integer_(&g_parser);
+    dsdl_rational_t r = dsdl_parse_integer(&g_parser);
     TEST_ASSERT_EQUAL_INT64(0, r.num);
     TEST_ASSERT_EQUAL_UINT64(1, r.den);
 }
@@ -110,7 +110,7 @@ static void test_parse_int_zero(void)
 static void test_parse_real_simple(void)
 {
     init_parser("3.14");
-    dsdl_rational_t r = dsdl_parse_real_(&g_parser);
+    dsdl_rational_t r = dsdl_parse_real(&g_parser);
     // 3.14 = 314/100 = 157/50
     TEST_ASSERT_EQUAL_INT64(157, r.num);
     TEST_ASSERT_EQUAL_UINT64(50, r.den);
@@ -119,7 +119,7 @@ static void test_parse_real_simple(void)
 static void test_parse_real_trailing_dot(void)
 {
     init_parser("42.");
-    dsdl_rational_t r = dsdl_parse_real_(&g_parser);
+    dsdl_rational_t r = dsdl_parse_real(&g_parser);
     TEST_ASSERT_EQUAL_INT64(42, r.num);
     TEST_ASSERT_EQUAL_UINT64(1, r.den);
 }
@@ -127,7 +127,7 @@ static void test_parse_real_trailing_dot(void)
 static void test_parse_real_leading_dot(void)
 {
     init_parser(".5");
-    dsdl_rational_t r = dsdl_parse_real_(&g_parser);
+    dsdl_rational_t r = dsdl_parse_real(&g_parser);
     // 0.5 = 5/10 = 1/2
     TEST_ASSERT_EQUAL_INT64(1, r.num);
     TEST_ASSERT_EQUAL_UINT64(2, r.den);
@@ -136,7 +136,7 @@ static void test_parse_real_leading_dot(void)
 static void test_parse_real_exponent(void)
 {
     init_parser("1e3");
-    dsdl_rational_t r = dsdl_parse_real_(&g_parser);
+    dsdl_rational_t r = dsdl_parse_real(&g_parser);
     TEST_ASSERT_EQUAL_INT64(1000, r.num);
     TEST_ASSERT_EQUAL_UINT64(1, r.den);
 }
@@ -144,7 +144,7 @@ static void test_parse_real_exponent(void)
 static void test_parse_real_exponent_negative(void)
 {
     init_parser("5e-2");
-    dsdl_rational_t r = dsdl_parse_real_(&g_parser);
+    dsdl_rational_t r = dsdl_parse_real(&g_parser);
     // 5e-2 = 5/100 = 1/20
     TEST_ASSERT_EQUAL_INT64(1, r.num);
     TEST_ASSERT_EQUAL_UINT64(20, r.den);
@@ -153,7 +153,7 @@ static void test_parse_real_exponent_negative(void)
 static void test_parse_real_full(void)
 {
     init_parser("1.5e2");
-    dsdl_rational_t r = dsdl_parse_real_(&g_parser);
+    dsdl_rational_t r = dsdl_parse_real(&g_parser);
     // 1.5e2 = 150
     TEST_ASSERT_EQUAL_INT64(150, r.num);
     TEST_ASSERT_EQUAL_UINT64(1, r.den);
@@ -167,7 +167,7 @@ static void test_parse_boolean_true(void)
 {
     init_parser("true");
     bool val = false;
-    TEST_ASSERT_TRUE(dsdl_parse_boolean_(&g_parser, &val));
+    TEST_ASSERT_TRUE(dsdl_parse_boolean(&g_parser, &val));
     TEST_ASSERT_TRUE(val);
 }
 
@@ -175,7 +175,7 @@ static void test_parse_boolean_false(void)
 {
     init_parser("false");
     bool val = true;
-    TEST_ASSERT_TRUE(dsdl_parse_boolean_(&g_parser, &val));
+    TEST_ASSERT_TRUE(dsdl_parse_boolean(&g_parser, &val));
     TEST_ASSERT_FALSE(val);
 }
 
@@ -184,7 +184,7 @@ static void test_parse_boolean_not_keyword(void)
     // "trueX" should not parse as boolean
     init_parser("trueX");
     bool val = false;
-    TEST_ASSERT_FALSE(dsdl_parse_boolean_(&g_parser, &val));
+    TEST_ASSERT_FALSE(dsdl_parse_boolean(&g_parser, &val));
 }
 
 // ============================================================================
@@ -194,7 +194,7 @@ static void test_parse_boolean_not_keyword(void)
 static void test_parse_string_double_quoted(void)
 {
     init_parser("\"hello\"");
-    wkv_str_t s = dsdl_parse_string_(&g_parser);
+    wkv_str_t s = dsdl_parse_string(&g_parser);
     TEST_ASSERT_NOT_NULL(s.str);
     TEST_ASSERT_EQUAL_size_t(5, s.len);
     TEST_ASSERT_EQUAL_MEMORY("hello", s.str, 5);
@@ -203,7 +203,7 @@ static void test_parse_string_double_quoted(void)
 static void test_parse_string_single_quoted(void)
 {
     init_parser("'world'");
-    wkv_str_t s = dsdl_parse_string_(&g_parser);
+    wkv_str_t s = dsdl_parse_string(&g_parser);
     TEST_ASSERT_NOT_NULL(s.str);
     TEST_ASSERT_EQUAL_size_t(5, s.len);
     TEST_ASSERT_EQUAL_MEMORY("world", s.str, 5);
@@ -212,7 +212,7 @@ static void test_parse_string_single_quoted(void)
 static void test_parse_string_with_escape(void)
 {
     init_parser("\"line1\\nline2\"");
-    wkv_str_t s = dsdl_parse_string_(&g_parser);
+    wkv_str_t s = dsdl_parse_string(&g_parser);
     TEST_ASSERT_NOT_NULL(s.str);
     // The raw content includes the backslash (escapes are processed later)
     TEST_ASSERT_EQUAL_size_t(12, s.len);
@@ -221,7 +221,7 @@ static void test_parse_string_with_escape(void)
 static void test_parse_string_empty(void)
 {
     init_parser("\"\"");
-    wkv_str_t s = dsdl_parse_string_(&g_parser);
+    wkv_str_t s = dsdl_parse_string(&g_parser);
     TEST_ASSERT_NOT_NULL(s.str);
     TEST_ASSERT_EQUAL_size_t(0, s.len);
 }
@@ -233,7 +233,7 @@ static void test_parse_string_empty(void)
 static void test_parse_identifier_simple(void)
 {
     init_parser("foo");
-    wkv_str_t id = dsdl_parse_identifier_(&g_parser);
+    wkv_str_t id = dsdl_parse_identifier(&g_parser);
     TEST_ASSERT_NOT_NULL(id.str);
     TEST_ASSERT_EQUAL_size_t(3, id.len);
     TEST_ASSERT_EQUAL_MEMORY("foo", id.str, 3);
@@ -242,7 +242,7 @@ static void test_parse_identifier_simple(void)
 static void test_parse_identifier_with_underscore(void)
 {
     init_parser("_my_var123");
-    wkv_str_t id = dsdl_parse_identifier_(&g_parser);
+    wkv_str_t id = dsdl_parse_identifier(&g_parser);
     TEST_ASSERT_NOT_NULL(id.str);
     TEST_ASSERT_EQUAL_size_t(10, id.len);
 }
@@ -250,7 +250,7 @@ static void test_parse_identifier_with_underscore(void)
 static void test_parse_identifier_starting_with_digit(void)
 {
     init_parser("123abc");
-    wkv_str_t id = dsdl_parse_identifier_(&g_parser);
+    wkv_str_t id = dsdl_parse_identifier(&g_parser);
     TEST_ASSERT_NULL(id.str);
 }
 
@@ -262,7 +262,7 @@ static void test_parse_expr_simple_integer(void)
 {
     init_parser("42");
     dsdl_value_t val;
-    TEST_ASSERT_TRUE(dsdl_parse_expression_(&g_parser, &val));
+    TEST_ASSERT_TRUE(dsdl_parse_expression(&g_parser, &val));
     TEST_ASSERT_EQUAL(dsdl_value_rational, val.kind);
     TEST_ASSERT_EQUAL_INT64(42, val.as.rational.num);
 }
@@ -271,7 +271,7 @@ static void test_parse_expr_addition(void)
 {
     init_parser("2 + 3");
     dsdl_value_t val;
-    TEST_ASSERT_TRUE(dsdl_parse_expression_(&g_parser, &val));
+    TEST_ASSERT_TRUE(dsdl_parse_expression(&g_parser, &val));
     TEST_ASSERT_EQUAL(dsdl_value_rational, val.kind);
     TEST_ASSERT_EQUAL_INT64(5, val.as.rational.num);
 }
@@ -280,7 +280,7 @@ static void test_parse_expr_subtraction(void)
 {
     init_parser("10 - 4");
     dsdl_value_t val;
-    TEST_ASSERT_TRUE(dsdl_parse_expression_(&g_parser, &val));
+    TEST_ASSERT_TRUE(dsdl_parse_expression(&g_parser, &val));
     TEST_ASSERT_EQUAL(dsdl_value_rational, val.kind);
     TEST_ASSERT_EQUAL_INT64(6, val.as.rational.num);
 }
@@ -289,7 +289,7 @@ static void test_parse_expr_multiplication(void)
 {
     init_parser("6 * 7");
     dsdl_value_t val;
-    TEST_ASSERT_TRUE(dsdl_parse_expression_(&g_parser, &val));
+    TEST_ASSERT_TRUE(dsdl_parse_expression(&g_parser, &val));
     TEST_ASSERT_EQUAL(dsdl_value_rational, val.kind);
     TEST_ASSERT_EQUAL_INT64(42, val.as.rational.num);
 }
@@ -298,7 +298,7 @@ static void test_parse_expr_division(void)
 {
     init_parser("15 / 3");
     dsdl_value_t val;
-    TEST_ASSERT_TRUE(dsdl_parse_expression_(&g_parser, &val));
+    TEST_ASSERT_TRUE(dsdl_parse_expression(&g_parser, &val));
     TEST_ASSERT_EQUAL(dsdl_value_rational, val.kind);
     TEST_ASSERT_EQUAL_INT64(5, val.as.rational.num);
     TEST_ASSERT_EQUAL_UINT64(1, val.as.rational.den);
@@ -308,7 +308,7 @@ static void test_parse_expr_division_fraction(void)
 {
     init_parser("1 / 3");
     dsdl_value_t val;
-    TEST_ASSERT_TRUE(dsdl_parse_expression_(&g_parser, &val));
+    TEST_ASSERT_TRUE(dsdl_parse_expression(&g_parser, &val));
     TEST_ASSERT_EQUAL(dsdl_value_rational, val.kind);
     TEST_ASSERT_EQUAL_INT64(1, val.as.rational.num);
     TEST_ASSERT_EQUAL_UINT64(3, val.as.rational.den);
@@ -318,7 +318,7 @@ static void test_parse_expr_modulo(void)
 {
     init_parser("17 % 5");
     dsdl_value_t val;
-    TEST_ASSERT_TRUE(dsdl_parse_expression_(&g_parser, &val));
+    TEST_ASSERT_TRUE(dsdl_parse_expression(&g_parser, &val));
     TEST_ASSERT_EQUAL(dsdl_value_rational, val.kind);
     TEST_ASSERT_EQUAL_INT64(2, val.as.rational.num);
 }
@@ -327,7 +327,7 @@ static void test_parse_expr_power(void)
 {
     init_parser("2 ** 10");
     dsdl_value_t val;
-    TEST_ASSERT_TRUE(dsdl_parse_expression_(&g_parser, &val));
+    TEST_ASSERT_TRUE(dsdl_parse_expression(&g_parser, &val));
     TEST_ASSERT_EQUAL(dsdl_value_rational, val.kind);
     TEST_ASSERT_EQUAL_INT64(1024, val.as.rational.num);
 }
@@ -337,7 +337,7 @@ static void test_parse_expr_precedence(void)
     // 2 + 3 * 4 = 2 + 12 = 14
     init_parser("2 + 3 * 4");
     dsdl_value_t val;
-    TEST_ASSERT_TRUE(dsdl_parse_expression_(&g_parser, &val));
+    TEST_ASSERT_TRUE(dsdl_parse_expression(&g_parser, &val));
     TEST_ASSERT_EQUAL(dsdl_value_rational, val.kind);
     TEST_ASSERT_EQUAL_INT64(14, val.as.rational.num);
 }
@@ -347,7 +347,7 @@ static void test_parse_expr_parentheses(void)
     // (2 + 3) * 4 = 5 * 4 = 20
     init_parser("(2 + 3) * 4");
     dsdl_value_t val;
-    TEST_ASSERT_TRUE(dsdl_parse_expression_(&g_parser, &val));
+    TEST_ASSERT_TRUE(dsdl_parse_expression(&g_parser, &val));
     TEST_ASSERT_EQUAL(dsdl_value_rational, val.kind);
     TEST_ASSERT_EQUAL_INT64(20, val.as.rational.num);
 }
@@ -356,7 +356,7 @@ static void test_parse_expr_unary_minus(void)
 {
     init_parser("-5");
     dsdl_value_t val;
-    TEST_ASSERT_TRUE(dsdl_parse_expression_(&g_parser, &val));
+    TEST_ASSERT_TRUE(dsdl_parse_expression(&g_parser, &val));
     TEST_ASSERT_EQUAL(dsdl_value_rational, val.kind);
     TEST_ASSERT_EQUAL_INT64(-5, val.as.rational.num);
 }
@@ -365,7 +365,7 @@ static void test_parse_expr_unary_plus(void)
 {
     init_parser("+42");
     dsdl_value_t val;
-    TEST_ASSERT_TRUE(dsdl_parse_expression_(&g_parser, &val));
+    TEST_ASSERT_TRUE(dsdl_parse_expression(&g_parser, &val));
     TEST_ASSERT_EQUAL(dsdl_value_rational, val.kind);
     TEST_ASSERT_EQUAL_INT64(42, val.as.rational.num);
 }
@@ -374,7 +374,7 @@ static void test_parse_expr_bitwise_or(void)
 {
     init_parser("0b1010 | 0b0101");
     dsdl_value_t val;
-    TEST_ASSERT_TRUE(dsdl_parse_expression_(&g_parser, &val));
+    TEST_ASSERT_TRUE(dsdl_parse_expression(&g_parser, &val));
     TEST_ASSERT_EQUAL(dsdl_value_rational, val.kind);
     TEST_ASSERT_EQUAL_INT64(0xF, val.as.rational.num);
 }
@@ -383,7 +383,7 @@ static void test_parse_expr_bitwise_and(void)
 {
     init_parser("0xFF & 0x0F");
     dsdl_value_t val;
-    TEST_ASSERT_TRUE(dsdl_parse_expression_(&g_parser, &val));
+    TEST_ASSERT_TRUE(dsdl_parse_expression(&g_parser, &val));
     TEST_ASSERT_EQUAL(dsdl_value_rational, val.kind);
     TEST_ASSERT_EQUAL_INT64(0x0F, val.as.rational.num);
 }
@@ -392,7 +392,7 @@ static void test_parse_expr_bitwise_xor(void)
 {
     init_parser("0b1111 ^ 0b1010");
     dsdl_value_t val;
-    TEST_ASSERT_TRUE(dsdl_parse_expression_(&g_parser, &val));
+    TEST_ASSERT_TRUE(dsdl_parse_expression(&g_parser, &val));
     TEST_ASSERT_EQUAL(dsdl_value_rational, val.kind);
     TEST_ASSERT_EQUAL_INT64(5, val.as.rational.num); // 0b0101 = 5
 }
@@ -401,7 +401,7 @@ static void test_parse_expr_comparison_eq(void)
 {
     init_parser("5 == 5");
     dsdl_value_t val;
-    TEST_ASSERT_TRUE(dsdl_parse_expression_(&g_parser, &val));
+    TEST_ASSERT_TRUE(dsdl_parse_expression(&g_parser, &val));
     TEST_ASSERT_EQUAL(dsdl_value_bool, val.kind);
     TEST_ASSERT_TRUE(val.as.boolean);
 }
@@ -410,7 +410,7 @@ static void test_parse_expr_comparison_ne(void)
 {
     init_parser("5 != 3");
     dsdl_value_t val;
-    TEST_ASSERT_TRUE(dsdl_parse_expression_(&g_parser, &val));
+    TEST_ASSERT_TRUE(dsdl_parse_expression(&g_parser, &val));
     TEST_ASSERT_EQUAL(dsdl_value_bool, val.kind);
     TEST_ASSERT_TRUE(val.as.boolean);
 }
@@ -419,7 +419,7 @@ static void test_parse_expr_comparison_lt(void)
 {
     init_parser("3 < 5");
     dsdl_value_t val;
-    TEST_ASSERT_TRUE(dsdl_parse_expression_(&g_parser, &val));
+    TEST_ASSERT_TRUE(dsdl_parse_expression(&g_parser, &val));
     TEST_ASSERT_EQUAL(dsdl_value_bool, val.kind);
     TEST_ASSERT_TRUE(val.as.boolean);
 }
@@ -428,7 +428,7 @@ static void test_parse_expr_comparison_le(void)
 {
     init_parser("5 <= 5");
     dsdl_value_t val;
-    TEST_ASSERT_TRUE(dsdl_parse_expression_(&g_parser, &val));
+    TEST_ASSERT_TRUE(dsdl_parse_expression(&g_parser, &val));
     TEST_ASSERT_EQUAL(dsdl_value_bool, val.kind);
     TEST_ASSERT_TRUE(val.as.boolean);
 }
@@ -437,7 +437,7 @@ static void test_parse_expr_comparison_gt(void)
 {
     init_parser("5 > 3");
     dsdl_value_t val;
-    TEST_ASSERT_TRUE(dsdl_parse_expression_(&g_parser, &val));
+    TEST_ASSERT_TRUE(dsdl_parse_expression(&g_parser, &val));
     TEST_ASSERT_EQUAL(dsdl_value_bool, val.kind);
     TEST_ASSERT_TRUE(val.as.boolean);
 }
@@ -446,7 +446,7 @@ static void test_parse_expr_comparison_ge(void)
 {
     init_parser("5 >= 5");
     dsdl_value_t val;
-    TEST_ASSERT_TRUE(dsdl_parse_expression_(&g_parser, &val));
+    TEST_ASSERT_TRUE(dsdl_parse_expression(&g_parser, &val));
     TEST_ASSERT_EQUAL(dsdl_value_bool, val.kind);
     TEST_ASSERT_TRUE(val.as.boolean);
 }
@@ -455,7 +455,7 @@ static void test_parse_expr_logical_and(void)
 {
     init_parser("true && false");
     dsdl_value_t val;
-    TEST_ASSERT_TRUE(dsdl_parse_expression_(&g_parser, &val));
+    TEST_ASSERT_TRUE(dsdl_parse_expression(&g_parser, &val));
     TEST_ASSERT_EQUAL(dsdl_value_bool, val.kind);
     TEST_ASSERT_FALSE(val.as.boolean);
 }
@@ -464,7 +464,7 @@ static void test_parse_expr_logical_or(void)
 {
     init_parser("true || false");
     dsdl_value_t val;
-    TEST_ASSERT_TRUE(dsdl_parse_expression_(&g_parser, &val));
+    TEST_ASSERT_TRUE(dsdl_parse_expression(&g_parser, &val));
     TEST_ASSERT_EQUAL(dsdl_value_bool, val.kind);
     TEST_ASSERT_TRUE(val.as.boolean);
 }
@@ -473,7 +473,7 @@ static void test_parse_expr_logical_not(void)
 {
     init_parser("!false");
     dsdl_value_t val;
-    TEST_ASSERT_TRUE(dsdl_parse_expression_(&g_parser, &val));
+    TEST_ASSERT_TRUE(dsdl_parse_expression(&g_parser, &val));
     TEST_ASSERT_EQUAL(dsdl_value_bool, val.kind);
     TEST_ASSERT_TRUE(val.as.boolean);
 }
@@ -483,7 +483,7 @@ static void test_parse_expr_complex(void)
     // 3 < 5 && 5 < 7
     init_parser("3 < 5 && 5 < 7");
     dsdl_value_t val;
-    TEST_ASSERT_TRUE(dsdl_parse_expression_(&g_parser, &val));
+    TEST_ASSERT_TRUE(dsdl_parse_expression(&g_parser, &val));
     TEST_ASSERT_EQUAL(dsdl_value_bool, val.kind);
     TEST_ASSERT_TRUE(val.as.boolean);
 }
@@ -493,7 +493,7 @@ static void test_parse_expr_power_associativity(void)
     // 2 ** 3 ** 2 = 2 ** 9 = 512 (right-associative)
     init_parser("2 ** 3 ** 2");
     dsdl_value_t val;
-    TEST_ASSERT_TRUE(dsdl_parse_expression_(&g_parser, &val));
+    TEST_ASSERT_TRUE(dsdl_parse_expression(&g_parser, &val));
     TEST_ASSERT_EQUAL(dsdl_value_rational, val.kind);
     TEST_ASSERT_EQUAL_INT64(512, val.as.rational.num);
 }
@@ -503,7 +503,7 @@ static void test_parse_expr_power_fractional_exponent(void)
     // 4 ** 0.5 = 2 (square root)
     init_parser("4 ** 0.5");
     dsdl_value_t val;
-    TEST_ASSERT_TRUE(dsdl_parse_expression_(&g_parser, &val));
+    TEST_ASSERT_TRUE(dsdl_parse_expression(&g_parser, &val));
     TEST_ASSERT_EQUAL(dsdl_value_rational, val.kind);
     // Result should be approximately 2 (rational approximation)
     // Check that num/den is close to 2: num should be approximately 2*den
@@ -517,7 +517,7 @@ static void test_parse_expr_power_fractional_base_and_exp(void)
     // 27 ** (1/3) = 3 (cube root)
     init_parser("27 ** (1/3)");
     dsdl_value_t val;
-    TEST_ASSERT_TRUE(dsdl_parse_expression_(&g_parser, &val));
+    TEST_ASSERT_TRUE(dsdl_parse_expression(&g_parser, &val));
     TEST_ASSERT_EQUAL(dsdl_value_rational, val.kind);
     // Result should be approximately 3
     TEST_ASSERT_TRUE(val.as.rational.den > 0);
@@ -530,7 +530,7 @@ static void test_parse_expr_power_negative_fractional(void)
     // 4 ** -0.5 = 0.5 (1/sqrt(4))
     init_parser("4 ** (-0.5)");
     dsdl_value_t val;
-    TEST_ASSERT_TRUE(dsdl_parse_expression_(&g_parser, &val));
+    TEST_ASSERT_TRUE(dsdl_parse_expression(&g_parser, &val));
     TEST_ASSERT_EQUAL(dsdl_value_rational, val.kind);
     // Result should be approximately 0.5 = 1/2
     // Check that 2*num is approximately equal to den
@@ -549,7 +549,7 @@ static void test_parse_set_empty(void)
 {
     init_parser("{}");
     dsdl_value_t val;
-    TEST_ASSERT_TRUE(dsdl_parse_literal_(&g_parser, &val));
+    TEST_ASSERT_TRUE(dsdl_parse_literal(&g_parser, &val));
     TEST_ASSERT_EQUAL(dsdl_value_set, val.kind);
     TEST_ASSERT_EQUAL_size_t(0, val.as.set.count);
 }
@@ -558,25 +558,25 @@ static void test_parse_set_single(void)
 {
     init_parser("{42}");
     dsdl_value_t val;
-    TEST_ASSERT_TRUE(dsdl_parse_literal_(&g_parser, &val));
+    TEST_ASSERT_TRUE(dsdl_parse_literal(&g_parser, &val));
     TEST_ASSERT_EQUAL(dsdl_value_set, val.kind);
     TEST_ASSERT_EQUAL_size_t(1, val.as.set.count);
     TEST_ASSERT_EQUAL(dsdl_value_rational, val.as.set.elements[0].kind);
     TEST_ASSERT_EQUAL_INT64(42, val.as.set.elements[0].as.rational.num);
-    dsdl_free_(&g_dsdl, val.as.set.elements);
+    dsdl_free(&g_dsdl, val.as.set.elements);
 }
 
 static void test_parse_set_multiple(void)
 {
     init_parser("{1, 2, 3}");
     dsdl_value_t val;
-    TEST_ASSERT_TRUE(dsdl_parse_literal_(&g_parser, &val));
+    TEST_ASSERT_TRUE(dsdl_parse_literal(&g_parser, &val));
     TEST_ASSERT_EQUAL(dsdl_value_set, val.kind);
     TEST_ASSERT_EQUAL_size_t(3, val.as.set.count);
     TEST_ASSERT_EQUAL_INT64(1, val.as.set.elements[0].as.rational.num);
     TEST_ASSERT_EQUAL_INT64(2, val.as.set.elements[1].as.rational.num);
     TEST_ASSERT_EQUAL_INT64(3, val.as.set.elements[2].as.rational.num);
-    dsdl_free_(&g_dsdl, val.as.set.elements);
+    dsdl_free(&g_dsdl, val.as.set.elements);
 }
 
 static void test_parse_set_large(void)
@@ -598,7 +598,7 @@ static void test_parse_set_large(void)
 
     init_parser(input);
     dsdl_value_t val;
-    TEST_ASSERT_TRUE(dsdl_parse_literal_(&g_parser, &val));
+    TEST_ASSERT_TRUE(dsdl_parse_literal(&g_parser, &val));
     TEST_ASSERT_EQUAL(dsdl_value_set, val.kind);
     TEST_ASSERT_EQUAL_size_t(100, val.as.set.count);
 
@@ -608,7 +608,7 @@ static void test_parse_set_large(void)
         TEST_ASSERT_EQUAL_INT64(i, val.as.set.elements[i].as.rational.num);
     }
 
-    dsdl_free_(&g_dsdl, val.as.set.elements);
+    dsdl_free(&g_dsdl, val.as.set.elements);
 }
 
 // ============================================================================
@@ -619,7 +619,7 @@ static void test_parse_type_void(void)
 {
     init_parser("void8");
     dsdl_parsed_type_t type;
-    TEST_ASSERT_TRUE(dsdl_parse_type_(&g_parser, &type));
+    TEST_ASSERT_TRUE(dsdl_parse_type(&g_parser, &type));
     TEST_ASSERT_TRUE(dsdl_type_is_void(type.kind));
     TEST_ASSERT_EQUAL_UINT8(8, type.bit_width);
 }
@@ -628,11 +628,11 @@ static void test_parse_type_void_various(void)
 {
     init_parser("void1");
     dsdl_parsed_type_t type;
-    TEST_ASSERT_TRUE(dsdl_parse_type_(&g_parser, &type));
+    TEST_ASSERT_TRUE(dsdl_parse_type(&g_parser, &type));
     TEST_ASSERT_EQUAL_UINT8(1, type.bit_width);
 
     init_parser("void64");
-    TEST_ASSERT_TRUE(dsdl_parse_type_(&g_parser, &type));
+    TEST_ASSERT_TRUE(dsdl_parse_type(&g_parser, &type));
     TEST_ASSERT_EQUAL_UINT8(64, type.bit_width);
 }
 
@@ -640,7 +640,7 @@ static void test_parse_type_uint(void)
 {
     init_parser("uint8");
     dsdl_parsed_type_t type;
-    TEST_ASSERT_TRUE(dsdl_parse_type_(&g_parser, &type));
+    TEST_ASSERT_TRUE(dsdl_parse_type(&g_parser, &type));
     TEST_ASSERT_TRUE(dsdl_type_is_uint(type.kind));
     TEST_ASSERT_EQUAL_UINT8(8, type.bit_width);
     TEST_ASSERT_TRUE(type.is_saturated);
@@ -650,7 +650,7 @@ static void test_parse_type_int(void)
 {
     init_parser("int32");
     dsdl_parsed_type_t type;
-    TEST_ASSERT_TRUE(dsdl_parse_type_(&g_parser, &type));
+    TEST_ASSERT_TRUE(dsdl_parse_type(&g_parser, &type));
     TEST_ASSERT_TRUE(dsdl_type_is_int(type.kind));
     TEST_ASSERT_EQUAL_UINT8(32, type.bit_width);
 }
@@ -659,17 +659,17 @@ static void test_parse_type_float(void)
 {
     init_parser("float32");
     dsdl_parsed_type_t type;
-    TEST_ASSERT_TRUE(dsdl_parse_type_(&g_parser, &type));
+    TEST_ASSERT_TRUE(dsdl_parse_type(&g_parser, &type));
     TEST_ASSERT_TRUE(dsdl_type_is_float(type.kind));
     TEST_ASSERT_EQUAL_UINT8(32, type.bit_width);
 
     init_parser("float64");
-    TEST_ASSERT_TRUE(dsdl_parse_type_(&g_parser, &type));
+    TEST_ASSERT_TRUE(dsdl_parse_type(&g_parser, &type));
     TEST_ASSERT_TRUE(dsdl_type_is_float(type.kind));
     TEST_ASSERT_EQUAL_UINT8(64, type.bit_width);
 
     init_parser("float16");
-    TEST_ASSERT_TRUE(dsdl_parse_type_(&g_parser, &type));
+    TEST_ASSERT_TRUE(dsdl_parse_type(&g_parser, &type));
     TEST_ASSERT_TRUE(dsdl_type_is_float(type.kind));
     TEST_ASSERT_EQUAL_UINT8(16, type.bit_width);
 }
@@ -678,7 +678,7 @@ static void test_parse_type_bool(void)
 {
     init_parser("bool");
     dsdl_parsed_type_t type;
-    TEST_ASSERT_TRUE(dsdl_parse_type_(&g_parser, &type));
+    TEST_ASSERT_TRUE(dsdl_parse_type(&g_parser, &type));
     TEST_ASSERT_TRUE(dsdl_type_is_alias(type.kind));
     TEST_ASSERT_EQUAL_UINT8(1, type.bit_width);
 }
@@ -687,7 +687,7 @@ static void test_parse_type_byte(void)
 {
     init_parser("byte");
     dsdl_parsed_type_t type;
-    TEST_ASSERT_TRUE(dsdl_parse_type_(&g_parser, &type));
+    TEST_ASSERT_TRUE(dsdl_parse_type(&g_parser, &type));
     TEST_ASSERT_TRUE(dsdl_type_is_alias(type.kind));
     TEST_ASSERT_EQUAL_UINT8(8, type.bit_width);
 }
@@ -696,7 +696,7 @@ static void test_parse_type_truncated(void)
 {
     init_parser("truncated uint8");
     dsdl_parsed_type_t type;
-    TEST_ASSERT_TRUE(dsdl_parse_type_(&g_parser, &type));
+    TEST_ASSERT_TRUE(dsdl_parse_type(&g_parser, &type));
     TEST_ASSERT_TRUE(dsdl_type_is_uint(type.kind));
     TEST_ASSERT_FALSE(type.is_saturated);
 }
@@ -705,7 +705,7 @@ static void test_parse_type_saturated(void)
 {
     init_parser("saturated int16");
     dsdl_parsed_type_t type;
-    TEST_ASSERT_TRUE(dsdl_parse_type_(&g_parser, &type));
+    TEST_ASSERT_TRUE(dsdl_parse_type(&g_parser, &type));
     TEST_ASSERT_TRUE(dsdl_type_is_int(type.kind));
     TEST_ASSERT_TRUE(type.is_saturated);
 }
@@ -714,7 +714,7 @@ static void test_parse_type_array_fixed(void)
 {
     init_parser("uint8[10]");
     dsdl_parsed_type_t type;
-    TEST_ASSERT_TRUE(dsdl_parse_type_(&g_parser, &type));
+    TEST_ASSERT_TRUE(dsdl_parse_type(&g_parser, &type));
     TEST_ASSERT_TRUE(dsdl_type_is_array(type.kind));
     TEST_ASSERT_FALSE(type.is_variable);
     TEST_ASSERT_EQUAL_size_t(10, type.array_size);
@@ -724,7 +724,7 @@ static void test_parse_type_array_variable_inclusive(void)
 {
     init_parser("uint8[<=256]");
     dsdl_parsed_type_t type;
-    TEST_ASSERT_TRUE(dsdl_parse_type_(&g_parser, &type));
+    TEST_ASSERT_TRUE(dsdl_parse_type(&g_parser, &type));
     TEST_ASSERT_TRUE(dsdl_type_is_array(type.kind));
     TEST_ASSERT_TRUE(type.is_variable);
     TEST_ASSERT_TRUE(type.is_inclusive);
@@ -735,7 +735,7 @@ static void test_parse_type_array_variable_exclusive(void)
 {
     init_parser("uint8[<100]");
     dsdl_parsed_type_t type;
-    TEST_ASSERT_TRUE(dsdl_parse_type_(&g_parser, &type));
+    TEST_ASSERT_TRUE(dsdl_parse_type(&g_parser, &type));
     TEST_ASSERT_TRUE(dsdl_type_is_array(type.kind));
     TEST_ASSERT_TRUE(type.is_variable);
     TEST_ASSERT_FALSE(type.is_inclusive);
@@ -746,7 +746,7 @@ static void test_parse_type_array_expression(void)
 {
     init_parser("uint8[2 * 3]");
     dsdl_parsed_type_t type;
-    TEST_ASSERT_TRUE(dsdl_parse_type_(&g_parser, &type));
+    TEST_ASSERT_TRUE(dsdl_parse_type(&g_parser, &type));
     TEST_ASSERT_TRUE(dsdl_type_is_array(type.kind));
     TEST_ASSERT_EQUAL_size_t(6, type.array_size);
 }
@@ -755,7 +755,7 @@ static void test_parse_type_versioned(void)
 {
     init_parser("uavcan.node.Heartbeat.1.0");
     dsdl_parsed_type_t type;
-    TEST_ASSERT_TRUE(dsdl_parse_type_(&g_parser, &type));
+    TEST_ASSERT_TRUE(dsdl_parse_type(&g_parser, &type));
     TEST_ASSERT_TRUE(dsdl_type_is_composite(type.kind));
     TEST_ASSERT_EQUAL_UINT8(1, type.version_major);
     TEST_ASSERT_EQUAL_UINT8(0, type.version_minor);
@@ -769,7 +769,7 @@ static void test_parse_stmt_field(void)
 {
     init_parser("uint32 timestamp");
     dsdl_parsed_stmt_t stmt;
-    TEST_ASSERT_TRUE(dsdl_parse_statement_(&g_parser, &stmt));
+    TEST_ASSERT_TRUE(dsdl_parse_statement(&g_parser, &stmt));
     TEST_ASSERT_EQUAL(dsdl_stmt_field, stmt.kind);
     TEST_ASSERT_TRUE(dsdl_type_is_uint(stmt.type.kind));
     TEST_ASSERT_EQUAL_UINT8(32, stmt.type.bit_width);
@@ -781,7 +781,7 @@ static void test_parse_stmt_constant(void)
 {
     init_parser("uint8 MAX = 255");
     dsdl_parsed_stmt_t stmt;
-    TEST_ASSERT_TRUE(dsdl_parse_statement_(&g_parser, &stmt));
+    TEST_ASSERT_TRUE(dsdl_parse_statement(&g_parser, &stmt));
     TEST_ASSERT_EQUAL(dsdl_stmt_constant, stmt.kind);
     TEST_ASSERT_TRUE(stmt.has_value);
     TEST_ASSERT_EQUAL(dsdl_value_rational, stmt.value.kind);
@@ -792,7 +792,7 @@ static void test_parse_stmt_padding(void)
 {
     init_parser("void7");
     dsdl_parsed_stmt_t stmt;
-    TEST_ASSERT_TRUE(dsdl_parse_statement_(&g_parser, &stmt));
+    TEST_ASSERT_TRUE(dsdl_parse_statement(&g_parser, &stmt));
     TEST_ASSERT_EQUAL(dsdl_stmt_padding, stmt.kind);
     TEST_ASSERT_EQUAL_UINT8(7, stmt.type.bit_width);
 }
@@ -801,7 +801,7 @@ static void test_parse_stmt_directive_simple(void)
 {
     init_parser("@sealed");
     dsdl_parsed_stmt_t stmt;
-    TEST_ASSERT_TRUE(dsdl_parse_statement_(&g_parser, &stmt));
+    TEST_ASSERT_TRUE(dsdl_parse_statement(&g_parser, &stmt));
     TEST_ASSERT_EQUAL(dsdl_stmt_directive, stmt.kind);
     TEST_ASSERT_FALSE(stmt.has_value);
     TEST_ASSERT_EQUAL_size_t(6, stmt.name.len);
@@ -812,7 +812,7 @@ static void test_parse_stmt_directive_with_expr(void)
 {
     init_parser("@extent 64 * 8");
     dsdl_parsed_stmt_t stmt;
-    TEST_ASSERT_TRUE(dsdl_parse_statement_(&g_parser, &stmt));
+    TEST_ASSERT_TRUE(dsdl_parse_statement(&g_parser, &stmt));
     TEST_ASSERT_EQUAL(dsdl_stmt_directive, stmt.kind);
     TEST_ASSERT_TRUE(stmt.has_value);
     TEST_ASSERT_EQUAL_INT64(512, stmt.value.as.rational.num);
@@ -822,7 +822,7 @@ static void test_parse_stmt_service_marker(void)
 {
     init_parser("---");
     dsdl_parsed_stmt_t stmt;
-    TEST_ASSERT_TRUE(dsdl_parse_statement_(&g_parser, &stmt));
+    TEST_ASSERT_TRUE(dsdl_parse_statement(&g_parser, &stmt));
     TEST_ASSERT_EQUAL(dsdl_stmt_service_marker, stmt.kind);
 }
 
@@ -830,7 +830,7 @@ static void test_parse_stmt_service_marker_long(void)
 {
     init_parser("----------");
     dsdl_parsed_stmt_t stmt;
-    TEST_ASSERT_TRUE(dsdl_parse_statement_(&g_parser, &stmt));
+    TEST_ASSERT_TRUE(dsdl_parse_statement(&g_parser, &stmt));
     TEST_ASSERT_EQUAL(dsdl_stmt_service_marker, stmt.kind);
 }
 
@@ -838,7 +838,7 @@ static void test_parse_stmt_empty(void)
 {
     init_parser("");
     dsdl_parsed_stmt_t stmt;
-    TEST_ASSERT_TRUE(dsdl_parse_statement_(&g_parser, &stmt));
+    TEST_ASSERT_TRUE(dsdl_parse_statement(&g_parser, &stmt));
     TEST_ASSERT_EQUAL(dsdl_stmt_none, stmt.kind);
 }
 
@@ -846,7 +846,7 @@ static void test_parse_stmt_comment_only(void)
 {
     init_parser("# this is a comment");
     dsdl_parsed_stmt_t stmt;
-    TEST_ASSERT_TRUE(dsdl_parse_statement_(&g_parser, &stmt));
+    TEST_ASSERT_TRUE(dsdl_parse_statement(&g_parser, &stmt));
     TEST_ASSERT_EQUAL(dsdl_stmt_none, stmt.kind);
 }
 
@@ -864,8 +864,8 @@ static void test_parse_def_simple(void)
 
     init_parser(dsdl);
     dsdl_parsed_def_t def;
-    TEST_ASSERT_TRUE(dsdl_parsed_def_init_(&def, &g_dsdl));
-    TEST_ASSERT_TRUE(dsdl_parse_definition_(&g_parser, &def));
+    TEST_ASSERT_TRUE(dsdl_parsed_def_init(&def, &g_dsdl));
+    TEST_ASSERT_TRUE(dsdl_parse_definition(&g_parser, &def));
 
     TEST_ASSERT_FALSE(def.is_service);
     TEST_ASSERT_TRUE(def.is_sealed);
@@ -885,7 +885,7 @@ static void test_parse_def_simple(void)
     // Check third field: bool c
     TEST_ASSERT_TRUE(dsdl_type_is_alias(def.field_types[2].kind));
 
-    dsdl_parsed_def_deinit_(&def);
+    dsdl_parsed_def_deinit(&def);
 }
 
 static void test_parse_def_with_constants(void)
@@ -896,8 +896,8 @@ static void test_parse_def_with_constants(void)
 
     init_parser(dsdl);
     dsdl_parsed_def_t def;
-    TEST_ASSERT_TRUE(dsdl_parsed_def_init_(&def, &g_dsdl));
-    TEST_ASSERT_TRUE(dsdl_parse_definition_(&g_parser, &def));
+    TEST_ASSERT_TRUE(dsdl_parsed_def_init(&def, &g_dsdl));
+    TEST_ASSERT_TRUE(dsdl_parse_definition(&g_parser, &def));
 
     TEST_ASSERT_EQUAL_size_t(1, def.field_count);
     TEST_ASSERT_EQUAL_size_t(2, def.const_count);
@@ -910,7 +910,7 @@ static void test_parse_def_with_constants(void)
     // Check second constant
     TEST_ASSERT_EQUAL_INT64(1, def.const_values[1].as.rational.num);
 
-    dsdl_parsed_def_deinit_(&def);
+    dsdl_parsed_def_deinit(&def);
 }
 
 static void test_parse_def_with_extent(void)
@@ -920,14 +920,14 @@ static void test_parse_def_with_extent(void)
 
     init_parser(dsdl);
     dsdl_parsed_def_t def;
-    TEST_ASSERT_TRUE(dsdl_parsed_def_init_(&def, &g_dsdl));
-    TEST_ASSERT_TRUE(dsdl_parse_definition_(&g_parser, &def));
+    TEST_ASSERT_TRUE(dsdl_parsed_def_init(&def, &g_dsdl));
+    TEST_ASSERT_TRUE(dsdl_parse_definition(&g_parser, &def));
 
     TEST_ASSERT_TRUE(def.has_extent);
     TEST_ASSERT_EQUAL_size_t(64, def.extent_bits);
     TEST_ASSERT_EQUAL_size_t(1, def.field_count);
 
-    dsdl_parsed_def_deinit_(&def);
+    dsdl_parsed_def_deinit(&def);
 }
 
 static void test_parse_def_service(void)
@@ -939,14 +939,14 @@ static void test_parse_def_service(void)
 
     init_parser(dsdl);
     dsdl_parsed_def_t def;
-    TEST_ASSERT_TRUE(dsdl_parsed_def_init_(&def, &g_dsdl));
-    TEST_ASSERT_TRUE(dsdl_parse_definition_(&g_parser, &def));
+    TEST_ASSERT_TRUE(dsdl_parsed_def_init(&def, &g_dsdl));
+    TEST_ASSERT_TRUE(dsdl_parse_definition(&g_parser, &def));
 
     TEST_ASSERT_TRUE(def.is_service);
     TEST_ASSERT_EQUAL_size_t(1, def.field_count);          // Request fields
     TEST_ASSERT_EQUAL_size_t(2, def.response_field_count); // Response fields
 
-    dsdl_parsed_def_deinit_(&def);
+    dsdl_parsed_def_deinit(&def);
 }
 
 static void test_parse_def_union(void)
@@ -958,13 +958,13 @@ static void test_parse_def_union(void)
 
     init_parser(dsdl);
     dsdl_parsed_def_t def;
-    TEST_ASSERT_TRUE(dsdl_parsed_def_init_(&def, &g_dsdl));
-    TEST_ASSERT_TRUE(dsdl_parse_definition_(&g_parser, &def));
+    TEST_ASSERT_TRUE(dsdl_parsed_def_init(&def, &g_dsdl));
+    TEST_ASSERT_TRUE(dsdl_parse_definition(&g_parser, &def));
 
     TEST_ASSERT_TRUE(def.is_union);
     TEST_ASSERT_EQUAL_size_t(3, def.field_count);
 
-    dsdl_parsed_def_deinit_(&def);
+    dsdl_parsed_def_deinit(&def);
 }
 
 static void test_parse_def_with_comments(void)
@@ -976,12 +976,12 @@ static void test_parse_def_with_comments(void)
 
     init_parser(dsdl);
     dsdl_parsed_def_t def;
-    TEST_ASSERT_TRUE(dsdl_parsed_def_init_(&def, &g_dsdl));
-    TEST_ASSERT_TRUE(dsdl_parse_definition_(&g_parser, &def));
+    TEST_ASSERT_TRUE(dsdl_parsed_def_init(&def, &g_dsdl));
+    TEST_ASSERT_TRUE(dsdl_parse_definition(&g_parser, &def));
 
     TEST_ASSERT_EQUAL_size_t(1, def.field_count);
 
-    dsdl_parsed_def_deinit_(&def);
+    dsdl_parsed_def_deinit(&def);
 }
 
 static void test_parse_def_with_padding(void)
@@ -992,13 +992,13 @@ static void test_parse_def_with_padding(void)
 
     init_parser(dsdl);
     dsdl_parsed_def_t def;
-    TEST_ASSERT_TRUE(dsdl_parsed_def_init_(&def, &g_dsdl));
-    TEST_ASSERT_TRUE(dsdl_parse_definition_(&g_parser, &def));
+    TEST_ASSERT_TRUE(dsdl_parsed_def_init(&def, &g_dsdl));
+    TEST_ASSERT_TRUE(dsdl_parse_definition(&g_parser, &def));
 
     TEST_ASSERT_EQUAL_size_t(3, def.field_count); // Padding is also a field
     TEST_ASSERT_TRUE(dsdl_type_is_void(def.field_types[1].kind));
 
-    dsdl_parsed_def_deinit_(&def);
+    dsdl_parsed_def_deinit(&def);
 }
 
 // ============================================================================
