@@ -3730,7 +3730,7 @@ static void _dsdl_deserialize_type(_dsdl_bitbuf_t* const buf, const dsdl_type_t*
 // ============================================================================
 
 size_t dsdl_serialize(const dsdl_type_composite_t* const type,
-                      const void* const                  values,
+                      const void* const                  value,
                       const size_t                       output_size,
                       void* const                        output)
 {
@@ -3755,7 +3755,7 @@ size_t dsdl_serialize(const dsdl_type_composite_t* const type,
 }
 
 size_t dsdl_deserialize(const dsdl_type_composite_t* const type,
-                        void* const                        values,
+                        void* const                        value,
                         const size_t                       input_size,
                         const void* const                  input)
 {

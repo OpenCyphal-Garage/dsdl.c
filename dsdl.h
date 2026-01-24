@@ -21,7 +21,7 @@ extern "C"
 #endif
 
 // ============================================================================
-// Type identifiers
+// Types
 // ============================================================================
 
 /// Type identifier encoding:
@@ -100,42 +100,75 @@ typedef struct dsdl_type_composite_t
 
     size_t        field_count; ///< Number of fields
     wkv_str_t*    field_names; ///< Array of field names
-    dsdl_type_t** field_types; ///< Points to either dsdl_type_t*, dsdl_type_array_t*, dsdl_type_composite_t*, ...
+    dsdl_type_t** field_types; ///< Array of pointers to dsdl_type_t*, dsdl_type_array_t*, dsdl_type_composite_t*, ...
+
+    dsdl_type_composite_t* response; ///< In RPC-service types this field contains the response type. NULL otherwise.
 } dsdl_type_composite_t;
 
 // ============================================================================
-// Data structures
+// Values
 // ============================================================================
 
-typedef struct dsdl_array_t
-{
-    dsdl_type_array_t type;
-    size_t            member_count; ///< Current number of elements (for variable arrays)
-    void*             members;      ///< Pointer to element storage
-} dsdl_array_t;
+// DSDL values are represented natively as follows:
+//
+//      void1..void64    -- no representation; corresponding data fields are omitted.
+//
+//      bool             -- bool
+//
+//      int2..int8       -- int_least8_t
+//      int9..int16      -- int_least16_t
+//      int17..int32     -- int_least32_t
+//      int33..int64     -- int_least64_t
+//
+//      uint1..uint8     -- uint_least8_t
+//      uint9..uint16    -- uint_least16_t
+//      uint17..uint32   -- uint_least32_t
+//      uint33..uint64   -- uint_least64_t
+//
+//      byte             -- unsigned char
+//      utf8             -- char
+//
+//      float16          -- float
+//      float32          -- float
+//      float64          -- double
+//
+//      [n]              -- void* (pointer to the native array storage of fixed size)
+//      [<=n] [<n]       -- dsdl_value_array_variable_t
+//
+//      struct           -- dsdl_value_struct_t
+//      union            -- dsdl_value_union_t
 
-/// Struct instance with field values.
-typedef struct dsdl_struct_t
+/// There is no counterpart for fixed arrays because they are just raw pointers.
+typedef struct dsdl_value_array_variable_t
 {
-    dsdl_type_composite_t type;
-    void*                 values;
-} dsdl_struct_t;
+    /// When deserializing, the count specifies the length of the destination array.
+    /// If the deserialized message contains more elements, deserialization will fail.
+    size_t count;
+    void*  members;
+} dsdl_value_array_variable_t;
 
-/// Union instance with selected variant.
-typedef struct dsdl_union_t
+typedef struct dsdl_value_struct_t
 {
-    dsdl_type_composite_t type;
-    void*                 value; ///< Currently selected field value
-    size_t                tag;   ///< Which field is selected; must be in [0, field_count)
-} dsdl_union_t;
+    /// Points to an array of pointers, where the size of the array equals the number of fields,
+    /// and each element points to the field value according to its type. For example, given fields:
+    ///
+    ///     uint24               integer
+    ///     utf8[<=16]           text
+    ///     cyphal.Heartbeat.1.0 object
+    ///
+    /// The array would contain three elements, each a pointer, as follows:
+    ///
+    ///     #0 points to: uint_least32_t
+    ///     #1 points to: dsdl_value_array_variable_t { count, *members }; members point to char*
+    ///     #2 points to: dsdl_value_struct_t { **values }
+    void** values;
+} dsdl_value_struct_t;
 
-/// Service (RPC) type with request and response parts.
-typedef struct dsdl_rpc_t
+typedef struct dsdl_value_union_t
 {
-    dsdl_type_composite_t  type;     ///< Defaults to request properties
-    dsdl_type_composite_t* request;  ///< Request type
-    dsdl_type_composite_t* response; ///< Response type
-} dsdl_rpc_t;
+    size_t tag;   ///< Which field is selected; must be in [0, field_count)
+    void*  value; ///< Currently selected field value; see dsdl_value_struct_t
+} dsdl_value_union_t;
 
 // ============================================================================
 // Parser state
@@ -163,9 +196,7 @@ struct dsdl_t
     /// - pointer==NULL, new_size>0: allocate new memory
     /// - pointer!=NULL, new_size>0: reallocate
     /// - pointer!=NULL, new_size==0: free memory
-    ///
-    /// Compatible with standard realloc() when self is ignored, or use
-    /// O1Heap for deterministic real-time allocation.
+    /// Compatible with standard realloc(), or use O1Heap for deterministic real-time allocation.
     void* (*realloc)(dsdl_t* self, void* pointer, size_t new_size);
 
     /// File reader callback.
@@ -223,19 +254,19 @@ size_t dsdl_serialized_footprint(const dsdl_type_composite_t* type);
 
 /// Serialize a composite type instance to a byte buffer.
 ///
-/// Value memory layout:
-/// - Primitives: Native C types (uint8_t, int32_t, float, etc.)
-/// - Fixed arrays: Contiguous elements in memory
-/// - Variable arrays: { size_t count; ElementType elements[capacity]; }
-/// - Structs: Array of field values laid out contiguously per field type
-/// - Unions: { size_t tag; VariantType value; }
+/// The value memory layout is explained above; summary:
+/// - Primitives: smallest [u]int_leastX_t where X >= the original width.
+/// - Fixed arrays: Pointer to the native C array.
+/// - Variable arrays: { size_t count; ElementType* elements; }
+/// - Structs: dsdl_value_struct_t
+/// - Unions: dsdl_value_union_t
 ///
 /// @param type         Type descriptor (must be struct or union, not RPC)
-/// @param values       Pointer to field values (see memory layout above)
+/// @param value        Pointer to dsdl_value_struct_t or dsdl_value_union_t, depending on the type.
 /// @param output_size  Size of output buffer in bytes
 /// @param output       Output buffer
 /// @return Number of bytes written, or 0 on error
-size_t dsdl_serialize(const dsdl_type_composite_t* type, const void* values, size_t output_size, void* output);
+size_t dsdl_serialize(const dsdl_type_composite_t* type, const void* value, size_t output_size, void* output);
 
 /// Deserialize a byte buffer into a composite type instance.
 ///
@@ -243,11 +274,11 @@ size_t dsdl_serialize(const dsdl_type_composite_t* type, const void* values, siz
 /// The values buffer must be pre-allocated with sufficient size for the type.
 ///
 /// @param type        Type descriptor (must be struct or union, not RPC)
-/// @param values      Pointer to field values buffer (must be pre-allocated)
+/// @param value       Pointer to dsdl_value_struct_t or dsdl_value_union_t, depending on the type.
 /// @param input_size  Size of input buffer in bytes
 /// @param input       Input buffer
 /// @return Number of bytes consumed, or 0 on error
-size_t dsdl_deserialize(const dsdl_type_composite_t* type, void* values, size_t input_size, const void* input);
+size_t dsdl_deserialize(const dsdl_type_composite_t* type, void* value, size_t input_size, const void* input);
 
 #ifdef __cplusplus
 }
