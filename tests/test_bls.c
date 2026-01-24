@@ -67,8 +67,8 @@ static void test_bls_primitive_uint8(void)
     dsdl_bls_t* const bls = dsdl_bls_new_single(&test_dsdl, 8);
     TEST_ASSERT_EQUAL_size_t(8, dsdl_bls_min(bls));
     TEST_ASSERT_EQUAL_size_t(8, dsdl_bls_max(bls));
-    TEST_ASSERT_TRUE(dsdl_bls_is_aligned(bls, 8));
-    TEST_ASSERT_FALSE(dsdl_bls_is_aligned(bls, 16));
+    TEST_ASSERT_TRUE(dsdl_bls_is_aligned(&test_dsdl, bls, 8));
+    TEST_ASSERT_FALSE(dsdl_bls_is_aligned(&test_dsdl, bls, 16));
 }
 
 static void test_bls_primitive_float16(void)
@@ -77,9 +77,9 @@ static void test_bls_primitive_float16(void)
     dsdl_bls_t* const bls = dsdl_bls_new_single(&test_dsdl, 16);
     TEST_ASSERT_EQUAL_size_t(16, dsdl_bls_min(bls));
     TEST_ASSERT_EQUAL_size_t(16, dsdl_bls_max(bls));
-    TEST_ASSERT_TRUE(dsdl_bls_is_aligned(bls, 8));
-    TEST_ASSERT_TRUE(dsdl_bls_is_aligned(bls, 16));
-    TEST_ASSERT_FALSE(dsdl_bls_is_aligned(bls, 32));
+    TEST_ASSERT_TRUE(dsdl_bls_is_aligned(&test_dsdl, bls, 8));
+    TEST_ASSERT_TRUE(dsdl_bls_is_aligned(&test_dsdl, bls, 16));
+    TEST_ASSERT_FALSE(dsdl_bls_is_aligned(&test_dsdl, bls, 32));
 }
 
 // ============================================================================
@@ -138,7 +138,7 @@ static void test_bls_variable_array_uint8_3(void)
 
     // Check modulo 8 alignment
     size_t       mods[64];
-    const size_t count = dsdl_bls_modulo(bls, 8, mods);
+    const size_t count = dsdl_bls_modulo(&test_dsdl, bls, 8, mods);
     TEST_ASSERT_EQUAL_size_t(1, count);
     TEST_ASSERT_EQUAL_size_t(0, mods[0]); // All values are multiples of 8
 }
@@ -233,7 +233,7 @@ static void test_bls_padding_to_byte(void)
 
     TEST_ASSERT_EQUAL_size_t(16, dsdl_bls_min(bls));
     TEST_ASSERT_EQUAL_size_t(16, dsdl_bls_max(bls));
-    TEST_ASSERT_TRUE(dsdl_bls_is_aligned(bls, 8));
+    TEST_ASSERT_TRUE(dsdl_bls_is_aligned(&test_dsdl, bls, 8));
 }
 
 static void test_bls_padding_already_aligned(void)
@@ -255,7 +255,7 @@ static void test_bls_padding_variable_set(void)
 
     TEST_ASSERT_EQUAL_size_t(16, dsdl_bls_min(bls));
     TEST_ASSERT_EQUAL_size_t(24, dsdl_bls_max(bls));
-    TEST_ASSERT_TRUE(dsdl_bls_is_aligned(bls, 8));
+    TEST_ASSERT_TRUE(dsdl_bls_is_aligned(&test_dsdl, bls, 8));
 }
 
 // ============================================================================
@@ -267,7 +267,7 @@ static void test_bls_modulo_fixed(void)
     // {32} % 8 = {0}
     dsdl_bls_t* const bls = dsdl_bls_new_single(&test_dsdl, 32);
     size_t            mods[64];
-    const size_t      count = dsdl_bls_modulo(bls, 8, mods);
+    const size_t      count = dsdl_bls_modulo(&test_dsdl, bls, 8, mods);
     TEST_ASSERT_EQUAL_size_t(1, count);
     TEST_ASSERT_EQUAL_size_t(0, mods[0]);
 }
@@ -278,7 +278,7 @@ static void test_bls_modulo_variable_set(void)
     const size_t      values[] = { 8, 12, 16 };
     dsdl_bls_t* const bls      = dsdl_bls_new_set(&test_dsdl, 3, values);
     size_t            mods[64];
-    const size_t      count = dsdl_bls_modulo(bls, 8, mods);
+    const size_t      count = dsdl_bls_modulo(&test_dsdl, bls, 8, mods);
     TEST_ASSERT_EQUAL_size_t(2, count);
     // Check both 0 and 4 are present (order may vary)
     bool has_0 = false, has_4 = false;
@@ -298,7 +298,7 @@ static void test_bls_modulo_repeat(void)
     dsdl_bls_t* const elem = dsdl_bls_new_single(&test_dsdl, 8);
     dsdl_bls_t* const bls  = dsdl_bls_new_repeat(&test_dsdl, elem, 3);
     size_t            mods[64];
-    const size_t      count = dsdl_bls_modulo(bls, 8, mods);
+    const size_t      count = dsdl_bls_modulo(&test_dsdl, bls, 8, mods);
     TEST_ASSERT_EQUAL_size_t(1, count);
     TEST_ASSERT_EQUAL_size_t(0, mods[0]);
 }
@@ -309,7 +309,7 @@ static void test_bls_modulo_repeat_range(void)
     dsdl_bls_t* const elem = dsdl_bls_new_single(&test_dsdl, 8);
     dsdl_bls_t* const bls  = dsdl_bls_new_repeat_range(&test_dsdl, elem, 3);
     size_t            mods[64];
-    const size_t      count = dsdl_bls_modulo(bls, 8, mods);
+    const size_t      count = dsdl_bls_modulo(&test_dsdl, bls, 8, mods);
     TEST_ASSERT_EQUAL_size_t(1, count);
     TEST_ASSERT_EQUAL_size_t(0, mods[0]);
 }
@@ -347,7 +347,7 @@ static void test_bls_nested_variable_arrays(void)
     TEST_ASSERT_EQUAL_size_t(56, dsdl_bls_max(outer_bls));
 
     // Check byte alignment
-    TEST_ASSERT_TRUE(dsdl_bls_is_aligned(outer_bls, 8));
+    TEST_ASSERT_TRUE(dsdl_bls_is_aligned(&test_dsdl, outer_bls, 8));
 }
 
 static void test_bls_large_variable_array(void)
@@ -366,7 +366,7 @@ static void test_bls_large_variable_array(void)
     TEST_ASSERT_EQUAL_size_t(32 + 8 * 65536, dsdl_bls_max(bls));
 
     // Still computes quickly!
-    TEST_ASSERT_TRUE(dsdl_bls_is_aligned(bls, 8));
+    TEST_ASSERT_TRUE(dsdl_bls_is_aligned(&test_dsdl, bls, 8));
 }
 
 static void test_bls_pydsdl_example(void)
@@ -387,7 +387,7 @@ static void test_bls_pydsdl_example(void)
 
     // b % 16 = {0, 8}
     size_t       mods[64];
-    const size_t count = dsdl_bls_modulo(bls, 16, mods);
+    const size_t count = dsdl_bls_modulo(&test_dsdl, bls, 16, mods);
     TEST_ASSERT_EQUAL_size_t(2, count);
     bool has_0 = false, has_8 = false;
     for (size_t i = 0; i < count; i++) {

@@ -45,6 +45,4 @@ The code must not make assumptions about the execution platform (pointer width, 
 
 ## Known issues (incomplete list)
 
-Some of the known issues are listed below; the list is known to be NOT exhaustive:
-
-- All fixed-size arrays that limit the number of processed entities must be replaced with proper dynamic heap allocation with realloc. For example, `size_t child_mods[512];` et al.
+Come back later.

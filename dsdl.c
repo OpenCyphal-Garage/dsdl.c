@@ -447,8 +447,10 @@ static dsdl_rational_t dsdl_rational_from_double(double x)
     return dsdl_rational_normalize(result);
 }
 
-// Forward declaration - needed by BLS functions below
+// Forward declarations - needed by BLS functions below
 static void* dsdl_alloc(dsdl_t* self, size_t size);
+static void  dsdl_free(dsdl_t* self, void* ptr);
+static void* dsdl_realloc(dsdl_t* self, void* ptr, size_t new_size);
 
 // ============================================================================
 // Symbolic Bit Length Set
@@ -818,8 +820,9 @@ static bool dsdl_bls_is_fixed(dsdl_bls_t* const bls) { return dsdl_bls_min(bls) 
 /// Compute modulo of all values in a bit length set.
 /// Returns the count of unique results, stores results in out_values (must have space for 'divisor' elements).
 /// This is the key operation for checking alignment without combinatorial explosion.
-static size_t dsdl_bls_modulo(dsdl_bls_t* const bls, const size_t divisor, size_t* const out_values)
+static size_t dsdl_bls_modulo(dsdl_t* const dsdl, dsdl_bls_t* const bls, const size_t divisor, size_t* const out_values)
 {
+    assert(dsdl != NULL);
     if ((bls == NULL) || (divisor == 0)) {
         return 0;
     }
@@ -865,10 +868,15 @@ static size_t dsdl_bls_modulo(dsdl_bls_t* const bls, const size_t divisor, size_
             out_values[0] = 0;
             count         = 1;
 
+            // Allocate temp array for child modulos
+            size_t* const child_mods = (size_t*)dsdl_alloc(dsdl, divisor * sizeof(size_t));
+            if (child_mods == NULL) {
+                return 0; // OOM
+            }
+
             for (size_t i = 0; i < bls->data.concat.count; i++) {
                 // Get child's modulo values
-                size_t* const child_mods  = (size_t*)out_values + divisor; // Use second half as temp
-                const size_t  child_count = dsdl_bls_modulo(bls->data.concat.children[i], divisor, child_mods);
+                const size_t child_count = dsdl_bls_modulo(dsdl, bls->data.concat.children[i], divisor, child_mods);
 
                 // Compute new modulo set: {(a + b) % divisor | a in current, b in child}
                 size_t new_count = 0;
@@ -901,6 +909,7 @@ static size_t dsdl_bls_modulo(dsdl_bls_t* const bls, const size_t divisor, size_
                 }
                 count = new_count;
             }
+            dsdl_free(dsdl, child_mods);
             break;
         }
 
@@ -911,8 +920,11 @@ static size_t dsdl_bls_modulo(dsdl_bls_t* const bls, const size_t divisor, size_
             const size_t equivalent_k = (k < divisor) ? k : (divisor + k % divisor);
 
             // Get child's modulo values
-            size_t       child_mods[512]; // Stack allocation for common case
-            const size_t child_count = dsdl_bls_modulo(bls->data.repeat.child, divisor, child_mods);
+            size_t* const child_mods = (size_t*)dsdl_alloc(dsdl, divisor * sizeof(size_t));
+            if (child_mods == NULL) {
+                return 0; // OOM
+            }
+            const size_t child_count = dsdl_bls_modulo(dsdl, bls->data.repeat.child, divisor, child_mods);
 
             // Start with {0} (k=0 gives 0, but k>=1 here since we don't reach this for k=0)
             // Actually for repeat, k is fixed, so we need k iterations of adding child_mods.
@@ -950,6 +962,7 @@ static size_t dsdl_bls_modulo(dsdl_bls_t* const bls, const size_t divisor, size_
                 }
                 count = new_count;
             }
+            dsdl_free(dsdl, child_mods);
             break;
         }
 
@@ -960,8 +973,11 @@ static size_t dsdl_bls_modulo(dsdl_bls_t* const bls, const size_t divisor, size_
             const size_t equivalent_k_max = (k_max < divisor) ? k_max : (divisor + k_max % divisor);
 
             // Get child's modulo values
-            size_t       child_mods[512];
-            const size_t child_count = dsdl_bls_modulo(bls->data.repeat_range.child, divisor, child_mods);
+            size_t* const child_mods = (size_t*)dsdl_alloc(dsdl, divisor * sizeof(size_t));
+            if (child_mods == NULL) {
+                return 0; // OOM
+            }
+            const size_t child_count = dsdl_bls_modulo(dsdl, bls->data.repeat_range.child, divisor, child_mods);
 
             // Include k=0 case: {0}
             out_values[0] = 0;
@@ -971,7 +987,11 @@ static size_t dsdl_bls_modulo(dsdl_bls_t* const bls, const size_t divisor, size_
             }
 
             // Running set of sums for current k
-            size_t running[512];
+            size_t* const running = (size_t*)dsdl_alloc(dsdl, divisor * sizeof(size_t));
+            if (running == NULL) {
+                dsdl_free(dsdl, child_mods);
+                return 0; // OOM
+            }
             running[0]           = 0;
             size_t running_count = 1;
 
@@ -1017,14 +1037,19 @@ static size_t dsdl_bls_modulo(dsdl_bls_t* const bls, const size_t divisor, size_
                     }
                 }
             }
+            dsdl_free(dsdl, running);
+            dsdl_free(dsdl, child_mods);
             break;
         }
 
         case dsdl_bls_union: {
             // Union: collect all modulos from all children
+            size_t* const child_mods = (size_t*)dsdl_alloc(dsdl, divisor * sizeof(size_t));
+            if (child_mods == NULL) {
+                return 0; // OOM
+            }
             for (size_t i = 0; i < bls->data.set_union.count; i++) {
-                size_t       child_mods[512];
-                const size_t child_count = dsdl_bls_modulo(bls->data.set_union.children[i], divisor, child_mods);
+                const size_t child_count = dsdl_bls_modulo(dsdl, bls->data.set_union.children[i], divisor, child_mods);
                 for (size_t j = 0; j < child_count; j++) {
                     const size_t r = child_mods[j];
                     if (use_bitmap) {
@@ -1048,6 +1073,7 @@ static size_t dsdl_bls_modulo(dsdl_bls_t* const bls, const size_t divisor, size_
                     }
                 }
             }
+            dsdl_free(dsdl, child_mods);
             break;
         }
 
@@ -1058,8 +1084,11 @@ static size_t dsdl_bls_modulo(dsdl_bls_t* const bls, const size_t divisor, size_
             // Simpler: get child modulo (lcm), apply padding, then modulo divisor.
             const size_t lcm = (alignment * divisor) / dsdl_gcd(alignment, divisor);
 
-            size_t       child_mods[512];
-            const size_t child_count = dsdl_bls_modulo(bls->data.pad.child, lcm, child_mods);
+            size_t* const child_mods = (size_t*)dsdl_alloc(dsdl, lcm * sizeof(size_t));
+            if (child_mods == NULL) {
+                return 0; // OOM
+            }
+            const size_t child_count = dsdl_bls_modulo(dsdl, bls->data.pad.child, lcm, child_mods);
 
             for (size_t i = 0; i < child_count; i++) {
                 const size_t padded = dsdl_align_up(child_mods[i], alignment);
@@ -1084,6 +1113,7 @@ static size_t dsdl_bls_modulo(dsdl_bls_t* const bls, const size_t divisor, size_
                     }
                 }
             }
+            dsdl_free(dsdl, child_mods);
             break;
         }
     }
@@ -1093,14 +1123,20 @@ static size_t dsdl_bls_modulo(dsdl_bls_t* const bls, const size_t divisor, size_
 
 /// Check if all values in a bit length set are aligned at the given boundary.
 /// Returns true iff {x % alignment} == {0} for all x in the set.
-static bool dsdl_bls_is_aligned(dsdl_bls_t* const bls, const size_t alignment)
+static bool dsdl_bls_is_aligned(dsdl_t* const dsdl, dsdl_bls_t* const bls, const size_t alignment)
 {
+    assert(dsdl != NULL);
     if ((bls == NULL) || (alignment <= 1)) {
         return true;
     }
-    size_t       mods[512];
-    const size_t count = dsdl_bls_modulo(bls, alignment, mods);
-    return (count == 1) && (mods[0] == 0);
+    size_t* const mods = (size_t*)dsdl_alloc(dsdl, alignment * sizeof(size_t));
+    if (mods == NULL) {
+        return false; // OOM - conservative: assume not aligned
+    }
+    const size_t count  = dsdl_bls_modulo(dsdl, bls, alignment, mods);
+    const bool   result = (count == 1) && (mods[0] == 0);
+    dsdl_free(dsdl, mods);
+    return result;
 }
 
 // ============================================================================
@@ -3822,7 +3858,7 @@ static bool dsdl_eval_assertion(dsdl_t* const self, const dsdl_value_t* const ex
         case dsdl_value_assert_align: {
             // Alignment assertion: _offset_ % N == {0}
             const size_t divisor = expr->as.assert_align.divisor;
-            return dsdl_bls_is_aligned(offset, divisor);
+            return dsdl_bls_is_aligned(self, offset, divisor);
         }
 
         case dsdl_value_assert_attr: {
