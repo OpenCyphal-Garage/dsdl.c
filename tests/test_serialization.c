@@ -7,6 +7,7 @@
 
 #include "unity.h"
 
+#include <math.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -279,9 +280,10 @@ void test_serialize_simple_struct(void)
     TEST_ASSERT_EQUAL_size_t(3, simple->field_count);
 
     // Create field values
-    int32_t  field_a = 0x12345678;
-    uint16_t field_b = 0x3C00; // 1.0 in float16
-    bool     field_c = true;
+    // float16 is stored as native float, not uint16_t
+    int32_t field_a = 0x12345678;
+    float   field_b = 1.0f; // Will serialize as 0x3C00 in float16
+    bool    field_c = true;
 
     // Create values array (pointers to field values) and wrap in struct
     void*               field_ptrs[] = { &field_a, &field_b, &field_c };
@@ -300,7 +302,7 @@ void test_serialize_simple_struct(void)
     TEST_ASSERT_EQUAL_UINT8(0x34, buffer[2]);
     TEST_ASSERT_EQUAL_UINT8(0x12, buffer[3]);
 
-    // Verify float16: 0x00, 0x3C (little-endian)
+    // Verify float16: 0x00, 0x3C (little-endian) for 1.0
     TEST_ASSERT_EQUAL_UINT8(0x00, buffer[4]);
     TEST_ASSERT_EQUAL_UINT8(0x3C, buffer[5]);
 
@@ -309,7 +311,7 @@ void test_serialize_simple_struct(void)
 
     // Deserialize
     int32_t             result_a      = 0;
-    uint16_t            result_b      = 0;
+    float               result_b      = 0.0f;
     bool                result_c      = false;
     void*               result_ptrs[] = { &result_a, &result_b, &result_c };
     dsdl_value_struct_t result_sval   = { .values = result_ptrs };
@@ -317,7 +319,7 @@ void test_serialize_simple_struct(void)
     size_t consumed = dsdl_deserialize(simple, &result_sval, size, buffer);
     TEST_ASSERT_EQUAL_size_t(7, consumed);
     TEST_ASSERT_EQUAL_INT32(0x12345678, result_a);
-    TEST_ASSERT_EQUAL_UINT16(0x3C00, result_b);
+    TEST_ASSERT_FLOAT_WITHIN(0.001f, 1.0f, result_b);
     TEST_ASSERT_TRUE(result_c);
 
     teardown_dsdl();
@@ -423,9 +425,10 @@ void test_roundtrip_simple_struct(void)
     TEST_ASSERT_NOT_NULL(simple);
 
     // Original values: int32 a, float16 b, bool c
-    int32_t  orig_a = -123456;
-    uint16_t orig_b = 0x4248; // ~3.14 in float16
-    bool     orig_c = true;
+    // float16 is stored as native float
+    int32_t orig_a = -123456;
+    float   orig_b = 3.14f;
+    bool    orig_c = true;
 
     void*               orig_ptrs[] = { &orig_a, &orig_b, &orig_c };
     dsdl_value_struct_t orig_sval   = { .values = orig_ptrs };
@@ -437,7 +440,7 @@ void test_roundtrip_simple_struct(void)
 
     // Deserialize into new values
     int32_t             result_a      = 0;
-    uint16_t            result_b      = 0;
+    float               result_b      = 0.0f;
     bool                result_c      = false;
     void*               result_ptrs[] = { &result_a, &result_b, &result_c };
     dsdl_value_struct_t result_sval   = { .values = result_ptrs };
@@ -445,9 +448,9 @@ void test_roundtrip_simple_struct(void)
     size_t consumed = dsdl_deserialize(simple, &result_sval, size, buffer);
     TEST_ASSERT_EQUAL_size_t(7, consumed);
 
-    // Verify roundtrip
+    // Verify roundtrip (float16 has limited precision)
     TEST_ASSERT_EQUAL_INT32(orig_a, result_a);
-    TEST_ASSERT_EQUAL_UINT16(orig_b, result_b);
+    TEST_ASSERT_FLOAT_WITHIN(0.01f, orig_b, result_b);
     TEST_ASSERT_EQUAL(orig_c, result_c);
 
     teardown_dsdl();
@@ -671,6 +674,105 @@ void test_serialize_union(void)
 }
 
 // ============================================================================
+// Float16 conversion tests
+// ============================================================================
+
+static void test_float16_pack(void)
+{
+    // Test values from Nunavut test_support.c
+
+    // 3.14f -> 0x4248
+    TEST_ASSERT_EQUAL_HEX16(0x4248, dsdl_float16_pack(3.14f));
+
+    // -3.14f -> 0xC248
+    TEST_ASSERT_EQUAL_HEX16(0xC248, dsdl_float16_pack(-3.14f));
+
+    // Large value (overflow to infinity) -> 0x7C00
+    TEST_ASSERT_EQUAL_HEX16(0x7C00, dsdl_float16_pack(65536.0f));
+
+    // Negative large value -> 0xFC00
+    TEST_ASSERT_EQUAL_HEX16(0xFC00, dsdl_float16_pack(-65536.0f));
+
+    // Zero -> 0x0000
+    TEST_ASSERT_EQUAL_HEX16(0x0000, dsdl_float16_pack(0.0f));
+
+    // Negative zero -> 0x8000
+    TEST_ASSERT_EQUAL_HEX16(0x8000, dsdl_float16_pack(-0.0f));
+
+    // Infinity -> 0x7C00
+    TEST_ASSERT_EQUAL_HEX16(0x7C00, dsdl_float16_pack(INFINITY));
+
+    // Negative infinity -> 0xFC00
+    TEST_ASSERT_EQUAL_HEX16(0xFC00, dsdl_float16_pack(-INFINITY));
+}
+
+static void test_float16_unpack(void)
+{
+    // Test values from Nunavut test_support.c
+
+    // 0xC248 -> -3.14f
+    TEST_ASSERT_FLOAT_WITHIN(0.01f, -3.14f, dsdl_float16_unpack(0xC248));
+
+    // 0x4248 -> 3.14f
+    TEST_ASSERT_FLOAT_WITHIN(0.01f, 3.14f, dsdl_float16_unpack(0x4248));
+
+    // 0x7e00 -> NaN
+    TEST_ASSERT_FLOAT_IS_NAN(dsdl_float16_unpack(0x7E00));
+
+    // 0xfe00 -> -NaN
+    TEST_ASSERT_FLOAT_IS_NAN(dsdl_float16_unpack(0xFE00));
+
+    // 0x7c00 -> +Inf
+    TEST_ASSERT_FLOAT_IS_INF(dsdl_float16_unpack(0x7C00));
+
+    // 0xfc00 -> -Inf
+    TEST_ASSERT_FLOAT_IS_NEG_INF(dsdl_float16_unpack(0xFC00));
+
+    // 0x0000 -> 0.0f
+    TEST_ASSERT_EQUAL_FLOAT(0.0f, dsdl_float16_unpack(0x0000));
+}
+
+static void test_float16_roundtrip(void)
+{
+    // Test roundtrip: pack then unpack should preserve value (within float16 precision)
+    const float test_values[] = { 0.0f, 1.0f, -1.0f, 3.14f, -3.14f, 100.0f, -100.0f, 0.5f, -0.5f };
+    for (size_t i = 0; i < sizeof(test_values) / sizeof(test_values[0]); i++) {
+        const float    original = test_values[i];
+        const uint16_t packed   = dsdl_float16_pack(original);
+        const float    unpacked = dsdl_float16_unpack(packed);
+        // Float16 has limited precision, so we allow some tolerance
+        TEST_ASSERT_FLOAT_WITHIN(0.01f * (1.0f + fabsf(original)), original, unpacked);
+    }
+}
+
+static void test_serialize_float16(void)
+{
+    // Test float16 serialization through the primitive serializer
+    uint8_t       buffer[4] = { 0 };
+    dsdl_bitbuf_t buf       = { buffer, sizeof(buffer) * 8, 0, false }; // capacity_bits in bits!
+
+    const float value = 3.14f;
+    dsdl_serialize_primitive(&buf, DSDL_FLOAT16, &value);
+
+    // Expected: 0x4248 (little-endian: 0x48, 0x42)
+    TEST_ASSERT_EQUAL_HEX8(0x48, buffer[0]);
+    TEST_ASSERT_EQUAL_HEX8(0x42, buffer[1]);
+}
+
+static void test_deserialize_float16(void)
+{
+    // Test float16 deserialization through the primitive deserializer
+    // 0x4248 in little-endian
+    const uint8_t buffer[4] = { 0x48, 0x42, 0x00, 0x00 };
+    dsdl_bitbuf_t buf       = { (uint8_t*)buffer, sizeof(buffer) * 8, 0, false }; // capacity_bits in bits!
+
+    float value = 0.0f;
+    dsdl_deserialize_primitive(&buf, DSDL_FLOAT16, &value);
+
+    TEST_ASSERT_FLOAT_WITHIN(0.01f, 3.14f, value);
+}
+
+// ============================================================================
 // Main
 // ============================================================================
 
@@ -693,6 +795,13 @@ int main(void)
     RUN_TEST(test_serialize_int16_negative);
     RUN_TEST(test_serialize_bool);
     RUN_TEST(test_serialize_float32);
+
+    // Float16 conversion tests
+    RUN_TEST(test_float16_pack);
+    RUN_TEST(test_float16_unpack);
+    RUN_TEST(test_float16_roundtrip);
+    RUN_TEST(test_serialize_float16);
+    RUN_TEST(test_deserialize_float16);
 
     // Integration tests
     RUN_TEST(test_serialize_simple_struct);

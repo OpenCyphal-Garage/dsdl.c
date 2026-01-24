@@ -3359,6 +3359,70 @@ static void dsdl_bitbuf_align_read(dsdl_bitbuf_t* const buf)
 }
 
 // ============================================================================
+// Float16 conversion (IEEE 754 half-precision)
+// ============================================================================
+
+/// Helper union for float32 bit manipulation.
+typedef union
+{
+    uint32_t bits;
+    float    real;
+} dsdl_float32_bits_t;
+
+/// Pack a float32 into IEEE 754 half-precision (float16) format.
+/// Based on Nunavut's nunavutFloat16Pack implementation.
+static uint16_t dsdl_float16_pack(const float value)
+{
+    const uint32_t      round_mask = ~(uint32_t)0x0FFFU;
+    dsdl_float32_bits_t f32inf;
+    dsdl_float32_bits_t f16inf;
+    dsdl_float32_bits_t magic;
+    dsdl_float32_bits_t in;
+    f32inf.bits         = ((uint32_t)255U) << 23U;
+    f16inf.bits         = ((uint32_t)31U) << 23U;
+    magic.bits          = ((uint32_t)15U) << 23U;
+    in.real             = value;
+    const uint32_t sign = in.bits & (((uint32_t)1U) << 31U);
+    in.bits ^= sign;
+    uint16_t out = 0;
+    if (in.bits >= f32inf.bits) {
+        if ((in.bits & 0x7FFFFFUL) != 0) {
+            out = 0x7E00U; // NaN
+        } else {
+            out = (in.bits > f32inf.bits) ? (uint16_t)0x7FFFU : (uint16_t)0x7C00U; // Inf
+        }
+    } else {
+        in.bits &= round_mask;
+        in.real *= magic.real;
+        in.bits -= round_mask;
+        if (in.bits > f16inf.bits) {
+            in.bits = f16inf.bits;
+        }
+        out = (uint16_t)(in.bits >> 13U);
+    }
+    out |= (uint16_t)(sign >> 16U);
+    return out;
+}
+
+/// Unpack an IEEE 754 half-precision (float16) value into a float32.
+/// Based on Nunavut's nunavutFloat16Unpack implementation.
+static float dsdl_float16_unpack(const uint16_t value)
+{
+    dsdl_float32_bits_t magic;
+    dsdl_float32_bits_t inf_nan;
+    dsdl_float32_bits_t out;
+    magic.bits   = ((uint32_t)0xEFU) << 23U;
+    inf_nan.bits = ((uint32_t)0x8FU) << 23U;
+    out.bits     = ((uint32_t)(value & 0x7FFFU)) << 13U;
+    out.real *= magic.real;
+    if (out.real >= inf_nan.real) {
+        out.bits |= ((uint32_t)0xFFU) << 23U;
+    }
+    out.bits |= ((uint32_t)(value & 0x8000U)) << 16U;
+    return out.real;
+}
+
+// ============================================================================
 // Primitive serialization helpers
 // ============================================================================
 
@@ -3390,9 +3454,9 @@ static void dsdl_serialize_primitive(dsdl_bitbuf_t* const buf, const dsdl_type_t
     // Handle floats
     if (dsdl_type_is_float(type)) {
         if (bits == 16) {
-            // float16 - stored as uint16_t in memory (IEEE 754 half-precision)
-            const uint16_t* f16 = (const uint16_t*)value;
-            dsdl_bitbuf_write(buf, *f16, 16);
+            // float16 - stored as native float in memory, convert to IEEE 754 half-precision
+            const float* f32 = (const float*)value;
+            dsdl_bitbuf_write(buf, dsdl_float16_pack(*f32), 16);
         } else if (bits == 32) {
             const float* f32 = (const float*)value;
             uint32_t     raw;
@@ -3453,8 +3517,9 @@ static void dsdl_deserialize_primitive(dsdl_bitbuf_t* const buf, const dsdl_type
     // Handle floats
     if (dsdl_type_is_float(type)) {
         if (bits == 16) {
-            uint16_t* f16 = (uint16_t*)value;
-            *f16          = (uint16_t)dsdl_bitbuf_read(buf, 16);
+            // float16 - stored as native float in memory, convert from IEEE 754 half-precision
+            float* f32 = (float*)value;
+            *f32       = dsdl_float16_unpack((uint16_t)dsdl_bitbuf_read(buf, 16));
         } else if (bits == 32) {
             float*   f32 = (float*)value;
             uint32_t raw = (uint32_t)dsdl_bitbuf_read(buf, 32);
