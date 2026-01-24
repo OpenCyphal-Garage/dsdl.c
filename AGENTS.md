@@ -33,6 +33,8 @@ The project organiztion should roughly follow that of libcanard: https://github.
 - **C99+**: The library code must be compatible with C99 and later standards.
 - **C++20+**: The public header (`dsdl.h`) must compile cleanly with C++20 and later.
 
-## Style
-
 Follow the Zubax Style Guide per `specs/CODING_CONVENTIONS.md`. Run Clang-Format regularly.
+
+The code must be striclty C99-compliant, possibly with optional features enabled at compile time if a newer version of C is detected, and portable between all standard-compliant compilers (no compiler-specific features can be used).
+
+The code must not make assumptions about the execution platform (pointer width, endianness, baremetal or not, etc.).

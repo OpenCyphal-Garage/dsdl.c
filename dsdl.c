@@ -206,12 +206,6 @@ static int dsdl_rational_cmp_(dsdl_rational_t a, dsdl_rational_t b)
 /// Check if rational is an integer (denominator == 1).
 static bool dsdl_rational_is_int_(dsdl_rational_t r) { return r.den == 1; }
 
-/// Convert rational to intmax_t (only valid if is_int).
-static intmax_t dsdl_rational_to_int_(dsdl_rational_t r)
-{
-    return r.num; // Assumes den == 1
-}
-
 // ============================================================================
 // Parser state
 // ============================================================================
@@ -1872,7 +1866,6 @@ static bool dsdl_parse_line_(dsdl_parser_t* const parser, dsdl_parsed_stmt_t* co
 // Definition parsing
 // ============================================================================
 
-/// Maximum number of fields/constants in a single type.
 /// Parsed definition intermediate representation.
 /// Arrays are heap-allocated and grown as needed during parsing.
 typedef struct dsdl_parsed_def_t dsdl_parsed_def_t;
@@ -2969,30 +2962,578 @@ size_t dsdl_serialized_footprint(const dsdl_type_composite_t* const type)
     return (max_bits + 7) / 8; // Convert bits to bytes, rounding up
 }
 
-size_t dsdl_serialize(const dsdl_type_composite_t* const type, const size_t output_size, void* const output)
+// ============================================================================
+// Bit buffer operations for serialization/deserialization
+// ============================================================================
+
+/// Bit buffer for serialization/deserialization.
+/// Tracks current bit position within a byte array.
+typedef struct
 {
-    if ((type == NULL) || (output == NULL) || (output_size == 0)) {
-        return 0;
+    uint8_t* data;          ///< Pointer to the byte buffer
+    size_t   capacity_bits; ///< Total capacity in bits
+    size_t   offset_bits;   ///< Current bit position
+} _dsdl_bitbuf_t;
+
+/// Write up to 64 bits to the buffer, little-endian.
+/// Bits are written starting from the LSB of the value.
+static void _dsdl_bitbuf_write(_dsdl_bitbuf_t* const buf, uint64_t value, size_t bits)
+{
+    if ((buf == NULL) || (bits == 0)) {
+        return;
     }
 
-    // TODO: Implement serialization
-    (void)type;
-    (void)output_size;
-    (void)output;
+    while (bits > 0) {
+        if (buf->offset_bits >= buf->capacity_bits) {
+            return; // Buffer overflow - stop writing
+        }
 
-    return 0; // Not yet implemented
+        const size_t byte_index   = buf->offset_bits / 8;
+        const size_t bit_in_byte  = buf->offset_bits % 8;
+        const size_t bits_in_byte = 8 - bit_in_byte;
+        const size_t bits_to_write = (bits < bits_in_byte) ? bits : bits_in_byte;
+
+        // Mask for the bits we're writing
+        const uint8_t mask = (uint8_t)((1U << bits_to_write) - 1U);
+        const uint8_t val  = (uint8_t)(value & mask);
+
+        // Clear target bits and write
+        buf->data[byte_index] = (uint8_t)((buf->data[byte_index] & ~(mask << bit_in_byte)) | (val << bit_in_byte));
+
+        buf->offset_bits += bits_to_write;
+        value >>= bits_to_write;
+        bits -= bits_to_write;
+    }
 }
 
-size_t dsdl_deserialize(dsdl_type_composite_t* const type, const size_t input_size, const void* const input)
+/// Read up to 64 bits from the buffer, little-endian.
+/// If the buffer is exhausted, remaining bits are treated as zero (implicit zero extension).
+static uint64_t _dsdl_bitbuf_read(_dsdl_bitbuf_t* const buf, size_t bits)
 {
-    if ((type == NULL) || (input == NULL) || (input_size == 0)) {
+    if ((buf == NULL) || (bits == 0) || (bits > 64)) {
         return 0;
     }
 
-    // TODO: Implement deserialization
-    (void)type;
-    (void)input_size;
-    (void)input;
+    uint64_t value     = 0;
+    size_t   bit_shift = 0;
 
-    return 0; // Not yet implemented
+    while (bits > 0) {
+        if (buf->offset_bits >= buf->capacity_bits) {
+            // Implicit zero extension - remaining bits are zero
+            break;
+        }
+
+        const size_t byte_index    = buf->offset_bits / 8;
+        const size_t bit_in_byte   = buf->offset_bits % 8;
+        const size_t bits_in_byte  = 8 - bit_in_byte;
+        const size_t bits_to_read  = (bits < bits_in_byte) ? bits : bits_in_byte;
+
+        // Mask for the bits we're reading
+        const uint8_t mask = (uint8_t)((1U << bits_to_read) - 1U);
+        const uint8_t val  = (uint8_t)((buf->data[byte_index] >> bit_in_byte) & mask);
+
+        value |= ((uint64_t)val << bit_shift);
+
+        buf->offset_bits += bits_to_read;
+        bit_shift += bits_to_read;
+        bits -= bits_to_read;
+    }
+
+    return value;
+}
+
+/// Align the buffer to the next byte boundary by writing zero padding bits.
+static void _dsdl_bitbuf_align_write(_dsdl_bitbuf_t* const buf)
+{
+    if (buf == NULL) {
+        return;
+    }
+    const size_t remainder = buf->offset_bits % 8;
+    if (remainder != 0) {
+        _dsdl_bitbuf_write(buf, 0, 8 - remainder);
+    }
+}
+
+/// Align the buffer to the next byte boundary by skipping bits during read.
+static void _dsdl_bitbuf_align_read(_dsdl_bitbuf_t* const buf)
+{
+    if (buf == NULL) {
+        return;
+    }
+    const size_t remainder = buf->offset_bits % 8;
+    if (remainder != 0) {
+        buf->offset_bits += 8 - remainder;
+    }
+}
+
+// ============================================================================
+// Primitive serialization helpers
+// ============================================================================
+
+/// Write a primitive value to the buffer based on its type.
+static void _dsdl_serialize_primitive(_dsdl_bitbuf_t* const buf, const dsdl_type_t type, const void* const value)
+{
+    if ((buf == NULL) || (value == NULL)) {
+        return;
+    }
+
+    const size_t bits = dsdl_type_bit_width(type);
+    if (bits == 0) {
+        return;
+    }
+
+    // Handle void types (just write zeros)
+    if (dsdl_type_is_void(type)) {
+        _dsdl_bitbuf_write(buf, 0, bits);
+        return;
+    }
+
+    // Handle bool (alias for uint1)
+    if (type == DSDL_BOOL) {
+        const bool* b = (const bool*)value;
+        _dsdl_bitbuf_write(buf, *b ? 1 : 0, 1);
+        return;
+    }
+
+    // Handle floats
+    if (dsdl_type_is_float(type)) {
+        if (bits == 16) {
+            // float16 - stored as uint16_t in memory (IEEE 754 half-precision)
+            const uint16_t* f16 = (const uint16_t*)value;
+            _dsdl_bitbuf_write(buf, *f16, 16);
+        } else if (bits == 32) {
+            const float* f32 = (const float*)value;
+            uint32_t     raw;
+            memcpy(&raw, f32, sizeof(raw));
+            _dsdl_bitbuf_write(buf, raw, 32);
+        } else if (bits == 64) {
+            const double* f64 = (const double*)value;
+            uint64_t      raw;
+            memcpy(&raw, f64, sizeof(raw));
+            _dsdl_bitbuf_write(buf, raw, 64);
+        }
+        return;
+    }
+
+    // Handle integers (signed and unsigned)
+    if (dsdl_type_is_int(type) || dsdl_type_is_uint(type) || (type == DSDL_BYTE)) {
+        // Read the value based on size, then write the appropriate number of bits
+        uint64_t raw = 0;
+        if (bits <= 8) {
+            raw = *(const uint8_t*)value;
+        } else if (bits <= 16) {
+            raw = *(const uint16_t*)value;
+        } else if (bits <= 32) {
+            raw = *(const uint32_t*)value;
+        } else {
+            raw = *(const uint64_t*)value;
+        }
+        _dsdl_bitbuf_write(buf, raw, bits);
+        return;
+    }
+}
+
+/// Read a primitive value from the buffer based on its type.
+static void _dsdl_deserialize_primitive(_dsdl_bitbuf_t* const buf, const dsdl_type_t type, void* const value)
+{
+    if ((buf == NULL) || (value == NULL)) {
+        return;
+    }
+
+    const size_t bits = dsdl_type_bit_width(type);
+    if (bits == 0) {
+        return;
+    }
+
+    // Handle void types (just skip bits)
+    if (dsdl_type_is_void(type)) {
+        (void)_dsdl_bitbuf_read(buf, bits);
+        return;
+    }
+
+    // Handle bool (alias for uint1)
+    if (type == DSDL_BOOL) {
+        bool* b = (bool*)value;
+        *b      = (_dsdl_bitbuf_read(buf, 1) != 0);
+        return;
+    }
+
+    // Handle floats
+    if (dsdl_type_is_float(type)) {
+        if (bits == 16) {
+            uint16_t* f16 = (uint16_t*)value;
+            *f16          = (uint16_t)_dsdl_bitbuf_read(buf, 16);
+        } else if (bits == 32) {
+            float*   f32 = (float*)value;
+            uint32_t raw = (uint32_t)_dsdl_bitbuf_read(buf, 32);
+            memcpy(f32, &raw, sizeof(raw));
+        } else if (bits == 64) {
+            double*  f64 = (double*)value;
+            uint64_t raw = _dsdl_bitbuf_read(buf, 64);
+            memcpy(f64, &raw, sizeof(raw));
+        }
+        return;
+    }
+
+    // Handle integers (signed and unsigned)
+    if (dsdl_type_is_int(type) || dsdl_type_is_uint(type) || (type == DSDL_BYTE)) {
+        uint64_t raw = _dsdl_bitbuf_read(buf, bits);
+
+        // Sign-extend for signed integers
+        if (dsdl_type_is_int(type) && (bits < 64)) {
+            const uint64_t sign_bit = (uint64_t)1 << (bits - 1);
+            if (raw & sign_bit) {
+                raw |= ~((uint64_t)0) << bits; // Sign extend
+            }
+        }
+
+        // Store based on size
+        if (bits <= 8) {
+            *(uint8_t*)value = (uint8_t)raw;
+        } else if (bits <= 16) {
+            *(uint16_t*)value = (uint16_t)raw;
+        } else if (bits <= 32) {
+            *(uint32_t*)value = (uint32_t)raw;
+        } else {
+            *(uint64_t*)value = raw;
+        }
+        return;
+    }
+}
+
+// ============================================================================
+// Type serialization (recursive)
+// ============================================================================
+
+// Forward declarations for recursive serialization
+static void _dsdl_serialize_type(_dsdl_bitbuf_t* buf, const dsdl_type_t* type_ptr, const void* value);
+static void _dsdl_deserialize_type(_dsdl_bitbuf_t* buf, const dsdl_type_t* type_ptr, void* value);
+
+/// Serialize composite content (without delimiter header).
+static void _dsdl_serialize_composite_content(_dsdl_bitbuf_t* const              buf,
+                                              const dsdl_type_composite_t* const composite,
+                                              const void* const                  values)
+{
+    // Assume values is an array of pointers to field values
+    const void* const* field_values = (const void* const*)values;
+
+    if (composite->type == DSDL_COMPOSITE_UNION) {
+        // Union: First element is the tag (size_t), followed by the value pointer
+        const size_t tag = *(const size_t*)field_values[0];
+        if (tag >= composite->field_count) {
+            return; // Invalid tag
+        }
+
+        // Write tag bits
+        const size_t tag_bits = _dsdl_union_tag_bits(composite->field_count);
+        _dsdl_bitbuf_write(buf, tag, tag_bits);
+
+        // Serialize selected variant
+        _dsdl_serialize_type(buf, composite->field_types[tag], field_values[1]);
+    } else {
+        // Struct: serialize fields in order
+        for (size_t i = 0; i < composite->field_count; i++) {
+            _dsdl_serialize_type(buf, composite->field_types[i], field_values[i]);
+        }
+    }
+}
+
+/// Serialize a composite type (struct or union).
+/// For delimited (non-sealed) composites, writes a 32-bit delimiter header.
+static void _dsdl_serialize_composite(_dsdl_bitbuf_t* const              buf,
+                                      const dsdl_type_composite_t* const composite,
+                                      const void* const                  values)
+{
+    if ((buf == NULL) || (composite == NULL) || (values == NULL)) {
+        return;
+    }
+
+    // Serialize the content
+    _dsdl_serialize_composite_content(buf, composite, values);
+}
+
+/// Deserialize composite content (without delimiter header).
+static void _dsdl_deserialize_composite_content(_dsdl_bitbuf_t* const              buf,
+                                                const dsdl_type_composite_t* const composite,
+                                                void* const                        values)
+{
+    void** field_values = (void**)values;
+
+    if (composite->type == DSDL_COMPOSITE_UNION) {
+        // Union: Read tag, then deserialize selected variant
+        const size_t tag_bits = _dsdl_union_tag_bits(composite->field_count);
+        size_t       tag      = (size_t)_dsdl_bitbuf_read(buf, tag_bits);
+
+        if (tag >= composite->field_count) {
+            tag = 0; // Invalid tag, default to first variant
+        }
+
+        // Store tag
+        *(size_t*)field_values[0] = tag;
+
+        // Deserialize selected variant
+        _dsdl_deserialize_type(buf, composite->field_types[tag], field_values[1]);
+    } else {
+        // Struct: deserialize fields in order
+        for (size_t i = 0; i < composite->field_count; i++) {
+            _dsdl_deserialize_type(buf, composite->field_types[i], field_values[i]);
+        }
+    }
+}
+
+/// Deserialize a composite type (struct or union).
+static void _dsdl_deserialize_composite(_dsdl_bitbuf_t* const              buf,
+                                        const dsdl_type_composite_t* const composite,
+                                        void* const                        values)
+{
+    if ((buf == NULL) || (composite == NULL) || (values == NULL)) {
+        return;
+    }
+
+    // Deserialize the content
+    _dsdl_deserialize_composite_content(buf, composite, values);
+}
+
+/// Serialize any type (primitive, array, or composite).
+static void _dsdl_serialize_type(_dsdl_bitbuf_t* const buf,
+                                 const dsdl_type_t* const    type_ptr,
+                                 const void* const           value)
+{
+    if ((buf == NULL) || (type_ptr == NULL) || (value == NULL)) {
+        return;
+    }
+
+    const dsdl_type_t kind = *type_ptr;
+
+    // Primitive types
+    if (dsdl_type_is_void(kind) || dsdl_type_is_int(kind) || dsdl_type_is_uint(kind) || dsdl_type_is_float(kind) ||
+        (kind == DSDL_BOOL) || (kind == DSDL_BYTE)) {
+        _dsdl_serialize_primitive(buf, kind, value);
+        return;
+    }
+
+    // Handle aliases
+    if (dsdl_type_is_alias(kind)) {
+        const dsdl_type_t base = (dsdl_type_t)(kind & ~DSDL_TYPE_ALIAS_MASK);
+        _dsdl_serialize_primitive(buf, base, value);
+        return;
+    }
+
+    // Array types
+    if (dsdl_type_is_array(kind)) {
+        const dsdl_type_array_t* arr = (const dsdl_type_array_t*)type_ptr;
+
+        // Memory layout:
+        // - Variable arrays: { size_t count; ElementType elements[capacity]; }
+        // - Fixed arrays: { ElementType elements[capacity]; }
+        const size_t element_bits = _dsdl_type_max_bits(arr->member_type);
+        const size_t element_size = (element_bits + 7) / 8; // Storage size in bytes
+
+        if (kind == DSDL_ARRAY_VARIABLE) {
+            // Variable array: count followed by inline elements
+            const size_t count    = *(const size_t*)value;
+            const void*  elements = (const char*)value + sizeof(size_t); // Elements are inline
+
+            // Write length prefix
+            const size_t prefix_bits  = _dsdl_array_length_prefix_bits(arr->capacity);
+            const size_t actual_count = (count <= arr->capacity) ? count : arr->capacity;
+            _dsdl_bitbuf_write(buf, actual_count, prefix_bits);
+
+            // Write elements
+            for (size_t i = 0; i < actual_count; i++) {
+                const void* elem = (const char*)elements + (i * element_size);
+                _dsdl_serialize_type(buf, arr->member_type, elem);
+            }
+        } else {
+            // Fixed array: value points directly to elements
+            for (size_t i = 0; i < arr->capacity; i++) {
+                const void* elem = (const char*)value + (i * element_size);
+                _dsdl_serialize_type(buf, arr->member_type, elem);
+            }
+        }
+        return;
+    }
+
+    // Composite types
+    if (dsdl_type_is_composite(kind)) {
+        const dsdl_type_composite_t* composite = (const dsdl_type_composite_t*)type_ptr;
+
+        if (composite->sealed) {
+            // Sealed composite: serialize content directly (bit-packed)
+            _dsdl_serialize_composite_content(buf, composite, value);
+        } else {
+            // Delimited composite: byte-align, write 32-bit delimiter, then byte-aligned content
+            _dsdl_bitbuf_align_write(buf);
+
+            // Remember position for delimiter
+            const size_t delimiter_byte_pos = buf->offset_bits / 8;
+
+            // Write placeholder delimiter (32 bits = 4 bytes)
+            _dsdl_bitbuf_write(buf, 0, 32);
+
+            // Serialize content
+            const size_t content_start = buf->offset_bits;
+            _dsdl_serialize_composite_content(buf, composite, value);
+
+            // Byte-align content
+            _dsdl_bitbuf_align_write(buf);
+
+            // Calculate content size and update delimiter
+            const size_t content_bytes = (buf->offset_bits - content_start + 7) / 8;
+            if (delimiter_byte_pos + 4 <= buf->capacity_bits / 8) {
+                // Write delimiter (little-endian 32-bit)
+                buf->data[delimiter_byte_pos + 0] = (uint8_t)(content_bytes & 0xFF);
+                buf->data[delimiter_byte_pos + 1] = (uint8_t)((content_bytes >> 8) & 0xFF);
+                buf->data[delimiter_byte_pos + 2] = (uint8_t)((content_bytes >> 16) & 0xFF);
+                buf->data[delimiter_byte_pos + 3] = (uint8_t)((content_bytes >> 24) & 0xFF);
+            }
+        }
+        return;
+    }
+}
+
+/// Deserialize any type (primitive, array, or composite).
+static void _dsdl_deserialize_type(_dsdl_bitbuf_t* const buf,
+                                   const dsdl_type_t* const    type_ptr,
+                                   void* const                 value)
+{
+    if ((buf == NULL) || (type_ptr == NULL) || (value == NULL)) {
+        return;
+    }
+
+    const dsdl_type_t kind = *type_ptr;
+
+    // Primitive types
+    if (dsdl_type_is_void(kind) || dsdl_type_is_int(kind) || dsdl_type_is_uint(kind) || dsdl_type_is_float(kind) ||
+        (kind == DSDL_BOOL) || (kind == DSDL_BYTE)) {
+        _dsdl_deserialize_primitive(buf, kind, value);
+        return;
+    }
+
+    // Handle aliases
+    if (dsdl_type_is_alias(kind)) {
+        const dsdl_type_t base = (dsdl_type_t)(kind & ~DSDL_TYPE_ALIAS_MASK);
+        _dsdl_deserialize_primitive(buf, base, value);
+        return;
+    }
+
+    // Array types
+    if (dsdl_type_is_array(kind)) {
+        const dsdl_type_array_t* arr = (const dsdl_type_array_t*)type_ptr;
+
+        const size_t element_bits = _dsdl_type_max_bits(arr->member_type);
+        const size_t element_size = (element_bits + 7) / 8;
+
+        if (kind == DSDL_ARRAY_VARIABLE) {
+            // Variable array: read length prefix, then elements
+            const size_t prefix_bits = _dsdl_array_length_prefix_bits(arr->capacity);
+            size_t       count       = (size_t)_dsdl_bitbuf_read(buf, prefix_bits);
+
+            if (count > arr->capacity) {
+                count = arr->capacity;
+            }
+
+            // Store count
+            *(size_t*)value = count;
+
+            // Elements are inline after count
+            void* elements = (char*)value + sizeof(size_t);
+
+            // Read elements
+            for (size_t i = 0; i < count; i++) {
+                void* elem = (char*)elements + (i * element_size);
+                _dsdl_deserialize_type(buf, arr->member_type, elem);
+            }
+        } else {
+            // Fixed array: read all elements
+            for (size_t i = 0; i < arr->capacity; i++) {
+                void* elem = (char*)value + (i * element_size);
+                _dsdl_deserialize_type(buf, arr->member_type, elem);
+            }
+        }
+        return;
+    }
+
+    // Composite types
+    if (dsdl_type_is_composite(kind)) {
+        const dsdl_type_composite_t* composite = (const dsdl_type_composite_t*)type_ptr;
+
+        if (composite->sealed) {
+            // Sealed composite: deserialize content directly (bit-packed)
+            _dsdl_deserialize_composite_content(buf, composite, value);
+        } else {
+            // Delimited composite: byte-align, read 32-bit delimiter, then deserialize content
+            _dsdl_bitbuf_align_read(buf);
+
+            // Read delimiter (32 bits = content size in bytes)
+            const uint32_t delimiter = (uint32_t)_dsdl_bitbuf_read(buf, 32);
+
+            // Remember where content starts
+            const size_t content_start_bits = buf->offset_bits;
+
+            // Deserialize content
+            _dsdl_deserialize_composite_content(buf, composite, value);
+
+            // Skip to end of delimited content (in case there's extra data from newer version)
+            const size_t content_end_bits = content_start_bits + ((size_t)delimiter * 8);
+            if (content_end_bits > buf->offset_bits) {
+                buf->offset_bits = content_end_bits;
+            }
+
+            // Byte-align after content
+            _dsdl_bitbuf_align_read(buf);
+        }
+        return;
+    }
+}
+
+// ============================================================================
+// Public serialization API
+// ============================================================================
+
+size_t dsdl_serialize(const dsdl_type_composite_t* const type,
+                      const void* const                  values,
+                      const size_t                       output_size,
+                      void* const                        output)
+{
+    if ((type == NULL) || (values == NULL) || (output == NULL) || (output_size == 0)) {
+        return 0;
+    }
+
+    // Zero-initialize output buffer
+    memset(output, 0, output_size);
+
+    _dsdl_bitbuf_t buf = {
+        .data          = (uint8_t*)output,
+        .capacity_bits = output_size * 8,
+        .offset_bits   = 0,
+    };
+
+    // Serialize the composite type with the provided values
+    _dsdl_serialize_composite(&buf, type, values);
+
+    // Return bytes written (rounded up)
+    return (buf.offset_bits + 7) / 8;
+}
+
+size_t dsdl_deserialize(const dsdl_type_composite_t* const type,
+                        void* const                        values,
+                        const size_t                       input_size,
+                        const void* const                  input)
+{
+    if ((type == NULL) || (values == NULL) || (input == NULL) || (input_size == 0)) {
+        return 0;
+    }
+
+    _dsdl_bitbuf_t buf = {
+        .data          = (uint8_t*)(uintptr_t)input, // Cast away const for the buffer struct
+        .capacity_bits = input_size * 8,
+        .offset_bits   = 0,
+    };
+
+    // Deserialize the composite type into the provided values buffer
+    _dsdl_deserialize_composite(&buf, type, values);
+
+    // Return bytes consumed (rounded up)
+    return (buf.offset_bits + 7) / 8;
 }

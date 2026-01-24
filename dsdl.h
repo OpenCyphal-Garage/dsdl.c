@@ -251,19 +251,37 @@ size_t dsdl_serialized_footprint(const dsdl_type_composite_t* type);
 
 /// Serialize a composite type instance to a byte buffer.
 ///
+/// Value memory layout:
+/// - Primitives: Native C types (uint8_t, int32_t, float, etc.)
+/// - Fixed arrays: Contiguous elements in memory
+/// - Variable arrays: { size_t count; ElementType elements[capacity]; }
+/// - Structs: Array of field values laid out contiguously per field type
+/// - Unions: { size_t tag; VariantType value; }
+///
 /// @param type         Type descriptor (must be struct or union, not RPC)
+/// @param values       Pointer to field values (see memory layout above)
 /// @param output_size  Size of output buffer in bytes
 /// @param output       Output buffer
 /// @return Number of bytes written, or 0 on error
-size_t dsdl_serialize(const dsdl_type_composite_t* type, size_t output_size, void* output);
+size_t dsdl_serialize(const dsdl_type_composite_t* type,
+                      const void*                  values,
+                      size_t                       output_size,
+                      void*                        output);
 
 /// Deserialize a byte buffer into a composite type instance.
 ///
+/// Value memory layout: Same as dsdl_serialize().
+/// The values buffer must be pre-allocated with sufficient size for the type.
+///
 /// @param type        Type descriptor (must be struct or union, not RPC)
+/// @param values      Pointer to field values buffer (must be pre-allocated)
 /// @param input_size  Size of input buffer in bytes
 /// @param input       Input buffer
 /// @return Number of bytes consumed, or 0 on error
-size_t dsdl_deserialize(dsdl_type_composite_t* type, size_t input_size, const void* input);
+size_t dsdl_deserialize(const dsdl_type_composite_t* type,
+                        void*                        values,
+                        size_t                       input_size,
+                        const void*                  input);
 
 #ifdef __cplusplus
 }

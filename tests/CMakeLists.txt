@@ -35,7 +35,6 @@ target_include_directories(dsdl_test_internals INTERFACE
 # ------------------------------------------------------------------------------
 add_executable(test_dsdl
     test_main.c
-    test_serialization.c
 )
 
 target_link_libraries(test_dsdl PRIVATE
@@ -49,6 +48,26 @@ target_include_directories(test_dsdl PRIVATE
 )
 
 add_test(NAME dsdl_tests COMMAND test_dsdl)
+
+# ------------------------------------------------------------------------------
+# Test executable - Serialization tests (includes dsdl.c directly)
+# ------------------------------------------------------------------------------
+add_executable(test_dsdl_serialization
+    test_serialization.c
+)
+
+target_link_libraries(test_dsdl_serialization PRIVATE
+    unity
+    dsdl_test_internals
+)
+
+target_compile_definitions(test_dsdl_serialization PRIVATE
+    DSDL_INTERNAL_TESTING=1
+)
+
+add_test(NAME dsdl_serialization_tests COMMAND test_dsdl_serialization
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
 
 # ------------------------------------------------------------------------------
 # Test executable - Parser tests (includes dsdl.c directly)

@@ -84,21 +84,6 @@ static void test_rational_is_int(void)
 }
 
 // ============================================================================
-// Rational to_int tests
-// ============================================================================
-
-static void test_rational_to_int(void)
-{
-    dsdl_rational_t r;
-
-    r = dsdl_rational_from_int_(123);
-    TEST_ASSERT_EQUAL_INT64(123, dsdl_rational_to_int_(r));
-
-    r = dsdl_rational_from_int_(-456);
-    TEST_ASSERT_EQUAL_INT64(-456, dsdl_rational_to_int_(r));
-}
-
-// ============================================================================
 // Rational negation tests
 // ============================================================================
 
@@ -274,7 +259,6 @@ int main(void)
 
     // Rational tests
     RUN_TEST(test_rational_is_int);
-    RUN_TEST(test_rational_to_int);
     RUN_TEST(test_rational_neg);
 
     // Memory helper tests
