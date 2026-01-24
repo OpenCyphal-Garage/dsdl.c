@@ -108,6 +108,9 @@ target_compile_options(dsdl PRIVATE
     $<$<C_COMPILER_ID:GNU,Clang>:-Wcast-qual>
 )
 
+# Link math library (required for pow, floor, etc.)
+target_link_libraries(dsdl PUBLIC m)
+
 # ------------------------------------------------------------------------------
 # Tests
 # ------------------------------------------------------------------------------

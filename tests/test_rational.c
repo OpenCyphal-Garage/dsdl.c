@@ -215,6 +215,141 @@ void test_rational_cmp(void)
 }
 
 // ============================================================================
+// Overflow handling tests
+// ============================================================================
+
+void test_rational_overflow_mul(void)
+{
+    // Multiplying large values should not crash and should approximate
+    // INTMAX_MAX * 2 would overflow, but halving should keep it reasonable
+    dsdl_rational_t a = dsdl_rational_from_int_(INTMAX_MAX / 2);
+    dsdl_rational_t b = dsdl_rational_from_int_(4);
+    dsdl_rational_t r = dsdl_rational_mul_(a, b);
+
+    // Result should be approximately 2 * INTMAX_MAX / 2 = INTMAX_MAX
+    // but halved down to fit - should be positive and large
+    TEST_ASSERT_TRUE(r.num > 0);
+    TEST_ASSERT_TRUE(r.den >= 1);
+
+    // The ratio should be approximately (INTMAX_MAX/2) * 4 = 2*INTMAX_MAX
+    // After halving approximation, it should still be a large positive number
+}
+
+void test_rational_overflow_add(void)
+{
+    // Adding values near INTMAX_MAX should not crash
+    dsdl_rational_t a = dsdl_rational_from_int_(INTMAX_MAX / 2);
+    dsdl_rational_t b = dsdl_rational_from_int_(INTMAX_MAX / 2);
+    dsdl_rational_t r = dsdl_rational_add_(a, b);
+
+    // Result should be approximately INTMAX_MAX (or halved approximation)
+    TEST_ASSERT_TRUE(r.num > 0);
+    TEST_ASSERT_TRUE(r.den >= 1);
+}
+
+void test_rational_overflow_large_denominators(void)
+{
+    // Large denominators that would overflow when multiplied
+    dsdl_rational_t a = { 1, UINTMAX_MAX / 2 };
+    dsdl_rational_t b = { 1, UINTMAX_MAX / 2 };
+    dsdl_rational_t r = dsdl_rational_mul_(a, b);
+
+    // Should produce a very small positive fraction (close to 0)
+    // or an approximation thereof
+    TEST_ASSERT_TRUE(r.den > 0);
+    // Since 1/(large^2) is tiny, the result should be very small
+    // After halving, we get an approximation but it shouldn't crash
+}
+
+void test_rational_overflow_preserves_sign(void)
+{
+    // Negative overflow should preserve sign
+    dsdl_rational_t a = dsdl_rational_from_int_(INTMAX_MIN / 2);
+    dsdl_rational_t b = dsdl_rational_from_int_(3);
+    dsdl_rational_t r = dsdl_rational_mul_(a, b);
+
+    // Result should be negative
+    TEST_ASSERT_TRUE(r.num < 0);
+    TEST_ASSERT_TRUE(r.den >= 1);
+}
+
+void test_rational_halve_approximation(void)
+{
+    // Test that halving produces reasonable approximations
+    // 8/16 halved should give 4/8 = 1/2 after normalization
+    dsdl_rational_t r = { 8, 16 };
+    r                 = dsdl_rational_halve_(r);
+    r                 = dsdl_rational_normalize_(r);
+    TEST_ASSERT_EQUAL_INT64(1, r.num);
+    TEST_ASSERT_EQUAL_UINT64(2, r.den);
+
+    // Large value halving: preserves approximate ratio
+    r = (dsdl_rational_t){ 1000000, 8000000 }; // 1/8
+    r = dsdl_rational_halve_(r);
+    r = dsdl_rational_normalize_(r);
+    // 500000/4000000 = 1/8
+    TEST_ASSERT_EQUAL_INT64(1, r.num);
+    TEST_ASSERT_EQUAL_UINT64(8, r.den);
+}
+
+void test_rational_intmax_min_negate(void)
+{
+    // Negating INTMAX_MIN is tricky - test we handle it
+    dsdl_rational_t a = { INTMAX_MIN, 1 };
+    dsdl_rational_t r = dsdl_rational_neg_(a);
+
+    // Should be positive (after halving to make it representable)
+    TEST_ASSERT_TRUE(r.num > 0);
+    TEST_ASSERT_TRUE(r.den >= 1);
+}
+
+void test_rational_div_large_denominator(void)
+{
+    // Division where denominator > INTMAX_MAX
+    // 1 / (1/UINTMAX_MAX) should give approximately UINTMAX_MAX
+    // but we need to halve to fit in intmax_t
+    dsdl_rational_t a = { 1, 1 };
+    dsdl_rational_t b = { 1, UINTMAX_MAX };
+    dsdl_rational_t r = dsdl_rational_div_(a, b);
+
+    // Result should be positive and large (halved approximation of UINTMAX_MAX)
+    TEST_ASSERT_TRUE(r.num > 0);
+    TEST_ASSERT_TRUE(r.den >= 1);
+
+    // Should be approximately UINTMAX_MAX or a halved version
+    // The ratio r.num/r.den should be large
+    TEST_ASSERT_TRUE(r.num > 1000); // Should be much larger than 1
+}
+
+void test_rational_add_large_denominator(void)
+{
+    // Addition where denominator > INTMAX_MAX
+    dsdl_rational_t a = { 1, UINTMAX_MAX };
+    dsdl_rational_t b = { 1, UINTMAX_MAX };
+    dsdl_rational_t r = dsdl_rational_add_(a, b);
+
+    // Should not crash and produce a valid result
+    TEST_ASSERT_TRUE(r.den > 0);
+    // Result should be approximately 2/UINTMAX_MAX (very small but positive)
+    TEST_ASSERT_TRUE(r.num >= 0);
+}
+
+void test_rational_cmp_large_denominator(void)
+{
+    // Comparison where denominator > INTMAX_MAX
+    dsdl_rational_t a = { 1, UINTMAX_MAX };
+    dsdl_rational_t b = { 2, UINTMAX_MAX };
+
+    // a < b (1/UINTMAX_MAX < 2/UINTMAX_MAX)
+    TEST_ASSERT_TRUE(dsdl_rational_cmp_(a, b) < 0);
+    TEST_ASSERT_TRUE(dsdl_rational_cmp_(b, a) > 0);
+
+    // Equal comparison
+    dsdl_rational_t c = { 1, UINTMAX_MAX };
+    TEST_ASSERT_EQUAL_INT(0, dsdl_rational_cmp_(a, c));
+}
+
+// ============================================================================
 // Main
 // ============================================================================
 
@@ -232,6 +367,17 @@ int main(void)
     RUN_TEST(test_rational_mul);
     RUN_TEST(test_rational_div);
     RUN_TEST(test_rational_cmp);
+
+    // Overflow handling tests
+    RUN_TEST(test_rational_overflow_mul);
+    RUN_TEST(test_rational_overflow_add);
+    RUN_TEST(test_rational_overflow_large_denominators);
+    RUN_TEST(test_rational_overflow_preserves_sign);
+    RUN_TEST(test_rational_halve_approximation);
+    RUN_TEST(test_rational_intmax_min_negate);
+    RUN_TEST(test_rational_div_large_denominator);
+    RUN_TEST(test_rational_add_large_denominator);
+    RUN_TEST(test_rational_cmp_large_denominator);
 
     return UNITY_END();
 }

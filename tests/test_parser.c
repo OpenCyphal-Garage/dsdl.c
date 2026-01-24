@@ -498,6 +498,49 @@ static void test_parse_expr_power_associativity(void)
     TEST_ASSERT_EQUAL_INT64(512, val.as.rational.num);
 }
 
+static void test_parse_expr_power_fractional_exponent(void)
+{
+    // 4 ** 0.5 = 2 (square root)
+    init_parser("4 ** 0.5");
+    dsdl_value_t val;
+    TEST_ASSERT_TRUE(dsdl_parse_expression_(&g_parser, &val));
+    TEST_ASSERT_EQUAL(dsdl_value_rational, val.kind);
+    // Result should be approximately 2 (rational approximation)
+    // Check that num/den is close to 2: num should be approximately 2*den
+    TEST_ASSERT_TRUE(val.as.rational.den > 0);
+    const intmax_t diff = val.as.rational.num - (intmax_t)(2 * val.as.rational.den);
+    TEST_ASSERT_TRUE(diff >= -1 && diff <= 1); // Within 1 unit of 2*den
+}
+
+static void test_parse_expr_power_fractional_base_and_exp(void)
+{
+    // 27 ** (1/3) = 3 (cube root)
+    init_parser("27 ** (1/3)");
+    dsdl_value_t val;
+    TEST_ASSERT_TRUE(dsdl_parse_expression_(&g_parser, &val));
+    TEST_ASSERT_EQUAL(dsdl_value_rational, val.kind);
+    // Result should be approximately 3
+    TEST_ASSERT_TRUE(val.as.rational.den > 0);
+    const intmax_t diff = val.as.rational.num - (intmax_t)(3 * val.as.rational.den);
+    TEST_ASSERT_TRUE(diff >= -1 && diff <= 1);
+}
+
+static void test_parse_expr_power_negative_fractional(void)
+{
+    // 4 ** -0.5 = 0.5 (1/sqrt(4))
+    init_parser("4 ** (-0.5)");
+    dsdl_value_t val;
+    TEST_ASSERT_TRUE(dsdl_parse_expression_(&g_parser, &val));
+    TEST_ASSERT_EQUAL(dsdl_value_rational, val.kind);
+    // Result should be approximately 0.5 = 1/2
+    // Check that 2*num is approximately equal to den
+    TEST_ASSERT_TRUE(val.as.rational.den > 0);
+    TEST_ASSERT_TRUE(val.as.rational.num > 0);
+    const intmax_t twice_num = 2 * val.as.rational.num;
+    const intmax_t diff      = twice_num - (intmax_t)val.as.rational.den;
+    TEST_ASSERT_TRUE(diff >= -1 && diff <= 1);
+}
+
 // ============================================================================
 // Set literal tests
 // ============================================================================
@@ -1030,6 +1073,9 @@ int main(void)
     RUN_TEST(test_parse_expr_logical_not);
     RUN_TEST(test_parse_expr_complex);
     RUN_TEST(test_parse_expr_power_associativity);
+    RUN_TEST(test_parse_expr_power_fractional_exponent);
+    RUN_TEST(test_parse_expr_power_fractional_base_and_exp);
+    RUN_TEST(test_parse_expr_power_negative_fractional);
 
     // Set literal tests
     RUN_TEST(test_parse_set_empty);

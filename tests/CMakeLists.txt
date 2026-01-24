@@ -29,6 +29,7 @@ target_include_directories(dsdl_test_internals INTERFACE
     ${CMAKE_SOURCE_DIR}
     ${CMAKE_SOURCE_DIR}/lib
 )
+target_link_libraries(dsdl_test_internals INTERFACE m)
 
 # ------------------------------------------------------------------------------
 # Test executable - Main test suite (C) - Public API tests

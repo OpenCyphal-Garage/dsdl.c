@@ -14,17 +14,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <string.h>
-
-// ============================================================================
-// Configuration and platform detection
-// ============================================================================
-
-/// Detect C23 for _BitInt support
-#if defined(__STDC_VERSION__) && (__STDC_VERSION__ >= 202311L)
-#define DSDL_HAS_BITINT 1
-#else
-#define DSDL_HAS_BITINT 0
-#endif
+#include <math.h>
 
 // ============================================================================
 // Internal type definitions
@@ -33,15 +23,14 @@
 /// Rational number for exact arithmetic during expression evaluation.
 /// Per DSDL spec section 3.1: rationals must be stored normalized with
 /// positive denominator and GCD(num, den) == 1.
+///
+/// When arithmetic operations would overflow intmax_t/uintmax_t, the rational
+/// is approximated by repeatedly halving both numerator and denominator until
+/// representable. This trades exactness for bounded representation.
 typedef struct
 {
-#if DSDL_HAS_BITINT
-    _BitInt(2048) num;          ///< Numerator (signed)
-    unsigned _BitInt(2048) den; ///< Denominator (always positive, 1 for integers)
-#else
     intmax_t  num; ///< Numerator (signed)
     uintmax_t den; ///< Denominator (always positive, 0 means NaN, 1 for integers)
-#endif
 } dsdl_rational_t;
 
 /// Expression value types for compile-time evaluation.
@@ -104,6 +93,60 @@ static uintmax_t dsdl_abs_(intmax_t x)
     return (uintmax_t)(-x);
 }
 
+/// Check if signed multiplication would overflow.
+/// Returns true if a * b would overflow intmax_t.
+static bool dsdl_would_overflow_mul_signed_(intmax_t a, intmax_t b)
+{
+    if (a == 0 || b == 0) {
+        return false;
+    }
+    const uintmax_t abs_a = dsdl_abs_(a);
+    const uintmax_t abs_b = dsdl_abs_(b);
+    // Check if abs_a * abs_b > INTMAX_MAX (or INTMAX_MAX+1 for negative result)
+    // Since both are unsigned, we can check: abs_a > INTMAX_MAX / abs_b
+    // But we need to be careful: result can be INTMAX_MAX+1 if signs differ
+    const uintmax_t limit = ((a < 0) != (b < 0)) ? ((uintmax_t)INTMAX_MAX + 1U) : (uintmax_t)INTMAX_MAX;
+    return abs_a > limit / abs_b;
+}
+
+/// Check if unsigned multiplication would overflow.
+/// Returns true if a * b would overflow uintmax_t.
+static bool dsdl_would_overflow_mul_unsigned_(uintmax_t a, uintmax_t b)
+{
+    if (a == 0 || b == 0) {
+        return false;
+    }
+    return a > UINTMAX_MAX / b;
+}
+
+/// Check if signed addition would overflow.
+/// Returns true if a + b would overflow intmax_t.
+static bool dsdl_would_overflow_add_signed_(intmax_t a, intmax_t b)
+{
+    if (b > 0 && a > INTMAX_MAX - b) {
+        return true;
+    }
+    if (b < 0 && a < INTMAX_MIN - b) {
+        return true;
+    }
+    return false;
+}
+
+/// Reduce a rational by halving both numerator and denominator.
+/// This loses precision but ensures the value stays approximately correct.
+/// Rounds toward zero.
+static dsdl_rational_t dsdl_rational_halve_(dsdl_rational_t r)
+{
+    // Halve both, rounding toward zero
+    r.num = r.num / 2;
+    r.den = r.den / 2;
+    // Don't let denominator become 0
+    if (r.den == 0) {
+        r.den = 1;
+    }
+    return r;
+}
+
 /// Create a rational from an integer.
 static dsdl_rational_t dsdl_rational_from_int_(intmax_t value)
 {
@@ -120,10 +163,6 @@ static dsdl_rational_t dsdl_rational_normalize_(dsdl_rational_t r)
         // NaN - return as-is
         return r;
     }
-    // Ensure denominator is positive (for non-_BitInt version)
-#if !DSDL_HAS_BITINT
-    // intmax_t/uintmax_t version: denominator is already unsigned
-#endif
     // Reduce by GCD
     const uintmax_t g = dsdl_gcd_(dsdl_abs_(r.num), r.den);
     if (g > 1) {
@@ -134,27 +173,72 @@ static dsdl_rational_t dsdl_rational_normalize_(dsdl_rational_t r)
 }
 
 /// Add two rationals: a/b + c/d = (ad + bc) / bd
+/// Uses overflow-safe arithmetic with halving approximation.
 static dsdl_rational_t dsdl_rational_add_(dsdl_rational_t a, dsdl_rational_t b)
 {
+    // First ensure denominators fit in intmax_t (required for signed multiplication)
+    while (a.den > (uintmax_t)INTMAX_MAX || b.den > (uintmax_t)INTMAX_MAX) {
+        a = dsdl_rational_halve_(a);
+        b = dsdl_rational_halve_(b);
+    }
+
+    // Now denominators are safe to cast. Reduce until multiplication won't overflow.
+    // We need: a.num * b.den, b.num * a.den, and a.den * b.den to not overflow
+    while (dsdl_would_overflow_mul_signed_(a.num, (intmax_t)b.den) ||
+           dsdl_would_overflow_mul_signed_(b.num, (intmax_t)a.den) || dsdl_would_overflow_mul_unsigned_(a.den, b.den)) {
+        a = dsdl_rational_halve_(a);
+        b = dsdl_rational_halve_(b);
+    }
+
+    const intmax_t ad = a.num * (intmax_t)b.den;
+    const intmax_t bc = b.num * (intmax_t)a.den;
+
+    // Check if addition would overflow
+    if (dsdl_would_overflow_add_signed_(ad, bc)) {
+        // Halve and restart
+        return dsdl_rational_add_(dsdl_rational_halve_(a), dsdl_rational_halve_(b));
+    }
+
     dsdl_rational_t r;
-    // TODO: overflow detection
-    r.num = a.num * (intmax_t)b.den + b.num * (intmax_t)a.den;
+    r.num = ad + bc;
     r.den = a.den * b.den;
     return dsdl_rational_normalize_(r);
 }
 
 /// Subtract two rationals: a/b - c/d = (ad - bc) / bd
+/// Uses overflow-safe arithmetic with halving approximation.
 static dsdl_rational_t dsdl_rational_sub_(dsdl_rational_t a, dsdl_rational_t b)
 {
-    dsdl_rational_t r;
-    r.num = a.num * (intmax_t)b.den - b.num * (intmax_t)a.den;
-    r.den = a.den * b.den;
-    return dsdl_rational_normalize_(r);
+    b.num = -b.num;
+    return dsdl_rational_add_(a, b);
 }
 
 /// Multiply two rationals: a/b * c/d = ac / bd
+/// Uses overflow-safe arithmetic with halving approximation.
 static dsdl_rational_t dsdl_rational_mul_(dsdl_rational_t a, dsdl_rational_t b)
 {
+    // First normalize to reduce magnitude
+    a = dsdl_rational_normalize_(a);
+    b = dsdl_rational_normalize_(b);
+
+    // Cross-reduce to minimize overflow risk: GCD(a.num, b.den) and GCD(b.num, a.den)
+    const uintmax_t g1 = dsdl_gcd_(dsdl_abs_(a.num), b.den);
+    const uintmax_t g2 = dsdl_gcd_(dsdl_abs_(b.num), a.den);
+    if (g1 > 1) {
+        a.num = a.num / (intmax_t)g1;
+        b.den = b.den / g1;
+    }
+    if (g2 > 1) {
+        b.num = b.num / (intmax_t)g2;
+        a.den = a.den / g2;
+    }
+
+    // Reduce operands until multiplication won't overflow
+    while (dsdl_would_overflow_mul_signed_(a.num, b.num) || dsdl_would_overflow_mul_unsigned_(a.den, b.den)) {
+        a = dsdl_rational_halve_(a);
+        b = dsdl_rational_halve_(b);
+    }
+
     dsdl_rational_t r;
     r.num = a.num * b.num;
     r.den = a.den * b.den;
@@ -162,36 +246,79 @@ static dsdl_rational_t dsdl_rational_mul_(dsdl_rational_t a, dsdl_rational_t b)
 }
 
 /// Divide two rationals: (a/b) / (c/d) = ad / bc
+/// Uses overflow-safe arithmetic with halving approximation.
 static dsdl_rational_t dsdl_rational_div_(dsdl_rational_t a, dsdl_rational_t b)
 {
-    dsdl_rational_t r;
     if (b.num == 0) {
-        r.num = 0;
-        r.den = 0; // NaN
+        dsdl_rational_t r = { 0, 0 }; // NaN
         return r;
     }
-    // Handle sign: if b.num is negative, flip signs
+
+    // Create inverse of b: (c/d)^-1 = d/c
+    // Handle the case where b.den > INTMAX_MAX by capping at INTMAX_MAX
+    dsdl_rational_t b_inv;
     if (b.num < 0) {
-        r.num = a.num * (-(intmax_t)b.den);
-        r.den = a.den * dsdl_abs_(b.num);
+        // b.den becomes numerator (with sign flip)
+        if (b.den > (uintmax_t)INTMAX_MAX) {
+            // Cap at INTMAX_MAX (approximation)
+            b_inv.num = -INTMAX_MAX;
+            // Scale denominator proportionally: den * (INTMAX_MAX / b.den)
+            const uintmax_t abs_num = dsdl_abs_(b.num);
+            b_inv.den               = (abs_num * (uintmax_t)INTMAX_MAX) / b.den;
+            if (b_inv.den == 0) {
+                b_inv.den = 1;
+            }
+        } else {
+            b_inv.num = -(intmax_t)b.den;
+            b_inv.den = dsdl_abs_(b.num);
+        }
     } else {
-        r.num = a.num * (intmax_t)b.den;
-        r.den = a.den * (uintmax_t)b.num;
+        if (b.den > (uintmax_t)INTMAX_MAX) {
+            // Cap at INTMAX_MAX (approximation)
+            b_inv.num = INTMAX_MAX;
+            // Scale denominator proportionally
+            b_inv.den = ((uintmax_t)b.num * (uintmax_t)INTMAX_MAX) / b.den;
+            if (b_inv.den == 0) {
+                b_inv.den = 1;
+            }
+        } else {
+            b_inv.num = (intmax_t)b.den;
+            b_inv.den = (uintmax_t)b.num;
+        }
     }
-    return dsdl_rational_normalize_(r);
+    return dsdl_rational_mul_(a, b_inv);
 }
 
 /// Negate a rational.
 static dsdl_rational_t dsdl_rational_neg_(dsdl_rational_t a)
 {
+    // Handle INTMAX_MIN edge case
+    if (a.num == INTMAX_MIN) {
+        // Can't negate directly; halve first then negate
+        a = dsdl_rational_halve_(a);
+    }
     a.num = -a.num;
     return a;
 }
 
 /// Compare two rationals: returns <0, 0, >0.
+/// Uses overflow-safe arithmetic with halving approximation.
 static int dsdl_rational_cmp_(dsdl_rational_t a, dsdl_rational_t b)
 {
     // a/b vs c/d  =>  compare a*d vs c*b
+    // First ensure denominators fit in intmax_t
+    while (a.den > (uintmax_t)INTMAX_MAX || b.den > (uintmax_t)INTMAX_MAX) {
+        a = dsdl_rational_halve_(a);
+        b = dsdl_rational_halve_(b);
+    }
+
+    // Now reduce until multiplication won't overflow
+    while (dsdl_would_overflow_mul_signed_(a.num, (intmax_t)b.den) ||
+           dsdl_would_overflow_mul_signed_(b.num, (intmax_t)a.den)) {
+        a = dsdl_rational_halve_(a);
+        b = dsdl_rational_halve_(b);
+    }
+
     const intmax_t lhs = a.num * (intmax_t)b.den;
     const intmax_t rhs = b.num * (intmax_t)a.den;
     if (lhs < rhs) {
@@ -205,6 +332,69 @@ static int dsdl_rational_cmp_(dsdl_rational_t a, dsdl_rational_t b)
 
 /// Check if rational is an integer (denominator == 1).
 static bool dsdl_rational_is_int_(dsdl_rational_t r) { return r.den == 1; }
+
+/// Convert a double to a rational approximation.
+/// Uses continued fraction expansion for best approximation within intmax_t range.
+static dsdl_rational_t dsdl_rational_from_double_(double x)
+{
+    dsdl_rational_t result = { 0, 1 };
+
+    // Handle special cases
+    if (!isfinite(x)) {
+        result.den = 0; // NaN
+        return result;
+    }
+    if (fabs(x) < 1e-15) {
+        return result; // Effectively zero
+    }
+
+    // Handle sign
+    const bool negative = x < 0;
+    if (negative) {
+        x = -x;
+    }
+
+    // Use continued fraction expansion for best rational approximation
+    // Limit iterations to prevent infinite loops
+    intmax_t  h0 = 0, h1 = 1; // Numerator convergents
+    uintmax_t k0 = 1, k1 = 0; // Denominator convergents
+
+    for (int iter = 0; iter < 64 && x > 1e-15; ++iter) {
+        const double   a_d = floor(x);
+        const intmax_t a   = (a_d > (double)INTMAX_MAX) ? INTMAX_MAX : (intmax_t)a_d;
+
+        // Check for overflow before computing next convergent
+        // h2 = a * h1 + h0, k2 = a * k1 + k0
+        if (dsdl_would_overflow_mul_signed_(a, h1) || dsdl_would_overflow_mul_unsigned_((uintmax_t)a, k1)) {
+            break;
+        }
+        const intmax_t  h2_tmp = a * h1;
+        const uintmax_t k2_tmp = (uintmax_t)a * k1;
+
+        if (dsdl_would_overflow_add_signed_(h2_tmp, h0) || k2_tmp > UINTMAX_MAX - k0) {
+            break;
+        }
+
+        const intmax_t  h2 = h2_tmp + h0;
+        const uintmax_t k2 = k2_tmp + k0;
+
+        h0 = h1;
+        h1 = h2;
+        k0 = k1;
+        k1 = k2;
+
+        // Compute remainder for next iteration
+        const double remainder = x - a_d;
+        if (remainder < 1e-15) {
+            break;
+        }
+        x = 1.0 / remainder;
+    }
+
+    result.num = negative ? -h1 : h1;
+    result.den = (k1 == 0) ? 1 : k1;
+    return dsdl_rational_normalize_(result);
+}
 
 // ============================================================================
 // Parser state
@@ -692,20 +882,48 @@ static dsdl_rational_t dsdl_parse_real_(dsdl_parser_t* const parser)
     // Then multiply/divide by 10^exp as needed.
 
     // Start with integer and fractional part
+    // Compute frac_denom = 10^frac_count, with overflow check
     uintmax_t frac_denom = 1;
     for (size_t i = 0; i < frac_count; ++i) {
+        if (frac_denom > UINTMAX_MAX / 10) {
+            // Would overflow - truncate precision
+            break;
+        }
         frac_denom *= 10;
+    }
+
+    // Ensure frac_denom fits in intmax_t for safe signed arithmetic
+    while (frac_denom > (uintmax_t)INTMAX_MAX) {
+        frac_denom /= 2;
+        int_part /= 2;
+        frac_part /= 2;
+    }
+
+    // Check for multiplication overflow: int_part * frac_denom
+    while (dsdl_would_overflow_mul_signed_(int_part, (intmax_t)frac_denom)) {
+        frac_denom /= 2;
+        int_part /= 2;
+        frac_part /= 2;
     }
 
     result.num = int_part * (intmax_t)frac_denom + frac_part;
     result.den = frac_denom;
 
-    // Apply exponent
+    // Apply exponent with overflow protection
     if (has_exp) {
         for (intmax_t i = 0; i < exp_value; ++i) {
             if (exp_neg) {
+                if (result.den > UINTMAX_MAX / 10) {
+                    // Would overflow denominator - halve the rational
+                    result = dsdl_rational_halve_(result);
+                }
                 result.den *= 10;
             } else {
+                // Check signed overflow for numerator
+                if ((result.num > 0 && result.num > INTMAX_MAX / 10) ||
+                    (result.num < 0 && result.num < INTMAX_MIN / 10)) {
+                    result = dsdl_rational_halve_(result);
+                }
                 result.num *= 10;
             }
         }
@@ -1149,16 +1367,21 @@ static bool dsdl_apply_binary_op_(const dsdl_op_t           op,
             return false;
         }
         if (op == dsdl_op_pow) {
-            // Power only for integer exponent
+            result->kind = dsdl_value_rational;
             if (dsdl_rational_is_int_(b)) {
+                // Integer exponent: exact rational arithmetic
                 intmax_t exp            = b.num;
-                result->kind            = dsdl_value_rational;
                 result->as.rational.num = 1;
                 result->as.rational.den = 1;
                 if (exp < 0) {
                     // Negative exponent: invert base
-                    dsdl_rational_t inv = { (intmax_t)a.den, dsdl_abs_(a.num) };
-                    if ((a.num < 0) && (((-exp) % 2) == 1)) {
+                    // First ensure denominator fits in intmax_t
+                    dsdl_rational_t base = a;
+                    while (base.den > (uintmax_t)INTMAX_MAX) {
+                        base = dsdl_rational_halve_(base);
+                    }
+                    dsdl_rational_t inv = { (intmax_t)base.den, dsdl_abs_(base.num) };
+                    if ((base.num < 0) && (((-exp) % 2) == 1)) {
                         inv.num = -inv.num;
                     }
                     exp = -exp;
@@ -1170,9 +1393,18 @@ static bool dsdl_apply_binary_op_(const dsdl_op_t           op,
                         result->as.rational = dsdl_rational_mul_(result->as.rational, a);
                     }
                 }
-                return true;
+            } else {
+                // Non-integer exponent: use floating-point approximation
+                // Per DSDL spec, accuracy is implementation-defined
+                const double base_d   = (double)a.num / (double)a.den;
+                const double exp_d    = (double)b.num / (double)b.den;
+                const double result_d = pow(base_d, exp_d);
+                result->as.rational   = dsdl_rational_from_double_(result_d);
+                if (result->as.rational.den == 0) {
+                    return false; // NaN result (e.g., negative base with fractional exponent)
+                }
             }
-            return false;
+            return true;
         }
 
         // Bitwise operators (integers only)

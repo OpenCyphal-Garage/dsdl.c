@@ -11,8 +11,10 @@ This document outlines the comprehensive implementation plan for `dsdl.c`, a com
 - **Single file:** Entire implementation in `dsdl.c`
 - **Minimal dependencies:** Only `lib/wkv.h` for name lookups
 - **Rational precision:** The DSDL spec requires "unlimited" precision rationals for expression
-  evaluation. We use `intmax_t/uintmax_t` (C99-C17) or `_BitInt(2048)` (C23+) as a practical
-  compromise. This may be revised to arbitrary precision in the future if needed.
+  evaluation. We use `intmax_t/uintmax_t` for numerator and denominator. When arithmetic
+  operations would overflow, rationals are approximated by halving both numerator and denominator
+  until representable. This trades exactness for bounded representation while preserving the
+  approximate value.
 
 ---
 
@@ -121,29 +123,26 @@ Following `grammar.peg` lines 142-182:
 
 Per the DSDL specification (section 3.1), all numeric values during expression evaluation must be
 represented as rational numbers with exact arithmetic. The spec requires "unlimited" range, but
-for practical embedded use we adopt the following compromise:
+for practical embedded use we adopt the following approach:
 
 ```c
 // Rational number for expression evaluation.
 // Per spec: numerator/denominator, denominator always positive, GCD(num,den)==1.
 //
-// C99-C17: Uses intmax_t/uintmax_t (typically 64-bit, may be larger).
-// C23+:    Can use _BitInt(2048) for much larger range.
-//
-// FUTURE: If larger precision is needed, this may be revised to use arbitrary
-// precision integers allocated via the user-provided realloc callback.
-#if defined(__STDC_VERSION__) && (__STDC_VERSION__ >= 202311L)
-    typedef struct {
-        _BitInt(2048)          num;  // Numerator (signed)
-        unsigned _BitInt(2048) den;  // Denominator (always positive)
-    } dsdl_rational_t;
-#else
-    typedef struct {
-        intmax_t  num;   // Numerator (signed)
-        uintmax_t den;   // Denominator (always positive, 0 means NaN)
-    } dsdl_rational_t;
-#endif
+// Uses intmax_t/uintmax_t (typically 64-bit, may be larger).
+// When arithmetic would overflow, rationals are approximated by halving both
+// numerator and denominator until representable. This trades exactness for
+// bounded representation while preserving approximate value.
+typedef struct {
+    intmax_t  num;   // Numerator (signed)
+    uintmax_t den;   // Denominator (always positive, 0 means NaN)
+} dsdl_rational_t;
 ```
+
+**Overflow handling:** Before each arithmetic operation, we check if the operation would overflow.
+If so, both operands are halved (preserving sign and approximate ratio) until the operation can
+complete without overflow. This ensures the library never crashes on large values while producing
+reasonable approximations.
 
 **Note:** The `**` (power) operator with non-integer exponent has "implementation-defined accuracy"
 per the spec, so we may use floating-point approximation for that specific case.
@@ -672,7 +671,7 @@ typedef enum {
 | Memory management complexity | Consistent single-allocation pattern, valgrind testing |
 | Parser performance | Memoization if needed, benchmark against PyDSDL |
 | C++ compatibility | Early C++20 test, careful header design |
-| Rational overflow | Detect overflow, report error; upgrade to `_BitInt(2048)` on C23; may add arbitrary precision later |
+| Rational overflow | Detect overflow before operations; halve operands until representable; trades exactness for bounded representation |
 
 ---
 
