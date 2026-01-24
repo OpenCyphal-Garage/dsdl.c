@@ -1,0 +1,4 @@
+# Helper deprecated type for UsesDeprecated test
+@deprecated
+uint8 value
+@sealed

@@ -1,0 +1,3 @@
+# ERROR: Void fields cannot have names (they are padding only)
+void8 my_padding
+@sealed

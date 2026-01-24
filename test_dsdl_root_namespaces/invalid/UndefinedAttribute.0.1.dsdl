@@ -1,0 +1,3 @@
+# ERROR: Access to undefined type attribute
+uint8 VALUE = uint8.nonexistent_attribute
+@sealed

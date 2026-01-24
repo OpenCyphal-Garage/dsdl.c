@@ -1,0 +1,3 @@
+# ERROR: Constants cannot be assigned set values
+int8 VALUE = {1, 2, 3}
+@sealed

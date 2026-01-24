@@ -1,0 +1,3 @@
+# ERROR: Array capacity must be a positive integer
+uint8[3.5] array
+@sealed

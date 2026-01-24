@@ -1,0 +1,3 @@
+# ERROR: int65 is invalid (maximum bit width is 64)
+int65 value
+@sealed

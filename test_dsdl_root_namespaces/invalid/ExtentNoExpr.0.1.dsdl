@@ -1,0 +1,3 @@
+# ERROR: @extent requires an expression
+uint8 value
+@extent

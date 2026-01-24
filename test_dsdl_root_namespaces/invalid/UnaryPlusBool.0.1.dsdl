@@ -1,0 +1,3 @@
+# ERROR: Unary plus requires numeric operand
+@assert +true == true
+@sealed

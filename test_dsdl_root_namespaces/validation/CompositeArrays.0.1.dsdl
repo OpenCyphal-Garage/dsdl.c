@@ -1,0 +1,15 @@
+# Arrays of composite types
+# Tests arrays containing struct/union types
+
+# Fixed array of composite
+Empty.0.1[5] empty_array
+Simple.0.1[3] simple_fixed_array
+
+# Variable array of composite
+Empty.0.1[<=10] empty_var_array
+Simple.0.1[<=5] simple_var_array
+
+# Array of composite with version
+Versioned.1.0[<=3] versioned_array
+
+@sealed

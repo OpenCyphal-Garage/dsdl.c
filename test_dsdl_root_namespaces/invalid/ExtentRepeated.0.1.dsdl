@@ -1,0 +1,4 @@
+# ERROR: @extent directive used more than once
+uint8 value
+@extent 64
+@extent 128

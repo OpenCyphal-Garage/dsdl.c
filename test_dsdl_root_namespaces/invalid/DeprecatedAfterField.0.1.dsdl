@@ -1,0 +1,4 @@
+# ERROR: @deprecated must appear before the first attribute
+uint8 value
+@deprecated
+@sealed

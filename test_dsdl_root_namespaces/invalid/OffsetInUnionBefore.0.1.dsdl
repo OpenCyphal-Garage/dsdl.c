@@ -1,0 +1,6 @@
+# ERROR: _offset_ is not defined before first field in union
+@union
+@assert _offset_.count >= 1
+uint8 a
+uint16 b
+@sealed

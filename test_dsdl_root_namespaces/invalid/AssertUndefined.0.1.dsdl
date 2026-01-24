@@ -1,0 +1,4 @@
+# ERROR: Undefined identifier in assertion
+uint8 value
+@assert undefined_identifier == 0
+@sealed

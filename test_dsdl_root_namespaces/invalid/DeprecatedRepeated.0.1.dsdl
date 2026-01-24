@@ -1,0 +1,5 @@
+# ERROR: @deprecated directive used more than once
+@deprecated
+@deprecated
+uint8 value
+@sealed

@@ -1,0 +1,3 @@
+# ERROR: Integer constant cannot be assigned a non-integer rational
+int8 VALUE = 1.5
+@sealed

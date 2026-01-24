@@ -1,0 +1,16 @@
+# Truncated cast mode testing
+# Tests truncated modifier on floating point types
+
+# Truncated float constant
+truncated float16 PI = 3.1415926535897932384626433
+
+# Truncated field declarations
+truncated float16 half_value
+truncated float32 single_value
+truncated float64 double_value
+
+# Arrays of truncated floats
+truncated float32[10] truncated_array
+truncated float16[<=20] truncated_var_array
+
+@sealed

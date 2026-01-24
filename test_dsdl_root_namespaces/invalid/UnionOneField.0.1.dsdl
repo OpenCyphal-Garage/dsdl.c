@@ -1,0 +1,4 @@
+# ERROR: Union must have at least 2 fields
+@union
+uint8 only_one
+@sealed

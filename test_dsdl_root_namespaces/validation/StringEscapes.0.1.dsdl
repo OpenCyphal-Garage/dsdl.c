@@ -1,0 +1,25 @@
+# String escape sequences
+# Tests all supported escape sequences in string literals
+
+# Basic escapes
+@assert '\n' != ''
+@assert '\r' != ''
+@assert '\t' != ''
+@assert '\\' != ''
+@assert '\'' != ''
+@assert '\"' != ''
+
+# Escape in @print
+@print "Hello\r\nworld!"
+@print 'Tab\there'
+
+# String with multiple escapes
+@assert 'line1\nline2\nline3' != ''
+@assert "path\\to\\file" != ''
+
+# Unicode escapes (4-digit hex)
+@assert '\u0041' == 'A'
+@assert '\u0000' != 'A'
+
+uint8 dummy
+@sealed

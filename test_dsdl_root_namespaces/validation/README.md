@@ -8,9 +8,9 @@ This namespace contains a comprehensive validation dataset designed to test **al
 
 | Feature | Test File(s) | Status |
 |---------|--------------|--------|
-| void1 (minimum) | `Void.0.1.dsdl` | |
-| void64 (maximum) | `Void.0.1.dsdl` | |
-| void with various bit lengths (1-64) | `Void.0.1.dsdl` | |
+| void1 (minimum) | `AllVoids.0.1.dsdl` | |
+| void64 (maximum) | `AllVoids.0.1.dsdl` | |
+| void with various bit lengths (1-64) | `AllVoids.0.1.dsdl` | |
 | Void as padding between fields | `Padding.0.1.dsdl` | |
 | Multiple consecutive void fields | `Padding.0.1.dsdl` | |
 
@@ -128,12 +128,15 @@ This namespace contains a comprehensive validation dataset designed to test **al
 | Feature | Test File(s) | Status |
 |---------|--------------|--------|
 | Service with request and response | `Service.0.1.dsdl` | |
-| Service with empty request | `Service.0.1.dsdl` | |
-| Service with empty response | `Service.0.1.dsdl` | |
+| Service with empty request | `ServiceEmpty.0.1.dsdl` | |
+| Service with empty response | `ServiceEmpty.0.1.dsdl` | |
 | Service with union in request | `ServiceUnion.0.1.dsdl` | |
 | Service with union in response | `ServiceUnion.0.1.dsdl` | |
+| Service with unions in both parts | `ServiceBothUnion.0.1.dsdl` | |
 | Service response marker `---` | `Service.0.1.dsdl` | |
-| Service response marker `----` (multiple dashes) | `Service.0.1.dsdl` | |
+| Service response marker `----` (many dashes) | `300.FixedPortService.0.1.dsdl` | |
+| Fixed port ID service | `300.FixedPortService.0.1.dsdl` | |
+| Fixed port ID message | `7000.FixedPortMessage.1.0.dsdl` | |
 
 #### 5.4 Sealed vs Delimited
 | Feature | Test File(s) | Status |
@@ -201,14 +204,17 @@ This namespace contains a comprehensive validation dataset designed to test **al
 |---------|--------------|--------|
 | Single-quoted: `'hello'` | `Literals.0.1.dsdl` | |
 | Double-quoted: `"hello"` | `Literals.0.1.dsdl` | |
+| Mixed quotes equivalence | `MixedQuotes.0.1.dsdl` | |
 | Empty string: `''` | `Literals.0.1.dsdl` | |
-| Escape: `\\` (backslash) | `Literals.0.1.dsdl` | |
-| Escape: `\'` (single quote) | `Literals.0.1.dsdl` | |
-| Escape: `\"` (double quote) | `Literals.0.1.dsdl` | |
-| Escape: `\n` (newline) | `Literals.0.1.dsdl` | |
-| Escape: `\r` (carriage return) | `Literals.0.1.dsdl` | |
-| Escape: `\t` (tab) | `Literals.0.1.dsdl` | |
-| String with 1000 characters | `LargeStrings.0.1.dsdl` | |
+| Escape: `\\` (backslash) | `Literals.0.1.dsdl`, `StringEscapes.0.1.dsdl` | |
+| Escape: `\'` (single quote) | `StringEscapes.0.1.dsdl` | |
+| Escape: `\"` (double quote) | `StringEscapes.0.1.dsdl` | |
+| Escape: `\n` (newline) | `Literals.0.1.dsdl`, `StringEscapes.0.1.dsdl` | |
+| Escape: `\r` (carriage return) | `Literals.0.1.dsdl`, `StringEscapes.0.1.dsdl` | |
+| Escape: `\t` (tab) | `Literals.0.1.dsdl`, `StringEscapes.0.1.dsdl` | |
+| Escape: `\uXXXX` (unicode) | `UnicodeStrings.0.1.dsdl`, `StringEscapes.0.1.dsdl` | |
+| Unicode NFC normalization | `UnicodeStrings.0.1.dsdl` | |
+| String with 500+ characters | `LargeStrings.0.1.dsdl` | |
 | Unicode in string | `Literals.0.1.dsdl` | |
 
 #### 7.5 Set Literals
@@ -231,8 +237,10 @@ This namespace contains a comprehensive validation dataset designed to test **al
 | Multiplication: `*` | `Expressions.0.1.dsdl` | |
 | Division: `/` | `Expressions.0.1.dsdl` | |
 | Modulo: `%` | `Expressions.0.1.dsdl` | |
-| Power: `**` | `Expressions.0.1.dsdl` | |
-| Power with integer exponent | `Expressions.0.1.dsdl` | |
+| Power: `**` | `Expressions.0.1.dsdl`, `PowerOperations.0.1.dsdl` | |
+| Power with integer exponent | `Expressions.0.1.dsdl`, `PowerOperations.0.1.dsdl` | |
+| Power with float exponent | `PowerOperations.0.1.dsdl` | |
+| Power with set operand | `PowerOperations.0.1.dsdl` | |
 | Unary plus: `+x` | `Expressions.0.1.dsdl` | |
 | Unary minus: `-x` | `Expressions.0.1.dsdl` | |
 
@@ -256,9 +264,10 @@ This namespace contains a comprehensive validation dataset designed to test **al
 #### 8.4 Bitwise Operators
 | Feature | Test File(s) | Status |
 |---------|--------------|--------|
-| Bitwise AND: `&` | `Expressions.0.1.dsdl` | |
-| Bitwise OR: `\|` | `Expressions.0.1.dsdl` | |
-| Bitwise XOR: `^` | `Expressions.0.1.dsdl` | |
+| Bitwise AND: `&` on integers | `Expressions.0.1.dsdl`, `BitwiseOps.0.1.dsdl` | |
+| Bitwise OR: `\|` on integers | `Expressions.0.1.dsdl`, `BitwiseOps.0.1.dsdl` | |
+| Bitwise XOR: `^` on integers | `Expressions.0.1.dsdl`, `BitwiseOps.0.1.dsdl` | |
+| Hex mask operations | `BitwiseOps.0.1.dsdl` | |
 
 #### 8.5 Operator Precedence
 | Feature | Test File(s) | Status |
@@ -325,6 +334,15 @@ This namespace contains a comprehensive validation dataset designed to test **al
 | `_offset_.max` | `Offset.0.1.dsdl` | |
 | `_offset_` in unions | `UnionOffset.0.1.dsdl` | |
 | `_offset_` alignment checking | `Offset.0.1.dsdl` | |
+
+#### 9.4 Type Attributes
+| Feature | Test File(s) | Status |
+|---------|--------------|--------|
+| `Type._bit_length_` on primitives | `TypeAttributes.0.1.dsdl` | |
+| `Type._bit_length_` on composites | `TypeAttributes.0.1.dsdl` | |
+| `Type._extent_` on composites | `TypeAttributes.0.1.dsdl` | |
+| Cast mode prefix in type expression | `TypeAttributes.0.1.dsdl` | |
+| Type attribute in assertion | `ComplexRefExpr.0.1.dsdl` | |
 
 ### 10. Type References
 
@@ -427,7 +445,7 @@ This namespace contains a comprehensive validation dataset designed to test **al
 
 ## File Organization
 
-**71 DSDL files total** - All validated with PyDSDL 1.24.1
+**94 DSDL files total** - All validated with PyDSDL 1.24.1
 
 ```
 validation/
@@ -454,9 +472,16 @@ validation/
 ├── Service.0.1.dsdl             # Service types
 ├── ServiceEmpty.0.1.dsdl        # Service with empty req/resp
 ├── ServiceUnion.0.1.dsdl        # Service with unions
+├── ServiceBothUnion.0.1.dsdl    # Service with union request and response
+├── 300.FixedPortService.0.1.dsdl # Service with fixed port ID
+├── 7000.FixedPortMessage.1.0.dsdl # Message with fixed subject ID
 ├── Sealed.0.1.dsdl              # Sealed types
 ├── Delimited.0.1.dsdl           # Delimited types with extent
 ├── DelimitedOffset.0.1.dsdl     # Extent using _offset_
+├── DelimitedAlignment.0.1.dsdl  # Empty type alignment testing
+├── DynamicExtent.0.1.dsdl       # @extent with _offset_.max expressions
+├── ExtentOnly.0.1.dsdl          # Type with only @extent
+├── ZeroExtent.0.1.dsdl          # Type with @extent 0
 ├── MixedSealing.0.1.dsdl        # Mixed sealed/delimited nesting
 ├── Constants.0.1.dsdl           # Constant attributes
 ├── Literals.0.1.dsdl            # All literal types
@@ -467,13 +492,24 @@ validation/
 ├── Precedence.0.1.dsdl          # Operator precedence
 ├── SetOperations.0.1.dsdl       # Set-specific operations
 ├── StringOps.0.1.dsdl           # String operations
+├── StringEscapes.0.1.dsdl       # String escape sequences
+├── UnicodeStrings.0.1.dsdl      # Unicode NFC normalization
+├── MixedQuotes.0.1.dsdl         # Single/double quote equivalence
+├── PowerOperations.0.1.dsdl     # Power operations with sets
+├── BitwiseOps.0.1.dsdl          # Bitwise AND/OR/XOR on integers
+├── ExprErrors.0.1.dsdl          # Expression edge cases
 ├── Offset.0.1.dsdl              # _offset_ usage
 ├── UnionOffset.0.1.dsdl         # _offset_ in unions
+├── UnionWithConsts.0.1.dsdl     # Union with interspersed constants
 ├── Assertions.0.1.dsdl          # @assert directive
 ├── Print.0.1.dsdl               # @print directive
 ├── Deprecated.0.1.dsdl          # @deprecated directive
 ├── DeprecatedService.0.1.dsdl   # Deprecated service
+├── DocComments.0.1.dsdl         # Documentation comments on fields
 ├── References.0.1.dsdl          # Type references
+├── RelativeRefs.0.1.dsdl        # Relative type references
+├── ComplexRefExpr.0.1.dsdl      # Constants and attributes from other types
+├── TypeAttributes.0.1.dsdl      # Type _bit_length_ and _extent_ access
 ├── Comments.0.1.dsdl            # Comment syntax
 ├── Whitespace.0.1.dsdl          # Whitespace handling
 ├── WhitespaceCRLF.0.1.dsdl      # Windows line endings
@@ -481,15 +517,20 @@ validation/
 ├── BitAlignment.0.1.dsdl        # Bit-level alignment
 ├── UnionTags.0.1.dsdl           # Union tag sizes
 ├── ArrayPrefixes.0.1.dsdl       # Array length prefix sizes
+├── ArrayCapExpr.0.1.dsdl        # Array capacity from expressions
+├── CompositeArrays.0.1.dsdl     # Arrays of composite types
+├── TruncatedTypes.0.1.dsdl      # Truncated float fields
 ├── MinimalSize.0.1.dsdl         # Minimal serialized size
 ├── MaxExtent.0.1.dsdl           # Maximum extent
 ├── ComplexSize.0.1.dsdl         # Complex variable sizes
 ├── Versioned.0.1.dsdl           # Version 0.1
 ├── Versioned.1.0.dsdl           # Version 1.0
 ├── Versioned.255.255.dsdl       # Maximum version
+├── VersionedV2.1.0.dsdl         # Another type major version 1
+├── VersionedV2.2.0.dsdl         # Another type major version 2
 ├── Coercion.0.1.dsdl            # Type coercions
 ├── RationalPrecision.0.1.dsdl   # Rational arithmetic
-├── Simple.0.1.dsdl              # Simple single-field
+├── Simple.0.1.dsdl              # Simple type with constant
 ├── subns/                       # Subdirectory for namespace tests
 │   ├── Helper.0.1.dsdl          # Helper type in subnamespace
 │   ├── ShortRef.0.1.dsdl        # Short name references

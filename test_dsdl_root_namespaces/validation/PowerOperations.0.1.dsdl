@@ -1,0 +1,26 @@
+# Power operations with various types
+# Tests exponentiation with rationals and sets
+
+# Define constants for testing
+float64 PI = 3.141592653589793
+float64 E = 2.718281828459045
+
+# Power of rationals (float ** float)
+@assert (PI ** E > 22.4) && (PI ** E < 22.5)
+
+# Power with integer exponents
+@assert 2 ** 0 == 1
+@assert 2 ** 1 == 2
+@assert 2 ** 10 == 1024
+@assert 10 ** 3 == 1000
+
+# Power with sets (set ** set is not supported, only set ** rational or rational ** set)
+@assert 2 ** {1, 2, 3} == {2, 4, 8}
+@assert {1, 2, 3} ** 2 == {1, 4, 9}
+
+# Negative base with integer exponent
+@assert (-2) ** 2 == 4
+@assert (-2) ** 3 == -8
+
+uint8 dummy
+@sealed

@@ -1,0 +1,3 @@
+# ERROR: Character literal can only be assigned to uint8
+uint16 CHAR = 'A'
+@sealed

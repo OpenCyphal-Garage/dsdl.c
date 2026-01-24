@@ -1,0 +1,31 @@
+# Type attribute access testing
+# Tests _bit_length_ and _extent_ intrinsics on types
+
+# Test _bit_length_ on primitive types
+@assert uint8._bit_length_ == {8}
+@assert uint16._bit_length_ == {16}
+@assert uint32._bit_length_ == {32}
+@assert uint64._bit_length_ == {64}
+@assert int8._bit_length_ == {8}
+@assert float16._bit_length_ == {16}
+@assert float32._bit_length_ == {32}
+@assert float64._bit_length_ == {64}
+@assert bool._bit_length_ == {1}
+
+# Test _bit_length_ with cast mode prefix
+@assert truncated uint64._bit_length_ == {64}
+@assert saturated int16._bit_length_ == {16}
+
+# Test _bit_length_ on composite types
+@assert Simple.0.1._bit_length_ == {32}
+@assert Empty.0.1._bit_length_ == {0}
+
+# Test _extent_ on composite types
+@assert Simple.0.1._extent_ == 32
+@assert Empty.0.1._extent_ == 0
+
+# Test that _bit_length_.max equals _extent_ for sealed types
+@assert Simple.0.1._bit_length_.max == Simple.0.1._extent_
+
+uint8 dummy
+@sealed

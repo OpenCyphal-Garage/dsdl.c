@@ -1,0 +1,3 @@
+# ERROR: Syntax error - old array syntax (type after brackets)
+bool array[10]
+@sealed

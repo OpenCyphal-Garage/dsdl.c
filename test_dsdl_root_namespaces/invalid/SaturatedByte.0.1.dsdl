@@ -1,0 +1,3 @@
+# ERROR: cast mode specifier is not allowed for byte
+saturated byte[<=10] data
+@sealed

@@ -1,0 +1,3 @@
+# ERROR: Array capacity must be an integer, not string
+uint8["text"] array
+@sealed

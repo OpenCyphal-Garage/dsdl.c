@@ -1,0 +1,15 @@
+# Complex reference expressions
+# Tests accessing constants and attributes from other types
+
+# Constants from another type
+@assert Simple.0.1.VALUE == 42
+uint8 IMPORTED_VALUE = Simple.0.1.VALUE
+
+# Attribute access with assertions
+@assert Simple.0.1._extent_ == 32
+
+# Use type reference in expression
+uint8[Simple.0.1.VALUE / 7] expr_capacity_array
+
+uint8 dummy
+@sealed

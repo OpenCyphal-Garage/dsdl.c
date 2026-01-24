@@ -1,0 +1,3 @@
+# ERROR: byte can only be used as array element type, not standalone
+byte single_byte
+@sealed

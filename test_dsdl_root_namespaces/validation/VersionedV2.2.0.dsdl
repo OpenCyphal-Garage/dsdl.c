@@ -1,0 +1,7 @@
+# Minor version of VersionedV2
+# Tests minor version compatibility (extent must match 1.0)
+
+uint16 value16
+uint32 extended_value
+uint8 new_field
+@sealed

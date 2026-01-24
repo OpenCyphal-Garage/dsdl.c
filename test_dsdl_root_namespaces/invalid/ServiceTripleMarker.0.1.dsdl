@@ -1,0 +1,9 @@
+# ERROR: At most one service response marker is allowed
+uint8 request
+@sealed
+---
+uint8 response
+@sealed
+---
+uint8 extra
+@sealed

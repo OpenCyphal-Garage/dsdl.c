@@ -1,0 +1,17 @@
+# Relative type references
+# Tests referencing types in the same namespace without full path
+
+# Relative reference to type in same namespace
+Simple.0.1 simple_ref
+Empty.0.1 empty_ref
+
+# Relative reference in array
+Simple.0.1[<=5] simple_array
+
+# Access constant from type using relative reference
+uint8 SIMPLE_CONST_REF = Simple.0.1.VALUE
+
+# Nested field access via relative reference
+@assert Simple.0.1._bit_length_ == {32}
+
+@sealed

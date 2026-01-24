@@ -1,0 +1,4 @@
+# ERROR: @deprecated does not accept an expression
+@deprecated true
+uint8 value
+@sealed

@@ -1,0 +1,3 @@
+# ERROR: truncated cast mode is not allowed for boolean
+truncated bool flag
+@sealed

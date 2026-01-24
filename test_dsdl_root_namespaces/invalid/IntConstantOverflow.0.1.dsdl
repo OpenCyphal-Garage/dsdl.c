@@ -1,0 +1,3 @@
+# ERROR: Value exceeds type range (uint8 max is 255)
+uint8 VALUE = 256
+@sealed

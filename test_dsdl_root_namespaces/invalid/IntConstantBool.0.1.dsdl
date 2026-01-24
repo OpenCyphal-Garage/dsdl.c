@@ -1,0 +1,3 @@
+# ERROR: Integer constant cannot be assigned a boolean value
+int8 VALUE = true
+@sealed

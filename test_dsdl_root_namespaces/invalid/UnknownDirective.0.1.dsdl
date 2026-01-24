@@ -1,0 +1,4 @@
+# ERROR: Unknown directive
+uint8 value
+@unknown_directive
+@sealed

@@ -1,0 +1,3 @@
+# ERROR: Bitwise AND on booleans is invalid (use logical &&)
+@assert true & false
+@sealed

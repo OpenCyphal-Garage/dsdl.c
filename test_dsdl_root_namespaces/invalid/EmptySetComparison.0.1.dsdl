@@ -1,0 +1,3 @@
+# ERROR: Cannot compare sets of different cardinality with !=
+@assert {1} != {}
+@sealed

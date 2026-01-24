@@ -1,0 +1,3 @@
+# ERROR: Arrays of void type are not allowed
+void8[10] array
+@sealed

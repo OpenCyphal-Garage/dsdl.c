@@ -1,0 +1,14 @@
+# Service type with fixed service ID in filename
+# Tests fixed port ID for services
+
+# Request is a union
+@union
+Empty.0.1 get_empty
+Simple.0.1 get_simple
+uint8 get_by_id
+@extent 64
+-----------------------------------
+# Response is sealed (testing multiple dashes separator)
+@sealed
+Empty.0.1 result_empty
+Simple.0.1 result

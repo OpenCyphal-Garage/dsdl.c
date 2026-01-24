@@ -1,0 +1,3 @@
+# ERROR: Extent (8 bits) is smaller than type size (16 bits)
+uint16 value
+@extent 8

@@ -1,0 +1,7 @@
+# ERROR: @deprecated in service response (must be in request only)
+uint8 request
+@sealed
+---
+@deprecated
+uint8 response
+@sealed

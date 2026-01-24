@@ -1,0 +1,4 @@
+# Type with only @extent (no fields)
+# Tests minimal delimited type
+
+@extent 128

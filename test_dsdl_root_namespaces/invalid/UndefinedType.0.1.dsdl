@@ -1,0 +1,3 @@
+# ERROR: Reference to undefined type
+nonexistent.TypeName.1.0 field
+@sealed

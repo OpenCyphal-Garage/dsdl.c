@@ -1,0 +1,3 @@
+# ERROR: Unary minus requires numeric operand
+uint8 VALUE = -"hello"
+@sealed

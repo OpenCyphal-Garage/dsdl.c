@@ -1,5 +1,9 @@
-# Simple single-field structure
+# Simple structure for reference
+# Has known constant and bit length (32 bits)
 
-uint8 value
+uint8 VALUE = 42
+uint8 a
+uint8 b
+uint16 c
 
 @sealed

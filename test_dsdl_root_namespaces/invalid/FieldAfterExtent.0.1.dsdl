@@ -1,0 +1,4 @@
+# ERROR: Fields cannot be defined after @extent
+uint8 value
+@extent 64
+uint16 another_field

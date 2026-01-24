@@ -1,0 +1,12 @@
+# Union with constant definitions
+# Tests constants interspersed with union variants
+
+@union
+uint8 A = 0
+float32 variant_a
+uint8 B = 1
+uint64 variant_b
+uint8 C = 2
+@assert _offset_ == {40, 72}
+uint8 D = 3
+@sealed

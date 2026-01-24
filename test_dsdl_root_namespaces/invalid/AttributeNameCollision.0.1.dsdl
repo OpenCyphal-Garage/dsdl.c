@@ -1,0 +1,4 @@
+# ERROR: Duplicate attribute name
+uint8 value
+uint16 value
+@sealed

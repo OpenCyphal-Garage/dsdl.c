@@ -1,0 +1,3 @@
+# ERROR: Boolean constant must be assigned true or false, not integer
+bool FLAG = 0
+@sealed

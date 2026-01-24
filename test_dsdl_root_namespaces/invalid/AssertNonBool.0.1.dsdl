@@ -1,0 +1,4 @@
+# ERROR: Assertion must yield boolean, not integer
+uint8 value
+@assert 42
+@sealed

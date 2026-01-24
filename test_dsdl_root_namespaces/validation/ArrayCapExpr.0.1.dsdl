@@ -1,0 +1,17 @@
+# Array capacity from expressions
+# Tests array size specified via expressions
+
+# Simple expression capacity
+uint8[10 + 5] fixed_expr
+uint8[<=100 + 23] var_incl_expr
+uint8[<100 + 24] var_excl_expr
+
+# Expression with operators
+int8[2 ** 4] power_capacity
+int16[<=2 * 50] mul_capacity
+
+# Whitespace variations in array syntax
+bool [ <= 255 ] spaced_array
+uint32[  10  ] spaced_fixed
+
+@sealed

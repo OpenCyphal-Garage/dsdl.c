@@ -1,0 +1,8 @@
+# Message type with fixed subject ID in filename
+# Tests fixed port ID parsing from filename
+
+@deprecated
+uint8 CHARACTER = '#'
+int8 a
+saturated int64[<33] b
+@extent 1024 * 8

@@ -1,0 +1,5 @@
+# ERROR: @union must appear before the first field
+uint8 first_field
+@union
+uint16 second_field
+@sealed

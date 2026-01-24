@@ -1,0 +1,6 @@
+# ERROR: @union directive used more than once
+@union
+@union
+uint8 a
+uint16 b
+@sealed

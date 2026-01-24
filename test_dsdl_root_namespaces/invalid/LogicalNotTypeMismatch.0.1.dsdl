@@ -1,0 +1,3 @@
+# ERROR: Logical NOT requires boolean operand
+@assert !1
+@sealed

@@ -1,0 +1,16 @@
+# Header comment for the type
+# This is the type documentation
+# It can be multiline
+
+# This comment is ignored (blank line separates it)
+
+uint8 CHARACTER = '#'  # Comment on constant
+int8 field_a  # Comment on field
+int8 field_b
+@assert 1 == 1  # Assert with comment
+void2  # Comment on padding field
+saturated int64[<33] array_field
+# Comment on array field
+# And another line
+
+@extent 1024 * 8

@@ -1,0 +1,19 @@
+# Delimited type alignment testing
+# Tests that empty/delimited types cause byte alignment
+
+# Helper type with extent (delimited, non-sealed)
+# validation.DelimitedHelper.0.1 will be created separately
+
+@assert _offset_ == {0}
+uint3 a
+@assert _offset_ == {3}
+Empty.0.1 nothing
+@assert _offset_ == {8}    # Aligned to byte boundary!
+uint5 b
+@assert _offset_ == {13}
+Empty.0.1[3] array_of_nothing
+@assert _offset_ == {16}   # Aligned to byte boundary!
+bool c
+@assert _offset_ == {17}
+
+@sealed

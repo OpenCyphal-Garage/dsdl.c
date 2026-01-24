@@ -1,0 +1,14 @@
+# Service with unions in both request and response
+# Tests service where both parts are unions
+
+# Request union
+@union
+int8 option_a
+float16 option_b
+@sealed
+---
+# Response union
+@union
+int8 result_a
+float16 result_b
+@sealed

@@ -1,0 +1,3 @@
+# ERROR: Character constant must be 7-bit ASCII
+uint8 CHAR = 'ё'
+@sealed

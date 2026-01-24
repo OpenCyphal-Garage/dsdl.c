@@ -1,0 +1,3 @@
+# ERROR: Extent must be an integer, not a set
+uint8 value
+@extent {64}

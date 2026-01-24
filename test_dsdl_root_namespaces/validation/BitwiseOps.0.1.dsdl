@@ -1,0 +1,29 @@
+# Bitwise operations on integers
+# Tests &, |, ^ on integer values
+
+# Basic bitwise AND
+@assert 4 & 2 == 0
+@assert 3 & 2 == 2
+@assert 0xFF & 0x0F == 0x0F
+@assert 0xFF_00 & 0x00_FF == 0x0000
+
+# Basic bitwise OR
+@assert 4 | 2 == 6
+@assert 0 | 0 == 0
+@assert 0xFF_00 | 0x00_FF == 0xFFFF
+
+# Basic bitwise XOR
+@assert 4 ^ 2 == 6
+@assert 4 ^ 4 == 0
+@assert 0xFF_00 ^ 0x0F_FF == 0xF0FF
+
+# Combined operations
+@assert (0xF0 & 0xFF) | 0x0F == 0xFF
+@assert (0xFF ^ 0x0F) & 0xF0 == 0xF0
+
+# Constants using bitwise ops
+uint16 MASK = 0xFF00 | 0x00FF
+uint8 NIBBLE = 0xAB & 0x0F
+
+uint8 dummy
+@sealed

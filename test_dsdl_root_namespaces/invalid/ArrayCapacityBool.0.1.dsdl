@@ -1,0 +1,3 @@
+# ERROR: Array capacity must be an integer, not boolean
+uint8[true] array
+@sealed

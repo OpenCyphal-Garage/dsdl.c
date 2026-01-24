@@ -1,0 +1,3 @@
+# ERROR: Float constant cannot be assigned a boolean
+float32 VALUE = true
+@sealed

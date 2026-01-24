@@ -1,0 +1,3 @@
+# ERROR: void0 is invalid (minimum bit width is 1)
+void0
+@sealed

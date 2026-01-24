@@ -1,0 +1,3 @@
+# ERROR: [<1] means capacity 0, which is invalid
+uint8[<1] array
+@sealed

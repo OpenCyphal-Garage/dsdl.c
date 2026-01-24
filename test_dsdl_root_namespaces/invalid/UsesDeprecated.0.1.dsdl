@@ -1,0 +1,3 @@
+# ERROR: Non-deprecated type uses deprecated type
+DeprecatedHelper.0.1 helper
+@sealed

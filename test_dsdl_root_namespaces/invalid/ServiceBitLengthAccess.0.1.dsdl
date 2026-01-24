@@ -1,0 +1,8 @@
+# ERROR: Cannot access _bit_length_ on service types
+# First, we need a valid service to reference. This file references itself.
+# The error is: accessing _bit_length_ on a service type
+uint8 request_val
+@sealed
+---
+uint8 response_val
+@sealed

@@ -1,0 +1,3 @@
+# ERROR: Logical OR requires boolean operands
+@assert 0 || true
+@sealed

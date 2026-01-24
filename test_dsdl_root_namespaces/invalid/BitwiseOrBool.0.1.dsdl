@@ -1,0 +1,3 @@
+# ERROR: Bitwise OR on booleans is invalid (use logical ||)
+@assert true | false
+@sealed

@@ -1,0 +1,3 @@
+# ERROR: Union must have at least 2 fields
+@union
+@sealed

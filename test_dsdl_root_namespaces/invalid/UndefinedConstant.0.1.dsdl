@@ -1,0 +1,3 @@
+# ERROR: Reference to undefined constant
+uint8 VALUE = nonexistent_constant
+@sealed

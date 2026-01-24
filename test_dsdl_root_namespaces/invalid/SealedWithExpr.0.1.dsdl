@@ -1,0 +1,3 @@
+# ERROR: @sealed does not accept an expression
+uint8 value
+@sealed 12345

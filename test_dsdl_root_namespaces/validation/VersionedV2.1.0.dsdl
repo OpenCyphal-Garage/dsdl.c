@@ -1,0 +1,6 @@
+# Second major version of Versioned type
+# Tests multiple major versions
+
+uint16 value16
+uint32 extended_value
+@sealed

@@ -1,0 +1,24 @@
+# Unicode string handling and normalization
+# Tests NFC normalization of Unicode strings
+
+# Test that precomposed and decomposed forms are equal (NFC normalization)
+# e with acute accent: U+00E9 == U+0065 U+0301
+@assert '\u00e9' == '\u0065\u0301'
+
+# ffi ligature is NOT decomposed by NFC (it stays as ligature)
+@assert '\ufb03' != 'ffi'
+
+# Basic unicode escape sequences
+@assert '\u0041' == 'A'
+@assert '\u0061' == 'a'
+@assert '\u0020' == ' '
+
+# Empty string checks
+@assert '' == ""
+@assert '' != ' '
+
+# String concatenation with unicode
+@assert 'caf' + '\u00e9' == 'caf\u00e9'
+
+uint8 dummy
+@sealed

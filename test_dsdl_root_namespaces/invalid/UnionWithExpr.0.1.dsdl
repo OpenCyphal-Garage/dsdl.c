@@ -1,0 +1,5 @@
+# ERROR: @union does not accept an expression
+@union true
+uint8 a
+uint16 b
+@sealed

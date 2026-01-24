@@ -1,0 +1,3 @@
+# ERROR: Sets don't have a .nonexistent attribute
+@assert {1, 2, 3}.nonexistent == 0
+@sealed

@@ -1,0 +1,3 @@
+# ERROR: int1 is invalid (minimum bit width for signed is 2)
+int1 value
+@sealed

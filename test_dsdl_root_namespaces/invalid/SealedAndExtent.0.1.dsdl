@@ -1,0 +1,4 @@
+# ERROR: Cannot have both @sealed and @extent
+uint8 value
+@extent 64
+@sealed

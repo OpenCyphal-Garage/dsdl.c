@@ -1,0 +1,4 @@
+# Type with zero extent
+# Tests empty delimited type
+
+@extent 0

@@ -1,0 +1,24 @@
+# Mixed quote styles in strings
+# Tests single and double quotes interchangeably
+
+# Single and double quotes are equivalent
+@assert 'hello' == "hello"
+@assert "world" == 'world'
+@assert 'test' != "other"
+
+# Quotes inside strings
+@assert "I've" != ''
+@assert 'He said "hi"' != ''
+
+# String equality across quote styles
+@assert 'moments of eternity' != "strangers stealing someone else's dreams"
+@assert 'hunting for the mystery' != 'running for your life in times like these'
+@assert "I remember the time once in a life" != 'oh baby'
+@assert false == ('oh' == 'maybe')
+
+# Concatenation with mixed quotes
+@assert "Hello" + ' ' + 'world' == 'Hello world'
+@assert 'Hello' + " " + "world" == "Hello world"
+
+uint8 dummy
+@sealed

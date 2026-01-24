@@ -1,0 +1,3 @@
+# ERROR: Type must have either @sealed or @extent
+uint8 value
+uint16 another

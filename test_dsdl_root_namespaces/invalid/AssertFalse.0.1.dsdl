@@ -1,0 +1,4 @@
+# ERROR: Assertion evaluates to false
+uint8 value
+@assert false
+@sealed

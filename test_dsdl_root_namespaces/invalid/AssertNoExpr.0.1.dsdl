@@ -1,0 +1,4 @@
+# ERROR: @assert requires an expression
+uint8 value
+@assert
+@sealed

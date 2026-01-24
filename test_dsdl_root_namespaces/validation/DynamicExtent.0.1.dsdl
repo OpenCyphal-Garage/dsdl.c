@@ -1,0 +1,7 @@
+# Dynamic extent calculation
+# Tests @extent with expressions involving _offset_
+
+uint8[<256] variable_array
+
+# Extent based on _offset_.max
+@extent _offset_.max * 8
