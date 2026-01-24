@@ -2369,9 +2369,8 @@ void dsdl_new(dsdl_t* const self, void* (*const realloc_func)(dsdl_t*, void*, si
     self->types.sep     = '.';
     self->types.context = self;
 
-    wkv_init(&self->namespaces, wkv_realloc_adapter);
-    self->namespaces.sep     = '/';
-    self->namespaces.context = self;
+    self->namespace_count = 0;
+    self->namespaces      = NULL;
 }
 
 void dsdl_destroy(dsdl_t* const self)
@@ -2395,13 +2394,14 @@ void dsdl_destroy(dsdl_t* const self)
         }
     }
 
-    while (!wkv_is_empty(&self->namespaces)) {
-        wkv_node_t* const node = wkv_at(&self->namespaces, 0);
-        if (node != NULL) {
-            // Namespace values are just markers, no need to free
-            wkv_del(&self->namespaces, node);
-        }
+    // Free namespace strings and array
+    for (size_t i = 0; i < self->namespace_count; i++) {
+        // Each namespace string was allocated separately (cast away const - we own this memory)
+        dsdl_free_(self, (void*)(uintptr_t)self->namespaces[i].str);
     }
+    dsdl_free_(self, self->namespaces);
+    self->namespaces      = NULL;
+    self->namespace_count = 0;
 }
 
 // ============================================================================
@@ -2682,24 +2682,11 @@ static bool _dsdl_locate_file(dsdl_t* const           self,
         return false;
     }
 
-    // Allocate buffer for namespace root key reconstruction
-    char namespace_root_buf[512];
-
-    // Iterate through registered namespace roots
-    for (size_t ns_idx = 0;; ns_idx++) {
-        wkv_node_t* const ns_node = wkv_at(&self->namespaces, ns_idx);
-        if (ns_node == NULL) {
-            break; // No more namespaces
-        }
-
-        // Reconstruct the namespace root key
-        const size_t namespace_root_len = ns_node->key_len;
-        if (namespace_root_len >= sizeof(namespace_root_buf)) {
-            continue; // Key too long
-        }
-
-        wkv_get_key(&self->namespaces, ns_node, namespace_root_buf);
-        const char* const namespace_root = namespace_root_buf;
+    // Iterate through registered namespace roots in order (first match wins)
+    for (size_t ns_idx = 0; ns_idx < self->namespace_count; ns_idx++) {
+        const wkv_str_t*  ns                 = &self->namespaces[ns_idx];
+        const char* const namespace_root     = ns->str;
+        const size_t      namespace_root_len = ns->len;
 
         // Version resolution strategy:
         // - If both major and minor specified: try exact match
@@ -2880,14 +2867,28 @@ bool dsdl_add_namespace(dsdl_t* const self, const wkv_str_t root_directory)
         return false;
     }
 
-    // Add to namespaces WKV
-    wkv_node_t* const node = wkv_set(&self->namespaces, root_directory);
-    if (node == NULL) {
+    // Allocate a copy of the directory string
+    char* const str_copy = (char*)dsdl_alloc_(self, root_directory.len + 1);
+    if (str_copy == NULL) {
+        return false; // OOM
+    }
+    (void)memcpy(str_copy, root_directory.str, root_directory.len);
+    str_copy[root_directory.len] = '\0';
+
+    // Grow the namespaces array
+    const size_t     new_count = self->namespace_count + 1;
+    wkv_str_t* const new_array = (wkv_str_t*)dsdl_realloc_(self, self->namespaces, new_count * sizeof(wkv_str_t));
+    if (new_array == NULL) {
+        dsdl_free_(self, str_copy);
         return false; // OOM
     }
 
-    // Mark as valid namespace (non-NULL value)
-    node->value = (void*)1; // Just a marker
+    // Add the new namespace at the end
+    new_array[self->namespace_count].len = root_directory.len;
+    new_array[self->namespace_count].str = str_copy;
+
+    self->namespaces      = new_array;
+    self->namespace_count = new_count;
     return true;
 }
 

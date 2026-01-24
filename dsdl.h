@@ -189,9 +189,13 @@ struct dsdl_t
     /// Example key: "uavcan.node.Heartbeat.1.0"
     wkv_t types;
 
-    /// Root namespace directories with '/' separator.
-    /// Example: "/home/user/dsdl_namespaces/uavcan"
-    wkv_t namespaces;
+    /// Root namespace directories. Example:
+    ///     - "/home/user/dsdl_namespaces/uavcan"
+    ///     - "/home/user/dsdl_namespaces/zubax"
+    /// New namespace are added to the end. Type lookup checks namespaces starting from the first, and uses the
+    /// first match, thus entries added earlier take precedence.
+    size_t     namespace_count;
+    wkv_str_t* namespaces;
 
     /// Memory allocator callback.
     /// - pointer==NULL, new_size>0: allocate new memory
