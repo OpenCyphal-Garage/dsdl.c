@@ -74,10 +74,6 @@ target_link_libraries(test_dsdl_serialization PRIVATE
     dsdl_trace
 )
 
-target_compile_definitions(test_dsdl_serialization PRIVATE
-    DSDL_INTERNAL_TESTING=1
-)
-
 add_test(NAME dsdl_serialization_tests COMMAND test_dsdl_serialization
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )
@@ -95,10 +91,6 @@ target_link_libraries(test_dsdl_parser PRIVATE
     dsdl_trace
 )
 
-target_compile_definitions(test_dsdl_parser PRIVATE
-    DSDL_INTERNAL_TESTING=1
-)
-
 add_test(NAME dsdl_parser_tests COMMAND test_dsdl_parser)
 
 # ------------------------------------------------------------------------------
@@ -112,10 +104,6 @@ target_link_libraries(test_dsdl_rational PRIVATE
     unity
     dsdl_test_internals
     dsdl_trace
-)
-
-target_compile_definitions(test_dsdl_rational PRIVATE
-    DSDL_INTERNAL_TESTING=1
 )
 
 add_test(NAME dsdl_rational_tests COMMAND test_dsdl_rational)
@@ -158,11 +146,6 @@ target_link_libraries(test_dsdl_internals PRIVATE
     dsdl_trace
 )
 
-# Don't link against dsdl library - we include dsdl.c directly
-target_compile_definitions(test_dsdl_internals PRIVATE
-    DSDL_INTERNAL_TESTING=1
-)
-
 add_test(NAME dsdl_internal_tests COMMAND test_dsdl_internals)
 
 # ------------------------------------------------------------------------------
@@ -176,10 +159,6 @@ target_link_libraries(test_dsdl_type_resolution PRIVATE
     unity
     dsdl_test_internals
     dsdl_trace
-)
-
-target_compile_definitions(test_dsdl_type_resolution PRIVATE
-    DSDL_INTERNAL_TESTING=1
 )
 
 add_test(NAME dsdl_type_resolution_tests COMMAND test_dsdl_type_resolution
@@ -197,10 +176,6 @@ target_link_libraries(test_dsdl_bls PRIVATE
     unity
     dsdl_test_internals
     dsdl_trace
-)
-
-target_compile_definitions(test_dsdl_bls PRIVATE
-    DSDL_INTERNAL_TESTING=1
 )
 
 add_test(NAME dsdl_bls_tests COMMAND test_dsdl_bls)

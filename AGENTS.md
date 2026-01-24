@@ -35,6 +35,6 @@ The project organiztion should roughly follow that of libcanard: https://github.
 
 Follow the Zubax Style Guide per `specs/CODING_CONVENTIONS.md`. Run Clang-Format regularly.
 
-The code must be striclty C99-compliant, possibly with optional features enabled at compile time if a newer version of C is detected, and portable between all standard-compliant compilers (no compiler-specific features can be used).
+The code must be striclty C99-compliant, possibly with optional features enabled at compile time if a newer version of C is detected, and portable between all standard-compliant compilers (no compiler-specific features can be used; in particular, no `__attribute__` declarations are allowed).
 
 The code must not make assumptions about the execution platform (pointer width, endianness, baremetal or not, etc.).

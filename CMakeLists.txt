@@ -56,8 +56,7 @@ if(CMAKE_C_COMPILER_ID MATCHES "Clang|GNU")
         -Wundef
         -Wconversion
         -Wsign-conversion
-        -Wno-error=padded
-        -Wno-error=unused-function
+        -Wno-unused-function  # TODO: re-enable this once the library is functionally complete.
     )
     if(CMAKE_C_COMPILER_ID MATCHES "GNU")
         add_compile_options(
