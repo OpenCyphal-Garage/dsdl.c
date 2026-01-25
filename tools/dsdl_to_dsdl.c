@@ -26,7 +26,7 @@ static void emit_type_expr(FILE* const out, const dsdl_type_t* const type_ptr)
     }
     if (dsdl_type_is_composite(kind)) {
         const dsdl_type_composite_t* const comp = (const dsdl_type_composite_t*)type_ptr;
-        emit_wkv(out, comp->name);
+        emit_wkv(out, comp->name_versioned);
         return;
     }
 
@@ -125,7 +125,7 @@ static void emit_value_expr(FILE* const out, const dsdl_value_t* const value)
         case dsdl_value_type: {
             const dsdl_type_composite_t* const comp = (const dsdl_type_composite_t*)value->as.type_ref;
             if (comp != NULL) {
-                emit_wkv(out, comp->name);
+                emit_wkv(out, comp->name_versioned);
             }
             break;
         }
@@ -178,7 +178,7 @@ static void emit_type(FILE* const out, const dsdl_type_composite_t* const type)
     (void)fprintf(out,
                   "# dsdl_to_dsdl normalized output\n"
                   "# name: ");
-    emit_wkv(out, type->name);
+    emit_wkv(out, type->name_versioned);
     (void)fputc('\n', out);
 
     if (type->deprecated) {

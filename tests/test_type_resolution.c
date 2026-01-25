@@ -172,8 +172,7 @@ static bool add_namespace_rel(const char* const rel_path)
 
 static bool add_test_roots(void)
 {
-    return add_namespace_rel("test_dsdl_root_namespaces/0") &&
-           add_namespace_rel("test_dsdl_root_namespaces/1");
+    return add_namespace_rel("test_dsdl_root_namespaces/0") && add_namespace_rel("test_dsdl_root_namespaces/1");
 }
 
 static void assert_intmax_eq(const intmax_t expected, const intmax_t actual)

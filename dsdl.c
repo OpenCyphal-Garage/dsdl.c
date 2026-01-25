@@ -6387,8 +6387,13 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_
 
     // Convert parsed definition to dsdl_type_composite_t
     // Calculate total size needed for single allocation
-    size_t total_size = sizeof(dsdl_type_composite_t);
-    total_size += type_name.len; // Space for name string (use original type_name which includes version)
+    const size_t major_len          = dsdl_u8_dec_len(resolved_major);
+    const size_t minor_len          = dsdl_u8_dec_len(resolved_minor);
+    const size_t name_len           = type_ref.full_name.len;
+    const size_t name_versioned_len = name_len + 1U + major_len + 1U + minor_len;
+    size_t       total_size         = sizeof(dsdl_type_composite_t);
+    total_size += name_len;                               // Space for unversioned name string
+    total_size += name_versioned_len;                     // Space for versioned name string
     total_size += def.field_count * sizeof(wkv_str_t);    // field_names array
     total_size += def.field_count * sizeof(dsdl_type_t*); // field_types array (pointers)
     total_size += def.const_count * sizeof(wkv_str_t);    // constant_names array
@@ -6419,11 +6424,27 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_
     dsdl_type_composite_t* composite = (dsdl_type_composite_t*)block;
     char*                  str_ptr   = (char*)(composite + 1);
 
-    // Copy type name (using original type_name which includes version)
-    composite->name.len = type_name.len;
+    // Copy unversioned type name
+    composite->name.len = name_len;
     composite->name.str = str_ptr;
-    memcpy(str_ptr, type_name.str, type_name.len);
-    str_ptr += type_name.len;
+    if (name_len > 0U) {
+        memcpy(str_ptr, type_ref.full_name.str, name_len);
+    }
+    str_ptr += name_len;
+
+    // Copy versioned type name
+    composite->name_versioned.len = name_versioned_len;
+    composite->name_versioned.str = str_ptr;
+    size_t name_pos               = 0U;
+    if (name_len > 0U) {
+        memcpy(str_ptr + name_pos, type_ref.full_name.str, name_len);
+        name_pos += name_len;
+    }
+    str_ptr[name_pos++] = '.';
+    name_pos += dsdl_write_u8_dec(str_ptr + name_pos, resolved_major);
+    str_ptr[name_pos++] = '.';
+    name_pos += dsdl_write_u8_dec(str_ptr + name_pos, resolved_minor);
+    str_ptr += composite->name_versioned.len;
 
     // Set up field_names array
     composite->field_names = (wkv_str_t*)str_ptr;
@@ -6508,14 +6529,13 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_
 
     dsdl_type_composite_t* response = NULL;
     if (def.is_service) {
-        const size_t response_suffix_len = sizeof("Response") - 1U;
-        const size_t major_len           = dsdl_u8_dec_len(resolved_major);
-        const size_t minor_len           = dsdl_u8_dec_len(resolved_minor);
-        const size_t response_name_len =
-          type_ref.full_name.len + 1U + response_suffix_len + 1U + major_len + 1U + minor_len;
+        const size_t response_suffix_len         = sizeof("Response") - 1U;
+        const size_t response_name_len           = type_ref.full_name.len + 1U + response_suffix_len;
+        const size_t response_name_versioned_len = response_name_len + 1U + major_len + 1U + minor_len;
 
         size_t response_total_size = sizeof(dsdl_type_composite_t);
         response_total_size += response_name_len;
+        response_total_size += response_name_versioned_len;
         response_total_size += def.response_field_count * sizeof(wkv_str_t);
         response_total_size += def.response_field_count * sizeof(dsdl_type_t*);
 
@@ -6534,24 +6554,33 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_
             return NULL;
         }
 
-        response           = (dsdl_type_composite_t*)response_block;
-        char* resp_str_ptr = (char*)(response + 1);
-        response->name.len = response_name_len;
-        response->name.str = resp_str_ptr;
+        response                     = (dsdl_type_composite_t*)response_block;
+        char* resp_str_ptr           = (char*)(response + 1);
+        response->name.len           = response_name_len;
+        response->name.str           = resp_str_ptr;
+        response->name_versioned.len = response_name_versioned_len;
 
-        size_t pos = 0;
+        size_t response_pos = 0U;
         if (type_ref.full_name.len > 0) {
-            memcpy(resp_str_ptr + pos, type_ref.full_name.str, type_ref.full_name.len);
-            pos += type_ref.full_name.len;
+            memcpy(resp_str_ptr + response_pos, type_ref.full_name.str, type_ref.full_name.len);
+            response_pos += type_ref.full_name.len;
         }
-        resp_str_ptr[pos++] = '.';
-        memcpy(resp_str_ptr + pos, "Response", response_suffix_len);
-        pos += response_suffix_len;
-        resp_str_ptr[pos++] = '.';
-        pos += dsdl_write_u8_dec(resp_str_ptr + pos, resolved_major);
-        resp_str_ptr[pos++] = '.';
-        pos += dsdl_write_u8_dec(resp_str_ptr + pos, resolved_minor);
+        resp_str_ptr[response_pos++] = '.';
+        memcpy(resp_str_ptr + response_pos, "Response", response_suffix_len);
+        response_pos += response_suffix_len;
         resp_str_ptr += response->name.len;
+
+        response->name_versioned.str = resp_str_ptr;
+        response_pos                 = 0U;
+        if (response->name.len > 0U) {
+            memcpy(resp_str_ptr + response_pos, response->name.str, response->name.len);
+            response_pos += response->name.len;
+        }
+        resp_str_ptr[response_pos++] = '.';
+        response_pos += dsdl_write_u8_dec(resp_str_ptr + response_pos, resolved_major);
+        resp_str_ptr[response_pos++] = '.';
+        response_pos += dsdl_write_u8_dec(resp_str_ptr + response_pos, resolved_minor);
+        resp_str_ptr += response->name_versioned.len;
 
         response->field_names = (wkv_str_t*)resp_str_ptr;
         resp_str_ptr += def.response_field_count * sizeof(wkv_str_t);

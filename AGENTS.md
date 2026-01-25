@@ -46,3 +46,9 @@ The code must not make assumptions about the execution platform (pointer width, 
 ## Known issues (incomplete list)
 
 - Fix memory leaks.
+
+- `dsdl_compare_pydsdl.py`: remove `load_pydsdl()`, just `import pydsdl` globally -- assume the correct version is installed in the global Python environment. Also remove `pydsdl: object,` from all functions.
+
+- `dsdl_type_composite_t` should also have `short_name` for convenience; e.g., `Heartbeat` for `uavcan.node.Heartbeat.1.0`. Since it is the last part of the full name without version, it can be simply a pointer to the appropriate character of `name` (right after the last separator dot) -- no need to allocate another string.
+
+- Add a readme to the tools directory describing the purpose of each tool, with usage examples.

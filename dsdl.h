@@ -110,9 +110,10 @@ typedef struct dsdl_type_array_t
 /// allocated block after the instance. This enables simple memory management.
 typedef struct dsdl_type_composite_t
 {
-    dsdl_type_t   type;       ///< Always the first field; here DSDL_COMPOSITE_*
-    wkv_str_t     name;       ///< Fully qualified type name
-    uint_least8_t version[2]; ///< [major, minor]
+    dsdl_type_t   type;           ///< Always the first field; here DSDL_COMPOSITE_*
+    wkv_str_t     name;           ///< Fully qualified type name without version
+    wkv_str_t     name_versioned; ///< Fully qualified type name with version
+    uint_least8_t version[2];     ///< [major, minor]
 
     uint64_t extent;     ///< Maximum serialized size in bytes.
     bool     sealed;     ///< True if @sealed directive present

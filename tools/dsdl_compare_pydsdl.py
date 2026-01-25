@@ -7,6 +7,8 @@ import sys
 import tempfile
 from pathlib import Path
 
+sys.setrecursionlimit(max(sys.getrecursionlimit(), 10000))
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -67,6 +69,19 @@ def normalize_roots(raw_roots: list[str]) -> list[Path]:
     return roots
 
 
+def parse_type_name(namespace_parts: tuple[str, ...], filename: str) -> str:
+    stem = Path(filename).stem
+    stem_parts = stem.split(".")
+    type_parts: list[str] | None = None
+    if len(stem_parts) == 4 and stem_parts[0].isdigit():
+        type_parts = stem_parts[1:]
+    elif len(stem_parts) == 3:
+        type_parts = stem_parts
+    if type_parts is None or any(part == "" for part in type_parts):
+        type_parts = [stem]
+    return ".".join(list(namespace_parts) + type_parts)
+
+
 def collect_dsdl_files(roots: list[Path]) -> list[tuple[Path, Path, tuple[str, ...], str]]:
     file_roots: dict[Path, Path] = {}
     for root in roots:
@@ -87,7 +102,8 @@ def collect_dsdl_files(roots: list[Path]) -> list[tuple[Path, Path, tuple[str, .
         rel = path.relative_to(root)
         rel_no_ext = rel.with_suffix("")
         parts = rel_no_ext.parts
-        type_name = ".".join(parts)
+        namespace_parts = rel_no_ext.parent.parts
+        type_name = parse_type_name(namespace_parts, rel.name)
         items.append((path, root, parts, type_name))
 
     items.sort(key=lambda x: x[3])

@@ -25,18 +25,22 @@ at runtime and provides serialization/deserialization.
 - **Phase 3 Serialization/Deserialization:** Implemented with basic validation and `SIZE_MAX` error signaling.
   Full cross-validation against Nunavut is missing; truncation/saturation parity needs confirmation.
 - **Phase 4 Testing/Validation:** Unit tests exist; parity tools (`dsdl_to_dsdl`, `dsdl_to_json`) added.
-  Comparator scripts and cross-validation harnesses are still missing.
+  PyDSDL comparator script is in progress; parity mismatches remain.
 - **Phase 5 Polish/Docs:** Deferred.
+- Test roots are split under `test_dsdl_root_namespaces/0` and `test_dsdl_root_namespaces/1` (some namespaces
+  intentionally split across both for lookup coverage).
 
 
 ## Next Steps
 
-1. Coverage: verify GCC/Clang coverage output (gcovr/llvm-cov) and document caveats.
-2. PyDSDL comparator: Python script to compare `dsdl_to_dsdl` and `dsdl_to_json` outputs against PyDSDL for valid/invalid namespaces.
-3. Full-namespace parse tests using the tools and reference namespaces.
-4. Nunavut cross-validation: generate Nunavut C code + auto-generate a C test that compares dsdl.c
+1. Finalize composite naming (`name` + `name_versioned`) and align tool output (dsdl_to_dsdl uses versioned names).
+2. PyDSDL comparator: consume `#@fixed_port_id <n>` from `dsdl_to_dsdl` output, raise recursion limit,
+   and run parity across `0/` and `1/` roots.
+3. Resolve parity mismatches (extent/union layout, delimited handling, fixed-port ID consistency) and add regressions.
+4. Verify GCC/Clang coverage output (gcovr/llvm-cov) and document caveats.
+5. Nunavut cross-validation: generate Nunavut C code + auto-generate a C test that compares dsdl.c
    serialization byte-for-byte for deterministic randomized values.
-5. Fix mismatches and add targeted regression tests.
+6. Full-namespace parse tests using the tools and reference namespaces.
 
 
 ## Phase 0: Project Infrastructure Setup
@@ -56,7 +60,8 @@ at runtime and provides serialization/deserialization.
 ### 0.3 Verification Infrastructure
 
 - Standalone tools in `tools/` (not part of the library):
-  - `dsdl_to_dsdl`: normalized DSDL using declared constant types from the public API (no inference).
+  - `dsdl_to_dsdl`: normalized DSDL using declared constant types from the public API (no inference);
+    emits structured comments like `#@fixed_port_id <n>` when applicable.
   - `dsdl_to_json`: stable machine-readable JSON with constant types for parity checks.
 - Python comparator against PyDSDL.
 - Nunavut codegen + cross-validation test generation.
