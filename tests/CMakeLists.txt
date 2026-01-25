@@ -79,3 +79,18 @@ gen_test_matrix(test_dsdl_type_resolution "${trace_source};${CMAKE_CURRENT_SOURC
 
 # Bit Length Set tests (include dsdl.c directly)
 gen_test_matrix(test_dsdl_bls "${trace_source};${CMAKE_CURRENT_SOURCE_DIR}/test_bls.c" FALSE)
+
+if(DSDL_BUILD_TOOLS)
+    find_package(Python3 COMPONENTS Interpreter)
+    if(Python3_Interpreter_FOUND)
+        add_test(NAME run_dsdl_pydsdl_parity
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/dsdl_compare_pydsdl.py
+                --dsdl-to-json $<TARGET_FILE:dsdl_to_json>
+                --dsdl-to-dsdl $<TARGET_FILE:dsdl_to_dsdl>
+                -r ${CMAKE_SOURCE_DIR}/test_dsdl_root_namespaces/0
+                -r ${CMAKE_SOURCE_DIR}/test_dsdl_root_namespaces/1
+        )
+    else()
+        message(STATUS "Python3 not found; PyDSDL parity test disabled")
+    endif()
+endif()

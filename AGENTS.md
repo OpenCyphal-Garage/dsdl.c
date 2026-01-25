@@ -4,7 +4,7 @@ This is a compact C implementation of a Cyphal DSDL parser. Please read the Spec
 
 A crude draft of the API design is proposed in `dsdl.h`.
 
-Directory `test_dsdl_root_namespaces` contains various DSDL namespaces that can be used to test the parser against.
+Directory `test_dsdl_root_namespaces` contains `0/` and `1/`, each with root namespaces (some split across both) for testing.
 
 The core purpose is to allow very basic C applications, including some embedded ones, to load DSDL definitions at runtime, without relying on compile-time code generation. To simplify integration with constrained environments, the reliance on the C library is reduced to the bare minimum -- we do not use stdio or heap; the memory allocation facilities are provided by the user via a single realloc call.
 

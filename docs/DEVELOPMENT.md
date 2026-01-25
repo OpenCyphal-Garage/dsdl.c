@@ -21,8 +21,8 @@ Notes:
 The following standalone tools live under `tools/` and use the public API:
 
 ```sh
-./build/tools/dsdl_to_dsdl -r test_dsdl_root_namespaces validation.Expressions.0.1
-./build/tools/dsdl_to_json -r test_dsdl_root_namespaces validation.Expressions.0.1
+./build/tools/dsdl_to_dsdl -r test_dsdl_root_namespaces/0 -r test_dsdl_root_namespaces/1 validation.Expressions.0.1
+./build/tools/dsdl_to_json -r test_dsdl_root_namespaces/0 -r test_dsdl_root_namespaces/1 validation.Expressions.0.1
 ```
 
-`dsdl_to_dsdl` emits normalized DSDL with inferred constant types (see the header comment in its output).
+`dsdl_to_dsdl` emits normalized DSDL using constant types from the public API (see the header comment in its output).

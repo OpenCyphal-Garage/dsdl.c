@@ -157,6 +157,12 @@ static bool add_namespace_rel(const char* const rel_path)
     return dsdl_add_namespace(&g_dsdl, wkv_key(path_buf));
 }
 
+static bool add_test_roots(void)
+{
+    return add_namespace_rel("test_dsdl_root_namespaces/0") &&
+           add_namespace_rel("test_dsdl_root_namespaces/1");
+}
+
 // ============================================================================
 // Bit buffer unit tests
 // ============================================================================
@@ -429,7 +435,7 @@ void test_serialize_simple_struct(void)
 {
     setup_dsdl();
 
-    TEST_ASSERT_TRUE(add_namespace_rel("test_dsdl_root_namespaces/nunavut_test_types/nested_array_types"));
+    TEST_ASSERT_TRUE(add_test_roots());
 
     // Load Simple.1.0: int32 a, float16 b, bool c
     const dsdl_type_composite_t* simple = dsdl_read(&g_dsdl, wkv_key("mymsgs.Simple.1.0"));
@@ -486,7 +492,7 @@ void test_serialize_variable_array_struct(void)
 {
     setup_dsdl();
 
-    TEST_ASSERT_TRUE(add_namespace_rel("test_dsdl_root_namespaces/nunavut_test_types/nested_array_types"));
+    TEST_ASSERT_TRUE(add_test_roots());
 
     // Load Inner.1.0: uint32[<=5] inner_items
     const dsdl_type_composite_t* inner = dsdl_read(&g_dsdl, wkv_key("mymsgs.Inner.1.0"));
@@ -533,7 +539,7 @@ void test_serialize_nested_struct(void)
 {
     setup_dsdl();
 
-    TEST_ASSERT_TRUE(add_namespace_rel("test_dsdl_root_namespaces/nunavut_test_types/nested_array_types"));
+    TEST_ASSERT_TRUE(add_test_roots());
 
     // Load Outer.1.0: float32[<=8] outer_items, Inner.1.0 inner
     const dsdl_type_composite_t* outer = dsdl_read(&g_dsdl, wkv_key("mymsgs.Outer.1.0"));
@@ -573,7 +579,7 @@ void test_roundtrip_simple_struct(void)
 {
     setup_dsdl();
 
-    TEST_ASSERT_TRUE(add_namespace_rel("test_dsdl_root_namespaces/nunavut_test_types/nested_array_types"));
+    TEST_ASSERT_TRUE(add_test_roots());
 
     const dsdl_type_composite_t* simple = dsdl_read(&g_dsdl, wkv_key("mymsgs.Simple.1.0"));
     TEST_ASSERT_NOT_NULL(simple);
@@ -614,7 +620,7 @@ void test_roundtrip_variable_array(void)
 {
     setup_dsdl();
 
-    TEST_ASSERT_TRUE(add_namespace_rel("test_dsdl_root_namespaces/nunavut_test_types/nested_array_types"));
+    TEST_ASSERT_TRUE(add_test_roots());
 
     const dsdl_type_composite_t* inner = dsdl_read(&g_dsdl, wkv_key("mymsgs.Inner.1.0"));
     TEST_ASSERT_NOT_NULL(inner);
@@ -655,7 +661,7 @@ void test_deserialize_array_overflow_fails(void)
 {
     setup_dsdl();
 
-    TEST_ASSERT_TRUE(add_namespace_rel("test_dsdl_root_namespaces/nunavut_test_types/nested_array_types"));
+    TEST_ASSERT_TRUE(add_test_roots());
 
     const dsdl_type_composite_t* inner = dsdl_read(&g_dsdl, wkv_key("mymsgs.Inner.1.0"));
     TEST_ASSERT_NOT_NULL(inner);
@@ -688,7 +694,7 @@ void test_serialize_array_overflow_fails(void)
 {
     setup_dsdl();
 
-    TEST_ASSERT_TRUE(add_namespace_rel("test_dsdl_root_namespaces/nunavut_test_types/nested_array_types"));
+    TEST_ASSERT_TRUE(add_test_roots());
 
     const dsdl_type_composite_t* inner = dsdl_read(&g_dsdl, wkv_key("mymsgs.Inner.1.0"));
     TEST_ASSERT_NOT_NULL(inner);
@@ -710,7 +716,7 @@ void test_deserialize_array_prefix_exceeds_capacity_fails(void)
 {
     setup_dsdl();
 
-    TEST_ASSERT_TRUE(add_namespace_rel("test_dsdl_root_namespaces/nunavut_test_types/nested_array_types"));
+    TEST_ASSERT_TRUE(add_test_roots());
 
     const dsdl_type_composite_t* inner = dsdl_read(&g_dsdl, wkv_key("mymsgs.Inner.1.0"));
     TEST_ASSERT_NOT_NULL(inner);
@@ -867,7 +873,7 @@ void test_roundtrip_nested_struct(void)
 {
     setup_dsdl();
 
-    TEST_ASSERT_TRUE(add_namespace_rel("test_dsdl_root_namespaces/nunavut_test_types/nested_array_types"));
+    TEST_ASSERT_TRUE(add_test_roots());
 
     const dsdl_type_composite_t* outer = dsdl_read(&g_dsdl, wkv_key("mymsgs.Outer.1.0"));
     TEST_ASSERT_NOT_NULL(outer);

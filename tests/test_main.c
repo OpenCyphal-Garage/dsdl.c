@@ -42,6 +42,12 @@ static bool add_namespace_rel(dsdl_t* const dsdl, const char* const rel_path)
     return dsdl_add_namespace(dsdl, wkv_key(path_buf));
 }
 
+static bool add_test_roots(dsdl_t* const dsdl)
+{
+    return add_namespace_rel(dsdl, "test_dsdl_root_namespaces/0") &&
+           add_namespace_rel(dsdl, "test_dsdl_root_namespaces/1");
+}
+
 // ============================================================================
 // Public API tests
 // ============================================================================
@@ -62,7 +68,7 @@ void test_dsdl_add_namespace(void)
     dsdl_new(&dsdl, test_realloc);
 
     // Add a namespace
-    bool result = add_namespace_rel(&dsdl, "test_dsdl_root_namespaces");
+    bool result = add_test_roots(&dsdl);
     TEST_ASSERT_TRUE(result);
 
     dsdl_destroy(&dsdl);
