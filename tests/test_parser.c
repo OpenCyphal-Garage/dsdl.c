@@ -803,7 +803,7 @@ static void test_parse_type_uint(void)
     TEST_ASSERT_TRUE(dsdl_parse_type(&g_parser, &type));
     TEST_ASSERT_TRUE(dsdl_type_is_uint(type.kind));
     TEST_ASSERT_EQUAL_UINT8(8, type.bit_width);
-    TEST_ASSERT_TRUE(type.is_saturated);
+    TEST_ASSERT_FALSE(dsdl_type_is_truncated(type.kind));
 }
 
 static void test_parse_type_int(void)
@@ -841,6 +841,7 @@ static void test_parse_type_bool(void)
     TEST_ASSERT_TRUE(dsdl_parse_type(&g_parser, &type));
     TEST_ASSERT_TRUE(dsdl_type_is_alias(type.kind));
     TEST_ASSERT_EQUAL_UINT8(1, type.bit_width);
+    TEST_ASSERT_FALSE(dsdl_type_is_truncated(type.kind));
 }
 
 static void test_parse_type_byte(void)
@@ -850,6 +851,7 @@ static void test_parse_type_byte(void)
     TEST_ASSERT_TRUE(dsdl_parse_type(&g_parser, &type));
     TEST_ASSERT_TRUE(dsdl_type_is_alias(type.kind));
     TEST_ASSERT_EQUAL_UINT8(8, type.bit_width);
+    TEST_ASSERT_TRUE(dsdl_type_is_truncated(type.kind));
 }
 
 static void test_parse_type_truncated(void)
@@ -858,7 +860,7 @@ static void test_parse_type_truncated(void)
     dsdl_parsed_type_t type;
     TEST_ASSERT_TRUE(dsdl_parse_type(&g_parser, &type));
     TEST_ASSERT_TRUE(dsdl_type_is_uint(type.kind));
-    TEST_ASSERT_FALSE(type.is_saturated);
+    TEST_ASSERT_TRUE(dsdl_type_is_truncated(type.kind));
 }
 
 static void test_parse_type_saturated(void)
@@ -867,7 +869,7 @@ static void test_parse_type_saturated(void)
     dsdl_parsed_type_t type;
     TEST_ASSERT_TRUE(dsdl_parse_type(&g_parser, &type));
     TEST_ASSERT_TRUE(dsdl_type_is_int(type.kind));
-    TEST_ASSERT_TRUE(type.is_saturated);
+    TEST_ASSERT_FALSE(dsdl_type_is_truncated(type.kind));
 }
 
 static void test_parse_type_array_fixed(void)
@@ -876,7 +878,7 @@ static void test_parse_type_array_fixed(void)
     dsdl_parsed_type_t type;
     TEST_ASSERT_TRUE(dsdl_parse_type(&g_parser, &type));
     TEST_ASSERT_TRUE(dsdl_type_is_array(type.kind));
-    TEST_ASSERT_FALSE(type.is_variable);
+    TEST_ASSERT_EQUAL(DSDL_ARRAY_FIXED, type.kind);
     TEST_ASSERT_EQUAL_size_t(10, type.array_size);
 }
 
@@ -886,7 +888,7 @@ static void test_parse_type_array_variable_inclusive(void)
     dsdl_parsed_type_t type;
     TEST_ASSERT_TRUE(dsdl_parse_type(&g_parser, &type));
     TEST_ASSERT_TRUE(dsdl_type_is_array(type.kind));
-    TEST_ASSERT_TRUE(type.is_variable);
+    TEST_ASSERT_EQUAL(DSDL_ARRAY_VARIABLE, type.kind);
     TEST_ASSERT_TRUE(type.is_inclusive);
     TEST_ASSERT_EQUAL_size_t(256, type.array_size);
 }
@@ -897,7 +899,7 @@ static void test_parse_type_array_variable_exclusive(void)
     dsdl_parsed_type_t type;
     TEST_ASSERT_TRUE(dsdl_parse_type(&g_parser, &type));
     TEST_ASSERT_TRUE(dsdl_type_is_array(type.kind));
-    TEST_ASSERT_TRUE(type.is_variable);
+    TEST_ASSERT_EQUAL(DSDL_ARRAY_VARIABLE, type.kind);
     TEST_ASSERT_FALSE(type.is_inclusive);
     TEST_ASSERT_EQUAL_size_t(99, type.array_size);
 }

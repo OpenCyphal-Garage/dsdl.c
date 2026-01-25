@@ -341,6 +341,86 @@ void test_serialize_float32(void)
     TEST_ASSERT_FLOAT_WITHIN(0.00001f, 3.14159f, result);
 }
 
+void test_serialize_cast_mode_uint(void)
+{
+    uint8_t       buffer[2] = { 0 };
+    dsdl_bitbuf_t buf       = { buffer, 16, 0, false };
+
+    uint_least8_t value = 0x11U;
+    dsdl_serialize_primitive(&buf, DSDL_UINT_TRUNC(2), &value);
+    TEST_ASSERT_FALSE(buf.error);
+
+    buf.offset_bits         = 0;
+    uint_least8_t truncated = 0U;
+    dsdl_deserialize_primitive(&buf, DSDL_UINT_TRUNC(2), &truncated);
+    TEST_ASSERT_EQUAL_UINT8(1U, truncated);
+
+    (void)memset(buffer, 0, sizeof(buffer));
+    buf.offset_bits = 0;
+    buf.error       = false;
+    dsdl_serialize_primitive(&buf, DSDL_UINT(2), &value);
+    TEST_ASSERT_FALSE(buf.error);
+
+    buf.offset_bits         = 0;
+    uint_least8_t saturated = 0U;
+    dsdl_deserialize_primitive(&buf, DSDL_UINT(2), &saturated);
+    TEST_ASSERT_EQUAL_UINT8(3U, saturated);
+}
+
+void test_serialize_cast_mode_int(void)
+{
+    uint8_t       buffer[2] = { 0 };
+    dsdl_bitbuf_t buf       = { buffer, 16, 0, false };
+
+    int_least8_t value = 20;
+    dsdl_serialize_primitive(&buf, DSDL_INT(5), &value);
+    TEST_ASSERT_FALSE(buf.error);
+
+    buf.offset_bits        = 0;
+    int_least8_t saturated = 0;
+    dsdl_deserialize_primitive(&buf, DSDL_INT(5), &saturated);
+    TEST_ASSERT_EQUAL_INT8(15, saturated);
+
+    (void)memset(buffer, 0, sizeof(buffer));
+    buf.offset_bits = 0;
+    buf.error       = false;
+    value           = -20;
+    dsdl_serialize_primitive(&buf, DSDL_INT(5), &value);
+    TEST_ASSERT_FALSE(buf.error);
+
+    buf.offset_bits            = 0;
+    int_least8_t saturated_min = 0;
+    dsdl_deserialize_primitive(&buf, DSDL_INT(5), &saturated_min);
+    TEST_ASSERT_EQUAL_INT8(-16, saturated_min);
+}
+
+void test_serialize_cast_mode_float16(void)
+{
+    uint8_t       buffer[4] = { 0 };
+    dsdl_bitbuf_t buf       = { buffer, 32, 0, false };
+
+    float value = 1e9f;
+    dsdl_serialize_primitive(&buf, DSDL_FLOAT_TRUNC(16), &value);
+    TEST_ASSERT_FALSE(buf.error);
+
+    buf.offset_bits = 0;
+    float truncated = 0.0f;
+    dsdl_deserialize_primitive(&buf, DSDL_FLOAT_TRUNC(16), &truncated);
+    TEST_ASSERT_TRUE(isinf(truncated));
+    TEST_ASSERT_TRUE(truncated > 0.0f);
+
+    (void)memset(buffer, 0, sizeof(buffer));
+    buf.offset_bits = 0;
+    buf.error       = false;
+    dsdl_serialize_primitive(&buf, DSDL_FLOAT(16), &value);
+    TEST_ASSERT_FALSE(buf.error);
+
+    buf.offset_bits = 0;
+    float saturated = 0.0f;
+    dsdl_deserialize_primitive(&buf, DSDL_FLOAT(16), &saturated);
+    TEST_ASSERT_FLOAT_WITHIN(0.1f, 65504.0f, saturated);
+}
+
 // ============================================================================
 // Integration test with real DSDL type
 // ============================================================================
@@ -715,7 +795,7 @@ void test_deserialize_union_invalid_tag_fails(void)
     TEST_ASSERT_EQUAL_size_t(SIZE_MAX, consumed);
 }
 
-void test_serialize_unsigned_range_fails(void)
+void test_serialize_unsigned_saturates(void)
 {
     static dsdl_type_t  field_type = DSDL_UINT(7);
     static dsdl_type_t* field_types[1];
@@ -739,10 +819,17 @@ void test_serialize_unsigned_range_fails(void)
 
     uint8_t buffer[4] = { 0 };
     size_t  size      = dsdl_serialize(&struct_type, &sval, sizeof(buffer), buffer);
-    TEST_ASSERT_EQUAL_size_t(SIZE_MAX, size);
+    TEST_ASSERT_TRUE(size != SIZE_MAX);
+
+    uint_least8_t       out_value  = 0;
+    void*               out_ptrs[] = { &out_value };
+    dsdl_value_struct_t out_sval   = { .values = out_ptrs };
+    size_t              consumed   = dsdl_deserialize(&struct_type, &out_sval, size, buffer);
+    TEST_ASSERT_TRUE(consumed != SIZE_MAX);
+    TEST_ASSERT_EQUAL_UINT8(127, out_value);
 }
 
-void test_serialize_signed_range_fails(void)
+void test_serialize_signed_saturates(void)
 {
     static dsdl_type_t  field_type = DSDL_INT(5);
     static dsdl_type_t* field_types[1];
@@ -766,7 +853,14 @@ void test_serialize_signed_range_fails(void)
 
     uint8_t buffer[4] = { 0 };
     size_t  size      = dsdl_serialize(&struct_type, &sval, sizeof(buffer), buffer);
-    TEST_ASSERT_EQUAL_size_t(SIZE_MAX, size);
+    TEST_ASSERT_TRUE(size != SIZE_MAX);
+
+    int_least8_t        out_value  = 0;
+    void*               out_ptrs[] = { &out_value };
+    dsdl_value_struct_t out_sval   = { .values = out_ptrs };
+    size_t              consumed   = dsdl_deserialize(&struct_type, &out_sval, size, buffer);
+    TEST_ASSERT_TRUE(consumed != SIZE_MAX);
+    TEST_ASSERT_EQUAL_INT8(15, out_value);
 }
 
 void test_roundtrip_nested_struct(void)
@@ -1031,6 +1125,9 @@ int main(void)
     RUN_TEST(test_serialize_int16_negative);
     RUN_TEST(test_serialize_bool);
     RUN_TEST(test_serialize_float32);
+    RUN_TEST(test_serialize_cast_mode_uint);
+    RUN_TEST(test_serialize_cast_mode_int);
+    RUN_TEST(test_serialize_cast_mode_float16);
 
     // Float16 conversion tests
     RUN_TEST(test_float16_pack);
@@ -1056,8 +1153,8 @@ int main(void)
     RUN_TEST(test_serialize_union);
     RUN_TEST(test_serialize_union_invalid_tag_fails);
     RUN_TEST(test_deserialize_union_invalid_tag_fails);
-    RUN_TEST(test_serialize_unsigned_range_fails);
-    RUN_TEST(test_serialize_signed_range_fails);
+    RUN_TEST(test_serialize_unsigned_saturates);
+    RUN_TEST(test_serialize_signed_saturates);
 
     return UNITY_END();
 }

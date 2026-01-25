@@ -591,6 +591,60 @@ static void test_deprecated_flag(void)
     teardown_dsdl();
 }
 
+static void test_cast_modes(void)
+{
+    setup_dsdl();
+
+    TEST_ASSERT_TRUE(add_namespace_rel("test_dsdl_root_namespaces"));
+
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("validation.CastModes.0.1"));
+    TEST_ASSERT_NOT_NULL(type);
+
+    const dsdl_type_t* field = find_field_type(type, "saturated_implicit");
+    TEST_ASSERT_NOT_NULL(field);
+    TEST_ASSERT_TRUE(dsdl_type_is_uint(*field));
+    TEST_ASSERT_FALSE(dsdl_type_is_truncated(*field));
+
+    field = find_field_type(type, "saturated_signed");
+    TEST_ASSERT_NOT_NULL(field);
+    TEST_ASSERT_TRUE(dsdl_type_is_int(*field));
+    TEST_ASSERT_FALSE(dsdl_type_is_truncated(*field));
+
+    field = find_field_type(type, "saturated_float");
+    TEST_ASSERT_NOT_NULL(field);
+    TEST_ASSERT_TRUE(dsdl_type_is_float(*field));
+    TEST_ASSERT_FALSE(dsdl_type_is_truncated(*field));
+
+    field = find_field_type(type, "truncated_uint");
+    TEST_ASSERT_NOT_NULL(field);
+    TEST_ASSERT_TRUE(dsdl_type_is_uint(*field));
+    TEST_ASSERT_TRUE(dsdl_type_is_truncated(*field));
+
+    field = find_field_type(type, "truncated_float16");
+    TEST_ASSERT_NOT_NULL(field);
+    TEST_ASSERT_TRUE(dsdl_type_is_float(*field));
+    TEST_ASSERT_TRUE(dsdl_type_is_truncated(*field));
+
+    field = find_field_type(type, "truncated_float64");
+    TEST_ASSERT_NOT_NULL(field);
+    TEST_ASSERT_TRUE(dsdl_type_is_float(*field));
+    TEST_ASSERT_TRUE(dsdl_type_is_truncated(*field));
+
+    teardown_dsdl();
+}
+
+static void test_invalid_truncated_signed(void)
+{
+    setup_dsdl();
+
+    TEST_ASSERT_TRUE(add_namespace_rel("test_dsdl_root_namespaces"));
+
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("invalid.TruncatedSigned.0.1"));
+    TEST_ASSERT_NULL(type);
+
+    teardown_dsdl();
+}
+
 // ============================================================================
 // Version resolution tests
 // ============================================================================
@@ -754,6 +808,8 @@ int main(void)
     RUN_TEST(test_array_capacity_expressions);
     RUN_TEST(test_service_response_type);
     RUN_TEST(test_deprecated_flag);
+    RUN_TEST(test_cast_modes);
+    RUN_TEST(test_invalid_truncated_signed);
 
     // Version resolution tests
     RUN_TEST(test_version_resolution_exact);

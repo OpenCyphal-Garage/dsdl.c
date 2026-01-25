@@ -16,6 +16,7 @@
 #include <string.h>
 #include <math.h>
 #include <inttypes.h>
+#include <float.h>
 
 #if DSDL_CONFIG_TRACE
 #define DSDL_TRACE(self, ...) dsdl_trace(self, __FILE__, __LINE__, __func__, __VA_ARGS__)
@@ -2554,8 +2555,6 @@ typedef struct dsdl_parsed_type_t
     dsdl_type_t   kind;                ///< DSDL_xxx type kind constant (DSDL_ARRAY_* for arrays)
     dsdl_type_t   element_kind;        ///< For arrays: the element type kind (primitive or composite marker)
     uint_least8_t bit_width;           ///< Bit width for primitives/void
-    bool          is_saturated;        ///< true = saturated (default), false = truncated
-    bool          is_variable;         ///< For arrays: is variable-length
     bool          is_inclusive;        ///< For variable arrays: inclusive vs exclusive
     uint64_t      array_size;          ///< Array capacity (max size for variable, fixed size for fixed)
     bool          has_array_size_expr; ///< True if array_size_expr holds a deferred expression
@@ -4511,8 +4510,6 @@ static bool dsdl_parse_primitive_name(dsdl_parser_t* const parser, dsdl_parsed_t
 /// Parse a primitive type (bool, byte, utf8, or [saturated/truncated] primitive_name).
 static bool dsdl_parse_type_primitive(dsdl_parser_t* const parser, dsdl_parsed_type_t* const out_type)
 {
-    out_type->is_saturated = true; // Default
-
     // Check for "bool"
     if (dsdl_parser_match(parser, "bool", 4) && !dsdl_is_ident_cont(dsdl_parser_peek(parser, 4))) {
         dsdl_parser_advance(parser, 4);
@@ -4532,7 +4529,7 @@ static bool dsdl_parse_type_primitive(dsdl_parser_t* const parser, dsdl_parsed_t
     // Check for "utf8" (alias for uint8)
     if (dsdl_parser_match(parser, "utf8", 4) && !dsdl_is_ident_cont(dsdl_parser_peek(parser, 4))) {
         dsdl_parser_advance(parser, 4);
-        out_type->kind      = DSDL_UINT(8); // utf8 is alias for uint8
+        out_type->kind      = DSDL_UTF8;
         out_type->bit_width = 8;
         return true;
     }
@@ -4541,8 +4538,14 @@ static bool dsdl_parse_type_primitive(dsdl_parser_t* const parser, dsdl_parsed_t
     if (dsdl_parser_match(parser, "truncated", 9) && !dsdl_is_ident_cont(dsdl_parser_peek(parser, 9))) {
         dsdl_parser_advance(parser, 9);
         dsdl_parser_skip_ws(parser);
-        out_type->is_saturated = false;
-        return dsdl_parse_primitive_name(parser, out_type);
+        if (!dsdl_parse_primitive_name(parser, out_type)) {
+            return false;
+        }
+        if (dsdl_type_is_int(out_type->kind)) {
+            return false; // Truncated signed integers are not allowed.
+        }
+        out_type->kind = (dsdl_type_t)(out_type->kind | DSDL_TYPE_TRUNCATED_FLAG);
+        return true;
     }
 
     // Check for optional "saturated" modifier
@@ -4551,7 +4554,10 @@ static bool dsdl_parse_type_primitive(dsdl_parser_t* const parser, dsdl_parsed_t
         dsdl_parser_skip_ws(parser);
     }
 
-    return dsdl_parse_primitive_name(parser, out_type);
+    if (!dsdl_parse_primitive_name(parser, out_type)) {
+        return false;
+    }
+    return true;
 }
 
 /// Parse a versioned type reference: namespace.Name.major.minor
@@ -4662,15 +4668,15 @@ static bool dsdl_parse_type_array(dsdl_parser_t* const parser, dsdl_parsed_type_
     dsdl_parser_skip_ws(parser);
 
     // Check for variable array indicators
-    out_type->is_variable  = false;
     out_type->is_inclusive = false;
+    bool is_variable       = false;
 
     if (dsdl_parser_accept(parser, "<=", 2)) {
-        out_type->is_variable  = true;
+        is_variable            = true;
         out_type->is_inclusive = true;
         dsdl_parser_skip_ws(parser);
     } else if (dsdl_parser_accept(parser, "<", 1)) {
-        out_type->is_variable  = true;
+        is_variable            = true;
         out_type->is_inclusive = false;
         dsdl_parser_skip_ws(parser);
     }
@@ -4687,7 +4693,7 @@ static bool dsdl_parse_type_array(dsdl_parser_t* const parser, dsdl_parsed_type_
             return false;
         }
         uint64_t capacity = (uint64_t)size_val.as.rational.num;
-        if (out_type->is_variable && !out_type->is_inclusive) {
+        if (is_variable && !out_type->is_inclusive) {
             if (capacity <= 1U) {
                 dsdl_value_dispose(parser->dsdl, &size_val);
                 return false;
@@ -4715,7 +4721,7 @@ static bool dsdl_parse_type_array(dsdl_parser_t* const parser, dsdl_parsed_type_
 
     // Save element type and update kind to array marker
     out_type->element_kind = out_type->kind;
-    if (out_type->is_variable) {
+    if (is_variable) {
         out_type->kind = DSDL_ARRAY_VARIABLE;
     } else {
         out_type->kind = DSDL_ARRAY_FIXED;
@@ -4735,7 +4741,7 @@ static bool dsdl_parse_type(dsdl_parser_t* const parser, dsdl_parsed_type_t* con
                "Parsed type: kind=0x%04x array_size=%" PRIu64 " variable=%d",
                out_type->kind,
                out_type->array_size,
-               out_type->is_variable);
+               (out_type->kind == DSDL_ARRAY_VARIABLE));
     return true;
 }
 
@@ -5977,7 +5983,7 @@ static dsdl_type_t* dsdl_create_type_descriptor(dsdl_t* const             self,
         DSDL_TRACE(self,
                    "  -> array type, capacity=%" PRIu64 ", variable=%d",
                    parsed_type->array_size,
-                   parsed_type->is_variable);
+                   (parsed_type->kind == DSDL_ARRAY_VARIABLE));
         dsdl_type_array_t* arr = (dsdl_type_array_t*)dsdl_alloc(self, sizeof(dsdl_type_array_t));
         if (arr == NULL) {
             return NULL;
@@ -5990,7 +5996,7 @@ static dsdl_type_t* dsdl_create_type_descriptor(dsdl_t* const             self,
         dsdl_parsed_type_t element_type = *parsed_type;
         element_type.kind               = parsed_type->element_kind;
         element_type.array_size         = 0;
-        element_type.is_variable        = false;
+        element_type.is_inclusive       = false;
 
         arr->member_type = dsdl_create_type_descriptor(self, &element_type, current_namespace);
         if (arr->member_type == NULL) {
@@ -6228,7 +6234,7 @@ static bool dsdl_eval_array_size_expr(dsdl_t* const              dsdl,
         return false;
     }
     uint64_t capacity = (uint64_t)type->array_size_expr.as.rational.num;
-    if (type->is_variable && !type->is_inclusive) {
+    if ((type->kind == DSDL_ARRAY_VARIABLE) && !type->is_inclusive) {
         if (capacity <= 1U) {
             return false;
         }
@@ -7328,6 +7334,58 @@ static bool dsdl_int_fits_bits(const int64_t value, const uint64_t bits)
     return (value >= min) && (value <= max);
 }
 
+static uint64_t dsdl_uint_truncate(const uint64_t value, const uint64_t bits)
+{
+    if (bits >= 64U) {
+        return value;
+    }
+    const uint64_t mask = (bits == 0U) ? 0U : ((1ULL << bits) - 1ULL);
+    return value & mask;
+}
+
+static uint64_t dsdl_uint_saturate(const uint64_t value, const uint64_t bits)
+{
+    if (bits >= 64U) {
+        return value;
+    }
+    const uint64_t max = (bits == 0U) ? 0U : ((1ULL << bits) - 1ULL);
+    return (value > max) ? max : value;
+}
+
+static int64_t dsdl_int_saturate(const int64_t value, const uint64_t bits)
+{
+    if (bits >= 64U) {
+        return value;
+    }
+    if (bits == 0U) {
+        return 0;
+    }
+    const int64_t max = (int64_t)((1ULL << (bits - 1U)) - 1ULL);
+    const int64_t min = -((int64_t)(1ULL << (bits - 1U)));
+    if (value > max) {
+        return max;
+    }
+    if (value < min) {
+        return min;
+    }
+    return value;
+}
+
+static float dsdl_float16_saturate(const float value)
+{
+    if (!isfinite(value)) {
+        return value;
+    }
+    const float limit = 65504.0F;
+    if (value > limit) {
+        return limit;
+    }
+    if (value < -limit) {
+        return -limit;
+    }
+    return value;
+}
+
 /// Write a primitive value to the buffer based on its type.
 static void dsdl_serialize_primitive(dsdl_bitbuf_t* const buf, const dsdl_type_t type, const void* const value)
 {
@@ -7360,8 +7418,12 @@ static void dsdl_serialize_primitive(dsdl_bitbuf_t* const buf, const dsdl_type_t
     if (dsdl_type_is_float(type)) {
         if (bits == 16) {
             // float16 - stored as native float in memory, convert to IEEE 754 half-precision
-            const float* f32 = (const float*)value;
-            dsdl_bitbuf_write(buf, dsdl_float16_pack(*f32), 16);
+            const float* f32  = (const float*)value;
+            float        fval = *f32;
+            if (!dsdl_type_is_truncated(type)) {
+                fval = dsdl_float16_saturate(fval);
+            }
+            dsdl_bitbuf_write(buf, dsdl_float16_pack(fval), 16);
         } else if (bits == 32) {
             const float* f32 = (const float*)value;
             uint32_t     raw;
@@ -7391,11 +7453,8 @@ static void dsdl_serialize_primitive(dsdl_bitbuf_t* const buf, const dsdl_type_t
             } else {
                 sval = *(const int_least64_t*)value;
             }
-            if (!dsdl_int_fits_bits(sval, bits)) {
-                buf->error = true;
-                return;
-            }
-            raw = (uint64_t)sval;
+            sval = dsdl_int_saturate(sval, bits);
+            raw  = (uint64_t)sval;
         } else {
             uint64_t uval = 0;
             if (bits <= 8) {
@@ -7407,9 +7466,10 @@ static void dsdl_serialize_primitive(dsdl_bitbuf_t* const buf, const dsdl_type_t
             } else {
                 uval = *(const uint_least64_t*)value;
             }
-            if (!dsdl_uint_fits_bits(uval, bits)) {
-                buf->error = true;
-                return;
+            if (dsdl_type_is_truncated(type)) {
+                uval = dsdl_uint_truncate(uval, bits);
+            } else {
+                uval = dsdl_uint_saturate(uval, bits);
             }
             raw = uval;
         }
