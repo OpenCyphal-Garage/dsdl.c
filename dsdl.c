@@ -35,12 +35,12 @@ typedef struct dsdl_bls_t dsdl_bls_t;
 /// Evaluation context for deferred expressions.
 typedef struct
 {
-    dsdl_t*           dsdl;
-    dsdl_bls_t*       offset;
-    wkv_str_t         current_namespace;
-    const wkv_str_t*  constant_names;
+    dsdl_t*             dsdl;
+    dsdl_bls_t*         offset;
+    wkv_str_t           current_namespace;
+    const wkv_str_t*    constant_names;
     const dsdl_value_t* constant_values;
-    size_t            constant_count;
+    size_t              constant_count;
 } dsdl_eval_context_t;
 
 /// If the value is deferred, invokes it until it obtains a concrete value.
@@ -49,9 +49,9 @@ static bool dsdl_resolve_value(dsdl_value_t* value)
 {
     assert(value != NULL);
     while (value->kind == dsdl_value_deferred) {
-        dsdl_value_t  out     = { 0 };
+        dsdl_value_t   out     = { 0 };
         dsdl_closure_t closure = value->as.deferred;
-        const bool    ok      = closure.fun(&closure, &out);
+        const bool     ok      = closure.fun(&closure, &out);
         if (!ok) {
             return false;
         }
@@ -1554,8 +1554,7 @@ static bool dsdl_value_clone(dsdl_t* const dsdl, const dsdl_value_t* const src, 
             if ((count > 0) && (src->as.set.elements == NULL)) {
                 return false;
             }
-            dsdl_value_t* elements =
-              (count > 0) ? (dsdl_value_t*)dsdl_alloc(dsdl, count * sizeof(dsdl_value_t)) : NULL;
+            dsdl_value_t* elements = (count > 0) ? (dsdl_value_t*)dsdl_alloc(dsdl, count * sizeof(dsdl_value_t)) : NULL;
             if ((elements == NULL) && (count > 0)) {
                 return false;
             }
@@ -2552,18 +2551,18 @@ static bool dsdl_parse_literal(dsdl_parser_t* const parser, dsdl_value_t* const 
 /// This is an intermediate representation before converting to dsdl_type_t.
 typedef struct dsdl_parsed_type_t
 {
-    dsdl_type_t   kind;          ///< DSDL_xxx type kind constant (DSDL_ARRAY_* for arrays)
-    dsdl_type_t   element_kind;  ///< For arrays: the element type kind (primitive or composite marker)
-    uint_least8_t bit_width;     ///< Bit width for primitives/void
-    bool          is_saturated;  ///< true = saturated (default), false = truncated
-    bool          is_variable;   ///< For arrays: is variable-length
-    bool          is_inclusive;  ///< For variable arrays: inclusive vs exclusive
-    uint64_t      array_size;    ///< Array capacity (max size for variable, fixed size for fixed)
+    dsdl_type_t   kind;                ///< DSDL_xxx type kind constant (DSDL_ARRAY_* for arrays)
+    dsdl_type_t   element_kind;        ///< For arrays: the element type kind (primitive or composite marker)
+    uint_least8_t bit_width;           ///< Bit width for primitives/void
+    bool          is_saturated;        ///< true = saturated (default), false = truncated
+    bool          is_variable;         ///< For arrays: is variable-length
+    bool          is_inclusive;        ///< For variable arrays: inclusive vs exclusive
+    uint64_t      array_size;          ///< Array capacity (max size for variable, fixed size for fixed)
     bool          has_array_size_expr; ///< True if array_size_expr holds a deferred expression
     dsdl_value_t  array_size_expr;     ///< Array capacity expression (may be deferred)
-    wkv_str_t     type_name;     ///< For composite types: full type name
-    uint_least8_t version_major; ///< For versioned types
-    uint_least8_t version_minor; ///< For versioned types
+    wkv_str_t     type_name;           ///< For composite types: full type name
+    uint_least8_t version_major;       ///< For versioned types
+    uint_least8_t version_minor;       ///< For versioned types
 } dsdl_parsed_type_t;
 
 // ============================================================================
@@ -2634,8 +2633,8 @@ typedef enum
 } dsdl_unary_op_t;
 
 // Forward declaration for _offset_ evaluation.
-static bool dsdl_value_from_bls(dsdl_t* dsdl, dsdl_bls_t* bls, dsdl_value_t* out);
-static dsdl_bls_t* dsdl_type_bls(dsdl_t* self, dsdl_type_t* type_ptr);
+static bool                         dsdl_value_from_bls(dsdl_t* dsdl, dsdl_bls_t* bls, dsdl_value_t* out);
+static dsdl_bls_t*                  dsdl_type_bls(dsdl_t* self, dsdl_type_t* type_ptr);
 static const dsdl_type_composite_t* dsdl_resolve_composite_type(dsdl_t* const       self,
                                                                 const wkv_str_t     type_name,
                                                                 const uint_least8_t version_major,
@@ -3083,9 +3082,9 @@ static bool dsdl_parse_primitive_bit_width(const wkv_str_t name, uint_least8_t* 
         bool          strict_sizes;
     } prefixes[] = {
         { "uint", 4U, 1U, 64U, false },
-        { "int",  3U, 2U, 64U, false },
+        { "int", 3U, 2U, 64U, false },
         { "void", 4U, 1U, 64U, false },
-        { "float", 5U, 0U, 0U, true  },
+        { "float", 5U, 0U, 0U, true },
     };
 
     for (size_t i = 0; i < (sizeof(prefixes) / sizeof(prefixes[0])); i++) {
@@ -3095,7 +3094,7 @@ static bool dsdl_parse_primitive_bit_width(const wkv_str_t name, uint_least8_t* 
         if (memcmp(name.str, prefixes[i].prefix, prefixes[i].prefix_len) != 0) {
             continue;
         }
-        uint64_t value = 0;
+        uint64_t     value = 0;
         const size_t start = prefixes[i].prefix_len;
         for (size_t j = start; j < name.len; j++) {
             const char c = name.str[j];
@@ -3124,10 +3123,10 @@ static bool dsdl_parse_primitive_bit_width(const wkv_str_t name, uint_least8_t* 
     return false;
 }
 
-static bool dsdl_apply_type_attribute(dsdl_t* const             dsdl,
-                                      const wkv_str_t           type_name,
-                                      const dsdl_attr_kind_t    attr,
-                                      dsdl_value_t* const       result)
+static bool dsdl_apply_type_attribute(dsdl_t* const          dsdl,
+                                      const wkv_str_t        type_name,
+                                      const dsdl_attr_kind_t attr,
+                                      dsdl_value_t* const    result)
 {
     uint_least8_t bit_width = 0;
     if (!dsdl_parse_primitive_bit_width(type_name, &bit_width)) {
@@ -3158,10 +3157,10 @@ static bool dsdl_apply_type_attribute(dsdl_t* const             dsdl,
     return false;
 }
 
-static bool dsdl_apply_type_attribute_composite(dsdl_t* const                       dsdl,
-                                                const dsdl_type_composite_t* const  type,
-                                                const dsdl_attr_kind_t              attr,
-                                                dsdl_value_t* const                 result)
+static bool dsdl_apply_type_attribute_composite(dsdl_t* const                      dsdl,
+                                                const dsdl_type_composite_t* const type,
+                                                const dsdl_attr_kind_t             attr,
+                                                dsdl_value_t* const                result)
 {
     if ((dsdl == NULL) || (type == NULL) || (result == NULL)) {
         return false;
@@ -3336,9 +3335,9 @@ typedef struct
 
 typedef struct
 {
-    dsdl_t*         dsdl;
-    wkv_str_t       attr;
-    dsdl_value_t    base;
+    dsdl_t*      dsdl;
+    wkv_str_t    attr;
+    dsdl_value_t base;
 } dsdl_closure_attr_ctx_t;
 
 typedef struct
@@ -3449,8 +3448,8 @@ static bool dsdl_closure_eval_type_ref(dsdl_closure_t* const self, dsdl_value_t*
     if ((ctx == NULL) || (ctx->dsdl == NULL) || (ctx->eval == NULL)) {
         return false;
     }
-    const dsdl_type_composite_t* const type = dsdl_resolve_composite_type(
-      ctx->dsdl, ctx->type_name, ctx->major, ctx->minor, ctx->eval->current_namespace);
+    const dsdl_type_composite_t* const type =
+      dsdl_resolve_composite_type(ctx->dsdl, ctx->type_name, ctx->major, ctx->minor, ctx->eval->current_namespace);
     if (type == NULL) {
         return false;
     }
@@ -3649,8 +3648,7 @@ static bool dsdl_closure_clone_symbol(const dsdl_closure_t* const self, dsdl_clo
     if ((ctx == NULL) || (ctx->dsdl == NULL)) {
         return false;
     }
-    dsdl_closure_symbol_ctx_t* const clone_ctx =
-      (dsdl_closure_symbol_ctx_t*)dsdl_alloc(ctx->dsdl, sizeof(*clone_ctx));
+    dsdl_closure_symbol_ctx_t* const clone_ctx = (dsdl_closure_symbol_ctx_t*)dsdl_alloc(ctx->dsdl, sizeof(*clone_ctx));
     if (clone_ctx == NULL) {
         return false;
     }
@@ -3728,8 +3726,8 @@ static bool dsdl_make_binary_closure(dsdl_t* const             dsdl,
     if (ctx == NULL) {
         return false;
     }
-    ctx->dsdl                   = dsdl;
-    ctx->op                     = op;
+    ctx->dsdl = dsdl;
+    ctx->op   = op;
     if (!dsdl_value_clone(dsdl, left, &ctx->left)) {
         dsdl_free(dsdl, ctx);
         return false;
@@ -3757,8 +3755,8 @@ static bool dsdl_make_unary_closure(dsdl_t* const             dsdl,
     if (ctx == NULL) {
         return false;
     }
-    ctx->dsdl                   = dsdl;
-    ctx->op                     = op;
+    ctx->dsdl = dsdl;
+    ctx->op   = op;
     if (!dsdl_value_clone(dsdl, operand, &ctx->operand)) {
         dsdl_free(dsdl, ctx);
         return false;
@@ -3781,7 +3779,7 @@ static bool dsdl_make_attribute_closure(dsdl_t* const             dsdl,
     if (ctx == NULL) {
         return false;
     }
-    ctx->dsdl                   = dsdl;
+    ctx->dsdl = dsdl;
     if (!dsdl_copy_wkv_str(dsdl, attr, &ctx->attr)) {
         dsdl_free(dsdl, ctx);
         return false;
@@ -3822,7 +3820,7 @@ static bool dsdl_make_offset_closure(dsdl_t* const dsdl, dsdl_eval_context_t* co
     return true;
 }
 
-static bool dsdl_make_symbol_closure(dsdl_t* const             dsdl,
+static bool dsdl_make_symbol_closure(dsdl_t* const              dsdl,
                                      dsdl_eval_context_t* const eval,
                                      const wkv_str_t            name,
                                      dsdl_value_t* const        result)
@@ -3849,7 +3847,7 @@ static bool dsdl_make_symbol_closure(dsdl_t* const             dsdl,
     return true;
 }
 
-static bool dsdl_make_type_ref_closure(dsdl_t* const             dsdl,
+static bool dsdl_make_type_ref_closure(dsdl_t* const              dsdl,
                                        dsdl_eval_context_t* const eval,
                                        const wkv_str_t            type_name,
                                        const uint_least8_t        major,
@@ -4077,7 +4075,7 @@ static bool dsdl_apply_binary_op(dsdl_t* const             dsdl,
             return false;
         }
         if (op == dsdl_op_pow) {
-            result->kind = dsdl_value_rational;
+            result->kind  = dsdl_value_rational;
             result->flags = 0;
             if (dsdl_rational_is_int(b)) {
                 intmax_t exp            = b.num;
@@ -4160,7 +4158,7 @@ static bool dsdl_apply_binary_op(dsdl_t* const             dsdl,
     }
 
     if ((left->kind == dsdl_value_bool) && (right->kind == dsdl_value_bool)) {
-        result->kind = dsdl_value_bool;
+        result->kind  = dsdl_value_bool;
         result->flags = 0;
         if (op == dsdl_op_or) {
             result->as.boolean = left->as.boolean || right->as.boolean;
@@ -4249,14 +4247,18 @@ static bool dsdl_parse_atom(dsdl_parser_t* const parser, dsdl_value_t* const out
     }
 
     // Try versioned type reference (namespace.Type.Major.Minor)
-    const size_t start_pos = parser->pos;
+    const size_t       start_pos = parser->pos;
     dsdl_parsed_type_t type_ref;
     if (dsdl_parse_type_versioned(parser, &type_ref)) {
         if (parser->eval_ctx == NULL) {
             return false;
         }
-        return dsdl_make_type_ref_closure(
-          parser->dsdl, parser->eval_ctx, type_ref.type_name, type_ref.version_major, type_ref.version_minor, out_value);
+        return dsdl_make_type_ref_closure(parser->dsdl,
+                                          parser->eval_ctx,
+                                          type_ref.type_name,
+                                          type_ref.version_major,
+                                          type_ref.version_minor,
+                                          out_value);
     }
     parser->pos = start_pos;
 
@@ -4266,7 +4268,7 @@ static bool dsdl_parse_atom(dsdl_parser_t* const parser, dsdl_value_t* const out
         if (((ident.len == 9U) && (memcmp(ident.str, "truncated", 9) == 0)) ||
             ((ident.len == 9U) && (memcmp(ident.str, "saturated", 9) == 0))) {
             dsdl_parser_skip_ws(parser);
-            wkv_str_t prim = dsdl_parse_identifier(parser);
+            wkv_str_t     prim      = dsdl_parse_identifier(parser);
             uint_least8_t bit_width = 0;
             if ((prim.str == NULL) || !dsdl_parse_primitive_bit_width(prim, &bit_width)) {
                 return false;
@@ -4692,7 +4694,7 @@ static bool dsdl_parse_type_array(dsdl_parser_t* const parser, dsdl_parsed_type_
             }
             capacity -= 1U;
         }
-        out_type->array_size         = capacity;
+        out_type->array_size          = capacity;
         out_type->has_array_size_expr = false;
         dsdl_value_dispose(parser->dsdl, &size_val);
     } else if (size_val.kind == dsdl_value_deferred) {
@@ -4944,8 +4946,8 @@ struct dsdl_parsed_def_t
     bool                  is_deprecated;
     bool                  has_fixed_port_id;
     bool                  has_fixed_port_id_expr;
-    dsdl_value_t           fixed_port_id_expr;
-    uint_least16_t         fixed_port_id;
+    dsdl_value_t          fixed_port_id_expr;
+    uint_least16_t        fixed_port_id;
 
     // Assertions (@assert directives)
     // Each assertion is stored with the field index at which it appeared,
@@ -4964,7 +4966,7 @@ static void dsdl_parsed_def_deinit(dsdl_parsed_def_t* const def);
 static bool dsdl_parsed_def_init(dsdl_parsed_def_t* const def, dsdl_t* const dsdl)
 {
     (void)memset(def, 0, sizeof(*def));
-    def->dsdl = dsdl;
+    def->dsdl          = dsdl;
     def->fixed_port_id = DSDL_FIXED_PORT_ID_NONE;
 
     // Start with reasonable initial capacity
@@ -5972,11 +5974,10 @@ static dsdl_type_t* dsdl_create_type_descriptor(dsdl_t* const             self,
 
     // For arrays: allocate dsdl_type_array_t and recursively create element type
     if (dsdl_type_is_array(parsed_type->kind)) {
-        DSDL_TRACE(
-          self,
-          "  -> array type, capacity=%" PRIu64 ", variable=%d",
-          parsed_type->array_size,
-          parsed_type->is_variable);
+        DSDL_TRACE(self,
+                   "  -> array type, capacity=%" PRIu64 ", variable=%d",
+                   parsed_type->array_size,
+                   parsed_type->is_variable);
         dsdl_type_array_t* arr = (dsdl_type_array_t*)dsdl_alloc(self, sizeof(dsdl_type_array_t));
         if (arr == NULL) {
             return NULL;
@@ -6141,7 +6142,7 @@ static bool dsdl_intmax_fits_bits(const intmax_t value, const uint_least8_t bits
     return (value >= min) && (value <= max);
 }
 
-static bool dsdl_eval_constant_value(dsdl_t* const             dsdl,
+static bool dsdl_eval_constant_value(dsdl_t* const              dsdl,
                                      dsdl_eval_context_t* const eval,
                                      const dsdl_parsed_type_t*  type,
                                      dsdl_value_t* const        value)
@@ -6202,7 +6203,7 @@ static bool dsdl_eval_constant_value(dsdl_t* const             dsdl,
     return false;
 }
 
-static bool dsdl_eval_array_size_expr(dsdl_t* const             dsdl,
+static bool dsdl_eval_array_size_expr(dsdl_t* const              dsdl,
                                       dsdl_eval_context_t* const eval,
                                       dsdl_parsed_type_t* const  type)
 {
@@ -6299,7 +6300,7 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_
     dsdl_parser_t       parser;
     dsdl_parsed_def_t   def;
     dsdl_eval_context_t eval_ctx = { 0 };
-    eval_ctx.dsdl = self;
+    eval_ctx.dsdl                = self;
 
     dsdl_parser_init(&parser, self, file_content.str, file_content.len, &eval_ctx);
 
@@ -6333,8 +6334,7 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_
     }
 
     if (def.has_fixed_port_id_expr) {
-        if (!dsdl_resolve_value(&def.fixed_port_id_expr) ||
-            (def.fixed_port_id_expr.kind != dsdl_value_rational) ||
+        if (!dsdl_resolve_value(&def.fixed_port_id_expr) || (def.fixed_port_id_expr.kind != dsdl_value_rational) ||
             !dsdl_rational_is_int(def.fixed_port_id_expr.as.rational)) {
             dsdl_parsed_def_deinit(&def);
             dsdl_free_str(self, file_content.str);
@@ -6514,10 +6514,10 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_
             return NULL;
         }
 
-        response               = (dsdl_type_composite_t*)response_block;
-        char* resp_str_ptr     = (char*)(response + 1);
-        response->name.len     = response_name_len;
-        response->name.str     = resp_str_ptr;
+        response           = (dsdl_type_composite_t*)response_block;
+        char* resp_str_ptr = (char*)(response + 1);
+        response->name.len = response_name_len;
+        response->name.str = resp_str_ptr;
 
         size_t pos = 0;
         if (type_ref.full_name.len > 0) {
@@ -6560,16 +6560,16 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_
             }
         }
 
-        response->field_count    = def.response_field_count;
-        response->sealed         = def.response.is_sealed;
-        response->deprecated     = def.is_deprecated;
-        response->type           = def.response.is_union ? DSDL_COMPOSITE_UNION : DSDL_COMPOSITE_STRUCT;
-        response->version[0]     = resolved_major;
-        response->version[1]     = resolved_minor;
-        response->extent         = 0;
-        response->response       = NULL;
-        response->bls            = NULL;
-        response->fixed_port_id  = DSDL_FIXED_PORT_ID_NONE;
+        response->field_count   = def.response_field_count;
+        response->sealed        = def.response.is_sealed;
+        response->deprecated    = def.is_deprecated;
+        response->type          = def.response.is_union ? DSDL_COMPOSITE_UNION : DSDL_COMPOSITE_STRUCT;
+        response->version[0]    = resolved_major;
+        response->version[1]    = resolved_minor;
+        response->extent        = 0;
+        response->response      = NULL;
+        response->bls           = NULL;
+        response->fixed_port_id = DSDL_FIXED_PORT_ID_NONE;
 
         composite->response = response;
     }
@@ -7679,7 +7679,7 @@ static void dsdl_serialize_type(dsdl_bitbuf_t* const buf, const dsdl_type_t* con
             const dsdl_value_array_variable_t* var = (const dsdl_value_array_variable_t*)value;
 
             // Write length prefix
-            const uint_least8_t prefix_bits  = dsdl_array_length_prefix_bits(arr->capacity);
+            const uint_least8_t prefix_bits = dsdl_array_length_prefix_bits(arr->capacity);
             if (var->count > arr->capacity) {
                 buf->error = true;
                 return;

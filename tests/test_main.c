@@ -34,7 +34,7 @@ static bool add_namespace_rel(dsdl_t* const dsdl, const char* const rel_path)
     if ((dsdl == NULL) || (rel_path == NULL)) {
         return false;
     }
-    char path_buf[512];
+    char      path_buf[512];
     const int len = snprintf(path_buf, sizeof(path_buf), "%s/%s", DSDL_TEST_ROOT, rel_path);
     if ((len < 0) || ((size_t)len >= sizeof(path_buf))) {
         return false;

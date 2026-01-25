@@ -149,7 +149,7 @@ static bool add_namespace_rel(const char* const rel_path)
     if (rel_path == NULL) {
         return false;
     }
-    char path_buf[512];
+    char      path_buf[512];
     const int len = snprintf(path_buf, sizeof(path_buf), "%s/%s", DSDL_TEST_ROOT, rel_path);
     if ((len < 0) || ((size_t)len >= sizeof(path_buf))) {
         return false;
@@ -349,8 +349,7 @@ void test_serialize_simple_struct(void)
 {
     setup_dsdl();
 
-    TEST_ASSERT_TRUE(
-      add_namespace_rel("test_dsdl_root_namespaces/nunavut_test_types/nested_array_types"));
+    TEST_ASSERT_TRUE(add_namespace_rel("test_dsdl_root_namespaces/nunavut_test_types/nested_array_types"));
 
     // Load Simple.1.0: int32 a, float16 b, bool c
     const dsdl_type_composite_t* simple = dsdl_read(&g_dsdl, wkv_key("mymsgs.Simple.1.0"));
@@ -407,8 +406,7 @@ void test_serialize_variable_array_struct(void)
 {
     setup_dsdl();
 
-    TEST_ASSERT_TRUE(
-      add_namespace_rel("test_dsdl_root_namespaces/nunavut_test_types/nested_array_types"));
+    TEST_ASSERT_TRUE(add_namespace_rel("test_dsdl_root_namespaces/nunavut_test_types/nested_array_types"));
 
     // Load Inner.1.0: uint32[<=5] inner_items
     const dsdl_type_composite_t* inner = dsdl_read(&g_dsdl, wkv_key("mymsgs.Inner.1.0"));
@@ -455,8 +453,7 @@ void test_serialize_nested_struct(void)
 {
     setup_dsdl();
 
-    TEST_ASSERT_TRUE(
-      add_namespace_rel("test_dsdl_root_namespaces/nunavut_test_types/nested_array_types"));
+    TEST_ASSERT_TRUE(add_namespace_rel("test_dsdl_root_namespaces/nunavut_test_types/nested_array_types"));
 
     // Load Outer.1.0: float32[<=8] outer_items, Inner.1.0 inner
     const dsdl_type_composite_t* outer = dsdl_read(&g_dsdl, wkv_key("mymsgs.Outer.1.0"));
@@ -496,8 +493,7 @@ void test_roundtrip_simple_struct(void)
 {
     setup_dsdl();
 
-    TEST_ASSERT_TRUE(
-      add_namespace_rel("test_dsdl_root_namespaces/nunavut_test_types/nested_array_types"));
+    TEST_ASSERT_TRUE(add_namespace_rel("test_dsdl_root_namespaces/nunavut_test_types/nested_array_types"));
 
     const dsdl_type_composite_t* simple = dsdl_read(&g_dsdl, wkv_key("mymsgs.Simple.1.0"));
     TEST_ASSERT_NOT_NULL(simple);
@@ -538,8 +534,7 @@ void test_roundtrip_variable_array(void)
 {
     setup_dsdl();
 
-    TEST_ASSERT_TRUE(
-      add_namespace_rel("test_dsdl_root_namespaces/nunavut_test_types/nested_array_types"));
+    TEST_ASSERT_TRUE(add_namespace_rel("test_dsdl_root_namespaces/nunavut_test_types/nested_array_types"));
 
     const dsdl_type_composite_t* inner = dsdl_read(&g_dsdl, wkv_key("mymsgs.Inner.1.0"));
     TEST_ASSERT_NOT_NULL(inner);
@@ -580,8 +575,7 @@ void test_deserialize_array_overflow_fails(void)
 {
     setup_dsdl();
 
-    TEST_ASSERT_TRUE(
-      add_namespace_rel("test_dsdl_root_namespaces/nunavut_test_types/nested_array_types"));
+    TEST_ASSERT_TRUE(add_namespace_rel("test_dsdl_root_namespaces/nunavut_test_types/nested_array_types"));
 
     const dsdl_type_composite_t* inner = dsdl_read(&g_dsdl, wkv_key("mymsgs.Inner.1.0"));
     TEST_ASSERT_NOT_NULL(inner);
@@ -614,14 +608,13 @@ void test_serialize_array_overflow_fails(void)
 {
     setup_dsdl();
 
-    TEST_ASSERT_TRUE(
-      add_namespace_rel("test_dsdl_root_namespaces/nunavut_test_types/nested_array_types"));
+    TEST_ASSERT_TRUE(add_namespace_rel("test_dsdl_root_namespaces/nunavut_test_types/nested_array_types"));
 
     const dsdl_type_composite_t* inner = dsdl_read(&g_dsdl, wkv_key("mymsgs.Inner.1.0"));
     TEST_ASSERT_NOT_NULL(inner);
 
     uint32_t                    elements[6] = { 1, 2, 3, 4, 5, 6 };
-    dsdl_value_array_variable_t array_val    = { .count = 6, .members = elements };
+    dsdl_value_array_variable_t array_val   = { .count = 6, .members = elements };
 
     void*               field_ptrs[] = { &array_val };
     dsdl_value_struct_t sval         = { .values = field_ptrs };
@@ -637,8 +630,7 @@ void test_deserialize_array_prefix_exceeds_capacity_fails(void)
 {
     setup_dsdl();
 
-    TEST_ASSERT_TRUE(
-      add_namespace_rel("test_dsdl_root_namespaces/nunavut_test_types/nested_array_types"));
+    TEST_ASSERT_TRUE(add_namespace_rel("test_dsdl_root_namespaces/nunavut_test_types/nested_array_types"));
 
     const dsdl_type_composite_t* inner = dsdl_read(&g_dsdl, wkv_key("mymsgs.Inner.1.0"));
     TEST_ASSERT_NOT_NULL(inner);
@@ -646,8 +638,8 @@ void test_deserialize_array_prefix_exceeds_capacity_fails(void)
     // Prefix bits for capacity 5: ceil(log2(6)) = 3. Encode count = 6 (0b110).
     uint8_t buffer[1] = { 0x06 };
 
-    uint32_t                    elements[5] = { 0 };
-    dsdl_value_array_variable_t array_val   = { .count = 5, .members = elements };
+    uint32_t                    elements[5]  = { 0 };
+    dsdl_value_array_variable_t array_val    = { .count = 5, .members = elements };
     void*                       field_ptrs[] = { &array_val };
     dsdl_value_struct_t         sval         = { .values = field_ptrs };
 
@@ -725,9 +717,9 @@ void test_deserialize_union_invalid_tag_fails(void)
 
 void test_serialize_unsigned_range_fails(void)
 {
-    static dsdl_type_t field_type = DSDL_UINT(7);
+    static dsdl_type_t  field_type = DSDL_UINT(7);
     static dsdl_type_t* field_types[1];
-    field_types[0] = &field_type;
+    field_types[0]                  = &field_type;
     static wkv_str_t field_names[1] = { { 1, "a" } };
 
     dsdl_type_composite_t struct_type = {
@@ -741,9 +733,9 @@ void test_serialize_unsigned_range_fails(void)
         .field_types = field_types,
     };
 
-    uint_least8_t value = 200; // Exceeds 7-bit range
-    void*         field_ptrs[] = { &value };
-    dsdl_value_struct_t sval   = { .values = field_ptrs };
+    uint_least8_t       value        = 200; // Exceeds 7-bit range
+    void*               field_ptrs[] = { &value };
+    dsdl_value_struct_t sval         = { .values = field_ptrs };
 
     uint8_t buffer[4] = { 0 };
     size_t  size      = dsdl_serialize(&struct_type, &sval, sizeof(buffer), buffer);
@@ -752,9 +744,9 @@ void test_serialize_unsigned_range_fails(void)
 
 void test_serialize_signed_range_fails(void)
 {
-    static dsdl_type_t field_type = DSDL_INT(5);
+    static dsdl_type_t  field_type = DSDL_INT(5);
     static dsdl_type_t* field_types[1];
-    field_types[0] = &field_type;
+    field_types[0]                  = &field_type;
     static wkv_str_t field_names[1] = { { 1, "a" } };
 
     dsdl_type_composite_t struct_type = {
@@ -768,9 +760,9 @@ void test_serialize_signed_range_fails(void)
         .field_types = field_types,
     };
 
-    int_least8_t value = 20; // Exceeds 5-bit signed range [-16, 15]
-    void*        field_ptrs[] = { &value };
-    dsdl_value_struct_t sval  = { .values = field_ptrs };
+    int_least8_t        value        = 20; // Exceeds 5-bit signed range [-16, 15]
+    void*               field_ptrs[] = { &value };
+    dsdl_value_struct_t sval         = { .values = field_ptrs };
 
     uint8_t buffer[4] = { 0 };
     size_t  size      = dsdl_serialize(&struct_type, &sval, sizeof(buffer), buffer);
@@ -781,8 +773,7 @@ void test_roundtrip_nested_struct(void)
 {
     setup_dsdl();
 
-    TEST_ASSERT_TRUE(
-      add_namespace_rel("test_dsdl_root_namespaces/nunavut_test_types/nested_array_types"));
+    TEST_ASSERT_TRUE(add_namespace_rel("test_dsdl_root_namespaces/nunavut_test_types/nested_array_types"));
 
     const dsdl_type_composite_t* outer = dsdl_read(&g_dsdl, wkv_key("mymsgs.Outer.1.0"));
     TEST_ASSERT_NOT_NULL(outer);

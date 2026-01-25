@@ -544,9 +544,9 @@ static void test_parse_expr_offset_attribute_min(void)
 
 static void test_parse_expr_offset_set_addition(void)
 {
-    g_dsdl.realloc = test_realloc;
+    g_dsdl.realloc          = test_realloc;
     const uint64_t values[] = { 8U, 16U };
-    dsdl_bls_t* offset = dsdl_bls_new_set(&g_dsdl, 2, values);
+    dsdl_bls_t*    offset   = dsdl_bls_new_set(&g_dsdl, 2, values);
     TEST_ASSERT_NOT_NULL(offset);
     dsdl_eval_context_t eval_ctx = { .dsdl = &g_dsdl, .offset = offset };
 
@@ -577,9 +577,9 @@ static void test_parse_expr_offset_set_addition(void)
 
 static void test_parse_expr_offset_set_modulo(void)
 {
-    g_dsdl.realloc = test_realloc;
+    g_dsdl.realloc          = test_realloc;
     const uint64_t values[] = { 8U, 16U, 20U };
-    dsdl_bls_t* offset = dsdl_bls_new_set(&g_dsdl, 3, values);
+    dsdl_bls_t*    offset   = dsdl_bls_new_set(&g_dsdl, 3, values);
     TEST_ASSERT_NOT_NULL(offset);
     dsdl_eval_context_t eval_ctx = { .dsdl = &g_dsdl, .offset = offset };
 
@@ -610,9 +610,9 @@ static void test_parse_expr_offset_set_modulo(void)
 
 static void test_parse_expr_offset_set_equality(void)
 {
-    g_dsdl.realloc = test_realloc;
+    g_dsdl.realloc          = test_realloc;
     const uint64_t values[] = { 16U, 8U };
-    dsdl_bls_t* offset = dsdl_bls_new_set(&g_dsdl, 2, values);
+    dsdl_bls_t*    offset   = dsdl_bls_new_set(&g_dsdl, 2, values);
     TEST_ASSERT_NOT_NULL(offset);
     dsdl_eval_context_t eval_ctx = { .dsdl = &g_dsdl, .offset = offset };
 

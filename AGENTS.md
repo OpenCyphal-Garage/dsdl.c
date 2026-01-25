@@ -45,10 +45,4 @@ The code must not make assumptions about the execution platform (pointer width, 
 
 ## Known issues (incomplete list)
 
-- Fallible API functions, such as deserialize, return zero size to indicate failure, which is nonsense because zero size is a valid size. Unambiguous error reporting is necessary. For example, the serialization function could return `SIZE_MAX`; better ideas welcome.
-
-- The serialization and deserialization functions shall validate values and fail on error. For example, an array prefix field cannot contain value exceeding the array capacity, otherwise the serialization/deserialization is not possible (NB! both must check the value, whether it comes from the application or from the serialized representation). Union tag must be less than the number of union fields (again, applies to both serialization and deserialization), etc. Check the full list of checks against Nunavut (Python or C implementation).
-
-- IMPORTANT: Adjust the test suite such that it builds & runs both in x86 (`-m32`) and AMD64 (`-m64`) mode!
-
-- Finish the semantic analysis phase as described in `semantic_analysis_plan.md`.
+Currently nothing.
