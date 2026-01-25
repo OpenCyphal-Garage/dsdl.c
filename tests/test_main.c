@@ -9,6 +9,7 @@
 #include "unity.h"
 
 #include <stdlib.h>
+#include <stdio.h>
 
 // ============================================================================
 // Test helpers
@@ -22,6 +23,23 @@ static void* test_realloc(dsdl_t* self, void* ptr, size_t new_size)
         return NULL;
     }
     return realloc(ptr, new_size);
+}
+
+#ifndef DSDL_TEST_ROOT
+#define DSDL_TEST_ROOT "."
+#endif
+
+static bool add_namespace_rel(dsdl_t* const dsdl, const char* const rel_path)
+{
+    if ((dsdl == NULL) || (rel_path == NULL)) {
+        return false;
+    }
+    char path_buf[512];
+    const int len = snprintf(path_buf, sizeof(path_buf), "%s/%s", DSDL_TEST_ROOT, rel_path);
+    if ((len < 0) || ((size_t)len >= sizeof(path_buf))) {
+        return false;
+    }
+    return dsdl_add_namespace(dsdl, wkv_key(path_buf));
 }
 
 // ============================================================================
@@ -44,7 +62,7 @@ void test_dsdl_add_namespace(void)
     dsdl_new(&dsdl, test_realloc);
 
     // Add a namespace
-    bool result = dsdl_add_namespace(&dsdl, wkv_key("test_dsdl_root_namespaces"));
+    bool result = add_namespace_rel(&dsdl, "test_dsdl_root_namespaces");
     TEST_ASSERT_TRUE(result);
 
     dsdl_destroy(&dsdl);

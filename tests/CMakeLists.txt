@@ -23,7 +23,7 @@ function(gen_test name files compile_flags link_flags c_standard is_cpp)
         ${CMAKE_SOURCE_DIR}/lib
         ${unity_root}/src
     )
-    target_compile_definitions(${name} PUBLIC DSDL_CONFIG_TRACE=1)
+    target_compile_definitions(${name} PUBLIC DSDL_CONFIG_TRACE=1 DSDL_TEST_ROOT=\"${CMAKE_SOURCE_DIR}\")
     target_link_libraries(${name} "${name}_unity" m)
     set_target_properties(
         ${name}

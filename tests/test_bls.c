@@ -47,7 +47,7 @@ static void test_bls_single(void)
 
 static void test_bls_set(void)
 {
-    const size_t      values[] = { 16, 8, 32, 8, 24 }; // Unsorted with duplicate
+    const uint64_t values[] = { 16, 8, 32, 8, 24 }; // Unsorted with duplicate
     dsdl_bls_t* const bls      = dsdl_bls_new_set(&test_dsdl, 5, values);
     TEST_ASSERT_NOT_NULL(bls);
     TEST_ASSERT_EQUAL(dsdl_bls_nullary, bls->kind);
@@ -137,8 +137,8 @@ static void test_bls_variable_array_uint8_3(void)
     TEST_ASSERT_FALSE(dsdl_bls_is_fixed(bls));
 
     // Check modulo 8 alignment
-    size_t       mods[64];
-    const size_t count = dsdl_bls_modulo(&test_dsdl, bls, 8, mods);
+    uint64_t mods[64];
+    const uint64_t count = dsdl_bls_modulo(&test_dsdl, bls, 8, mods);
     TEST_ASSERT_EQUAL_size_t(1, count);
     TEST_ASSERT_EQUAL_size_t(0, mods[0]); // All values are multiples of 8
 }
@@ -249,7 +249,7 @@ static void test_bls_padding_already_aligned(void)
 static void test_bls_padding_variable_set(void)
 {
     // Padding {10, 15, 17} to byte alignment: {16, 16, 24} = {16, 24}
-    const size_t      values[] = { 10, 15, 17 };
+    const uint64_t values[] = { 10, 15, 17 };
     dsdl_bls_t* const inner    = dsdl_bls_new_set(&test_dsdl, 3, values);
     dsdl_bls_t* const bls      = dsdl_bls_new_pad(&test_dsdl, inner, 8);
 
@@ -266,8 +266,8 @@ static void test_bls_modulo_fixed(void)
 {
     // {32} % 8 = {0}
     dsdl_bls_t* const bls = dsdl_bls_new_single(&test_dsdl, 32);
-    size_t            mods[64];
-    const size_t      count = dsdl_bls_modulo(&test_dsdl, bls, 8, mods);
+    uint64_t mods[64];
+    const uint64_t count = dsdl_bls_modulo(&test_dsdl, bls, 8, mods);
     TEST_ASSERT_EQUAL_size_t(1, count);
     TEST_ASSERT_EQUAL_size_t(0, mods[0]);
 }
@@ -275,14 +275,14 @@ static void test_bls_modulo_fixed(void)
 static void test_bls_modulo_variable_set(void)
 {
     // {8, 12, 16} % 8 = {0, 4}
-    const size_t      values[] = { 8, 12, 16 };
+    const uint64_t values[] = { 8, 12, 16 };
     dsdl_bls_t* const bls      = dsdl_bls_new_set(&test_dsdl, 3, values);
-    size_t            mods[64];
-    const size_t      count = dsdl_bls_modulo(&test_dsdl, bls, 8, mods);
+    uint64_t mods[64];
+    const uint64_t count = dsdl_bls_modulo(&test_dsdl, bls, 8, mods);
     TEST_ASSERT_EQUAL_size_t(2, count);
     // Check both 0 and 4 are present (order may vary)
     bool has_0 = false, has_4 = false;
-    for (size_t i = 0; i < count; i++) {
+    for (uint64_t i = 0; i < count; i++) {
         if (mods[i] == 0)
             has_0 = true;
         if (mods[i] == 4)
@@ -297,8 +297,8 @@ static void test_bls_modulo_repeat(void)
     // repeat({8}, 3) = {24}, {24} % 8 = {0}
     dsdl_bls_t* const elem = dsdl_bls_new_single(&test_dsdl, 8);
     dsdl_bls_t* const bls  = dsdl_bls_new_repeat(&test_dsdl, elem, 3);
-    size_t            mods[64];
-    const size_t      count = dsdl_bls_modulo(&test_dsdl, bls, 8, mods);
+    uint64_t mods[64];
+    const uint64_t count = dsdl_bls_modulo(&test_dsdl, bls, 8, mods);
     TEST_ASSERT_EQUAL_size_t(1, count);
     TEST_ASSERT_EQUAL_size_t(0, mods[0]);
 }
@@ -308,8 +308,8 @@ static void test_bls_modulo_repeat_range(void)
     // repeat_range({8}, 3) = {0, 8, 16, 24}, all % 8 = {0}
     dsdl_bls_t* const elem = dsdl_bls_new_single(&test_dsdl, 8);
     dsdl_bls_t* const bls  = dsdl_bls_new_repeat_range(&test_dsdl, elem, 3);
-    size_t            mods[64];
-    const size_t      count = dsdl_bls_modulo(&test_dsdl, bls, 8, mods);
+    uint64_t mods[64];
+    const uint64_t count = dsdl_bls_modulo(&test_dsdl, bls, 8, mods);
     TEST_ASSERT_EQUAL_size_t(1, count);
     TEST_ASSERT_EQUAL_size_t(0, mods[0]);
 }
@@ -386,11 +386,11 @@ static void test_bls_pydsdl_example(void)
     TEST_ASSERT_EQUAL_size_t(16 + 8 * 256, dsdl_bls_max(bls));
 
     // b % 16 = {0, 8}
-    size_t       mods[64];
-    const size_t count = dsdl_bls_modulo(&test_dsdl, bls, 16, mods);
+    uint64_t mods[64];
+    const uint64_t count = dsdl_bls_modulo(&test_dsdl, bls, 16, mods);
     TEST_ASSERT_EQUAL_size_t(2, count);
     bool has_0 = false, has_8 = false;
-    for (size_t i = 0; i < count; i++) {
+    for (uint64_t i = 0; i < count; i++) {
         if (mods[i] == 0)
             has_0 = true;
         if (mods[i] == 8)

@@ -24,25 +24,43 @@ void tearDown(void)
     // Called after each test
 }
 
+static void assert_intmax_eq(const intmax_t expected, const intmax_t actual)
+{
+#ifdef UNITY_SUPPORT_64
+    TEST_ASSERT_EQUAL_INT64(expected, actual);
+#else
+    TEST_ASSERT_EQUAL_INT32((int32_t)expected, (int32_t)actual);
+#endif
+}
+
+static void assert_uintmax_eq(const uintmax_t expected, const uintmax_t actual)
+{
+#ifdef UNITY_SUPPORT_64
+    TEST_ASSERT_EQUAL_UINT64(expected, actual);
+#else
+    TEST_ASSERT_EQUAL_UINT32((uint32_t)expected, (uint32_t)actual);
+#endif
+}
+
 // ============================================================================
 // GCD tests
 // ============================================================================
 
 static void test_gcd_basic(void)
 {
-    TEST_ASSERT_EQUAL_UINT64(1, dsdl_gcd(1, 1));
-    TEST_ASSERT_EQUAL_UINT64(1, dsdl_gcd(3, 5));
-    TEST_ASSERT_EQUAL_UINT64(6, dsdl_gcd(12, 18));
-    TEST_ASSERT_EQUAL_UINT64(4, dsdl_gcd(12, 8));
-    TEST_ASSERT_EQUAL_UINT64(5, dsdl_gcd(0, 5));
-    TEST_ASSERT_EQUAL_UINT64(7, dsdl_gcd(7, 0));
+    assert_uintmax_eq(1, dsdl_gcd(1, 1));
+    assert_uintmax_eq(1, dsdl_gcd(3, 5));
+    assert_uintmax_eq(6, dsdl_gcd(12, 18));
+    assert_uintmax_eq(4, dsdl_gcd(12, 8));
+    assert_uintmax_eq(5, dsdl_gcd(0, 5));
+    assert_uintmax_eq(7, dsdl_gcd(7, 0));
 }
 
 static void test_gcd_large(void)
 {
     // Test with larger numbers
-    TEST_ASSERT_EQUAL_UINT64(1, dsdl_gcd(1000000007ULL, 1000000009ULL)); // Two primes
-    TEST_ASSERT_EQUAL_UINT64(1000000000ULL, dsdl_gcd(1000000000ULL, 2000000000ULL));
+    assert_uintmax_eq(1, dsdl_gcd(1000000007ULL, 1000000009ULL)); // Two primes
+    assert_uintmax_eq(1000000000ULL, dsdl_gcd(1000000000ULL, 2000000000ULL));
 }
 
 // ============================================================================
@@ -51,17 +69,17 @@ static void test_gcd_large(void)
 
 static void test_abs_basic(void)
 {
-    TEST_ASSERT_EQUAL_UINT64(0, dsdl_abs(0));
-    TEST_ASSERT_EQUAL_UINT64(42, dsdl_abs(42));
-    TEST_ASSERT_EQUAL_UINT64(42, dsdl_abs(-42));
-    TEST_ASSERT_EQUAL_UINT64(1, dsdl_abs(-1));
+    assert_uintmax_eq(0, dsdl_abs(0));
+    assert_uintmax_eq(42, dsdl_abs(42));
+    assert_uintmax_eq(42, dsdl_abs(-42));
+    assert_uintmax_eq(1, dsdl_abs(-1));
 }
 
 static void test_abs_intmax_min(void)
 {
     // Special case: INTMAX_MIN
     const uintmax_t expected = (uintmax_t)INTMAX_MAX + 1U;
-    TEST_ASSERT_EQUAL_UINT64(expected, dsdl_abs(INTMAX_MIN));
+    assert_uintmax_eq(expected, dsdl_abs(INTMAX_MIN));
 }
 
 // ============================================================================
@@ -93,12 +111,12 @@ static void test_rational_neg(void)
 
     r = dsdl_rational_from_int(5);
     r = dsdl_rational_neg(r);
-    TEST_ASSERT_EQUAL_INT64(-5, r.num);
+    assert_intmax_eq(-5, r.num);
 
     r = (dsdl_rational_t){ 3, 7 };
     r = dsdl_rational_neg(r);
-    TEST_ASSERT_EQUAL_INT64(-3, r.num);
-    TEST_ASSERT_EQUAL_UINT64(7, r.den);
+    assert_intmax_eq(-3, r.num);
+    assert_uintmax_eq(7, r.den);
 }
 
 // ============================================================================

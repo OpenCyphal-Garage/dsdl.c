@@ -8,6 +8,7 @@
 #include "unity.h"
 
 #include <dirent.h>
+#include <stdio.h>
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
@@ -17,6 +18,10 @@
 // ============================================================================
 
 static dsdl_t g_dsdl;
+
+#ifndef DSDL_TEST_ROOT
+#define DSDL_TEST_ROOT "."
+#endif
 
 static void* test_realloc(dsdl_t* self, void* ptr, size_t new_size)
 {
@@ -139,6 +144,19 @@ static void setup_dsdl(void)
 
 static void teardown_dsdl(void) { dsdl_destroy(&g_dsdl); }
 
+static bool add_namespace_rel(const char* const rel_path)
+{
+    if (rel_path == NULL) {
+        return false;
+    }
+    char path_buf[512];
+    const int len = snprintf(path_buf, sizeof(path_buf), "%s/%s", DSDL_TEST_ROOT, rel_path);
+    if ((len < 0) || ((size_t)len >= sizeof(path_buf))) {
+        return false;
+    }
+    return dsdl_add_namespace(&g_dsdl, wkv_key(path_buf));
+}
+
 // ============================================================================
 // Bit buffer unit tests
 // ============================================================================
@@ -160,8 +178,8 @@ void test_bitbuf_write_read_byte_aligned(void)
 
     // Read back
     buf.offset_bits = 0;
-    TEST_ASSERT_EQUAL_UINT64(0xAB, dsdl_bitbuf_read(&buf, 8));
-    TEST_ASSERT_EQUAL_UINT64(0xCD, dsdl_bitbuf_read(&buf, 8));
+    TEST_ASSERT_EQUAL_UINT32(0xAB, (uint32_t)dsdl_bitbuf_read(&buf, 8));
+    TEST_ASSERT_EQUAL_UINT32(0xCD, (uint32_t)dsdl_bitbuf_read(&buf, 8));
 }
 
 void test_bitbuf_write_read_non_aligned(void)
@@ -184,8 +202,8 @@ void test_bitbuf_write_read_non_aligned(void)
 
     // Read back
     buf.offset_bits = 0;
-    TEST_ASSERT_EQUAL_UINT64(5, dsdl_bitbuf_read(&buf, 3));
-    TEST_ASSERT_EQUAL_UINT64(26, dsdl_bitbuf_read(&buf, 5));
+    TEST_ASSERT_EQUAL_UINT32(5, (uint32_t)dsdl_bitbuf_read(&buf, 3));
+    TEST_ASSERT_EQUAL_UINT32(26, (uint32_t)dsdl_bitbuf_read(&buf, 5));
 }
 
 void test_bitbuf_write_cross_byte(void)
@@ -203,8 +221,8 @@ void test_bitbuf_write_cross_byte(void)
 
     // Read back
     buf.offset_bits = 0;
-    TEST_ASSERT_EQUAL_UINT64(0xF, dsdl_bitbuf_read(&buf, 4));
-    TEST_ASSERT_EQUAL_UINT64(0x1234, dsdl_bitbuf_read(&buf, 16));
+    TEST_ASSERT_EQUAL_UINT32(0xF, (uint32_t)dsdl_bitbuf_read(&buf, 4));
+    TEST_ASSERT_EQUAL_UINT32(0x1234, (uint32_t)dsdl_bitbuf_read(&buf, 16));
 }
 
 void test_bitbuf_read_overflow_fails(void)
@@ -214,8 +232,7 @@ void test_bitbuf_read_overflow_fails(void)
 
     // Read more bits than available - should fail
     buf.offset_bits = 8;
-    uint64_t value  = dsdl_bitbuf_read(&buf, 16);
-    TEST_ASSERT_EQUAL_UINT64(0, value);
+    TEST_ASSERT_EQUAL_UINT32(0, (uint32_t)dsdl_bitbuf_read(&buf, 16));
     TEST_ASSERT_TRUE(buf.error);
 }
 
@@ -333,7 +350,7 @@ void test_serialize_simple_struct(void)
     setup_dsdl();
 
     TEST_ASSERT_TRUE(
-      dsdl_add_namespace(&g_dsdl, wkv_key("test_dsdl_root_namespaces/nunavut_test_types/nested_array_types")));
+      add_namespace_rel("test_dsdl_root_namespaces/nunavut_test_types/nested_array_types"));
 
     // Load Simple.1.0: int32 a, float16 b, bool c
     const dsdl_type_composite_t* simple = dsdl_read(&g_dsdl, wkv_key("mymsgs.Simple.1.0"));
@@ -391,7 +408,7 @@ void test_serialize_variable_array_struct(void)
     setup_dsdl();
 
     TEST_ASSERT_TRUE(
-      dsdl_add_namespace(&g_dsdl, wkv_key("test_dsdl_root_namespaces/nunavut_test_types/nested_array_types")));
+      add_namespace_rel("test_dsdl_root_namespaces/nunavut_test_types/nested_array_types"));
 
     // Load Inner.1.0: uint32[<=5] inner_items
     const dsdl_type_composite_t* inner = dsdl_read(&g_dsdl, wkv_key("mymsgs.Inner.1.0"));
@@ -439,7 +456,7 @@ void test_serialize_nested_struct(void)
     setup_dsdl();
 
     TEST_ASSERT_TRUE(
-      dsdl_add_namespace(&g_dsdl, wkv_key("test_dsdl_root_namespaces/nunavut_test_types/nested_array_types")));
+      add_namespace_rel("test_dsdl_root_namespaces/nunavut_test_types/nested_array_types"));
 
     // Load Outer.1.0: float32[<=8] outer_items, Inner.1.0 inner
     const dsdl_type_composite_t* outer = dsdl_read(&g_dsdl, wkv_key("mymsgs.Outer.1.0"));
@@ -480,7 +497,7 @@ void test_roundtrip_simple_struct(void)
     setup_dsdl();
 
     TEST_ASSERT_TRUE(
-      dsdl_add_namespace(&g_dsdl, wkv_key("test_dsdl_root_namespaces/nunavut_test_types/nested_array_types")));
+      add_namespace_rel("test_dsdl_root_namespaces/nunavut_test_types/nested_array_types"));
 
     const dsdl_type_composite_t* simple = dsdl_read(&g_dsdl, wkv_key("mymsgs.Simple.1.0"));
     TEST_ASSERT_NOT_NULL(simple);
@@ -522,7 +539,7 @@ void test_roundtrip_variable_array(void)
     setup_dsdl();
 
     TEST_ASSERT_TRUE(
-      dsdl_add_namespace(&g_dsdl, wkv_key("test_dsdl_root_namespaces/nunavut_test_types/nested_array_types")));
+      add_namespace_rel("test_dsdl_root_namespaces/nunavut_test_types/nested_array_types"));
 
     const dsdl_type_composite_t* inner = dsdl_read(&g_dsdl, wkv_key("mymsgs.Inner.1.0"));
     TEST_ASSERT_NOT_NULL(inner);
@@ -564,7 +581,7 @@ void test_deserialize_array_overflow_fails(void)
     setup_dsdl();
 
     TEST_ASSERT_TRUE(
-      dsdl_add_namespace(&g_dsdl, wkv_key("test_dsdl_root_namespaces/nunavut_test_types/nested_array_types")));
+      add_namespace_rel("test_dsdl_root_namespaces/nunavut_test_types/nested_array_types"));
 
     const dsdl_type_composite_t* inner = dsdl_read(&g_dsdl, wkv_key("mymsgs.Inner.1.0"));
     TEST_ASSERT_NOT_NULL(inner);
@@ -598,7 +615,7 @@ void test_serialize_array_overflow_fails(void)
     setup_dsdl();
 
     TEST_ASSERT_TRUE(
-      dsdl_add_namespace(&g_dsdl, wkv_key("test_dsdl_root_namespaces/nunavut_test_types/nested_array_types")));
+      add_namespace_rel("test_dsdl_root_namespaces/nunavut_test_types/nested_array_types"));
 
     const dsdl_type_composite_t* inner = dsdl_read(&g_dsdl, wkv_key("mymsgs.Inner.1.0"));
     TEST_ASSERT_NOT_NULL(inner);
@@ -621,7 +638,7 @@ void test_deserialize_array_prefix_exceeds_capacity_fails(void)
     setup_dsdl();
 
     TEST_ASSERT_TRUE(
-      dsdl_add_namespace(&g_dsdl, wkv_key("test_dsdl_root_namespaces/nunavut_test_types/nested_array_types")));
+      add_namespace_rel("test_dsdl_root_namespaces/nunavut_test_types/nested_array_types"));
 
     const dsdl_type_composite_t* inner = dsdl_read(&g_dsdl, wkv_key("mymsgs.Inner.1.0"));
     TEST_ASSERT_NOT_NULL(inner);
@@ -765,7 +782,7 @@ void test_roundtrip_nested_struct(void)
     setup_dsdl();
 
     TEST_ASSERT_TRUE(
-      dsdl_add_namespace(&g_dsdl, wkv_key("test_dsdl_root_namespaces/nunavut_test_types/nested_array_types")));
+      add_namespace_rel("test_dsdl_root_namespaces/nunavut_test_types/nested_array_types"));
 
     const dsdl_type_composite_t* outer = dsdl_read(&g_dsdl, wkv_key("mymsgs.Outer.1.0"));
     TEST_ASSERT_NOT_NULL(outer);

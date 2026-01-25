@@ -119,12 +119,17 @@ typedef struct dsdl_type_composite_t
     wkv_str_t     name;       ///< Fully qualified type name
     uint_least8_t version[2]; ///< [major, minor]
 
-    uint64_t extent; ///< Maximum serialized size in bytes.
-    bool     sealed; ///< True if @sealed directive present
+    uint64_t extent;     ///< Maximum serialized size in bytes.
+    bool     sealed;     ///< True if @sealed directive present
+    bool     deprecated; ///< True if @deprecated directive present
 
     size_t        field_count; ///< Number of fields
     wkv_str_t*    field_names; ///< Array of field names
     dsdl_type_t** field_types; ///< Array of pointers to dsdl_type_t*, dsdl_type_array_t*, dsdl_type_composite_t*, ...
+
+    size_t              constant_count;  ///< Number of constants
+    wkv_str_t*          constant_names;  ///< Array of constant names
+    struct dsdl_value_t* constant_values; ///< Array of evaluated constant values
 
     struct dsdl_type_composite_t* response; ///< In RPC-service types contains the response type. NULL otherwise.
 
@@ -136,6 +141,62 @@ typedef struct dsdl_type_composite_t
 // ============================================================================
 // Values
 // ============================================================================
+
+/// Rational number for exact arithmetic during expression evaluation.
+/// Per DSDL spec section 3.1: rationals must be stored normalized with
+/// positive denominator and GCD(num, den) == 1.
+typedef struct
+{
+    intmax_t  num; ///< Numerator (signed)
+    uintmax_t den; ///< Denominator (always positive, 0 means NaN, 1 for integers)
+} dsdl_rational_t;
+
+/// Forward declaration for recursive type.
+typedef struct dsdl_value_t dsdl_value_t;
+
+/// The context needs to be freed afterward.
+/// The result is true on success, false on error.
+typedef struct dsdl_closure_t
+{
+    void* context;
+    bool (*fun)(struct dsdl_closure_t* self, dsdl_value_t* out);
+    void (*cleanup)(struct dsdl_closure_t* self);
+    bool (*clone)(const struct dsdl_closure_t* self, struct dsdl_closure_t* out);
+} dsdl_closure_t;
+
+/// Expression value types for compile-time evaluation.
+/// A closure may return another closure, which needs to be evaluated in turn; repeat the loop until you get a concrete
+/// value.
+typedef enum
+{
+    dsdl_value_rational, ///< Numeric value (integer or rational)
+    dsdl_value_string,   ///< Unicode string
+    dsdl_value_bool,     ///< Boolean
+    dsdl_value_set,      ///< Set of values
+    dsdl_value_type,     ///< Serializable metatype reference
+    dsdl_value_deferred, ///< A closure that needs to be evaluated, that returns a value.
+} dsdl_value_kind_t;
+
+/// Runtime value during expression evaluation.
+/// Constant values stored in composite descriptors are expected to be fully resolved (not deferred).
+struct dsdl_value_t
+{
+    dsdl_value_kind_t kind;
+    uint8_t           flags; ///< Internal ownership flags.
+    union dsdl_value_data_t
+    {
+        dsdl_rational_t rational; ///< dsdl_value_rational
+        wkv_str_t       string;   ///< dsdl_value_string (borrowed pointer)
+        bool            boolean;  ///< dsdl_value_bool
+        struct                    ///< dsdl_value_set
+        {
+            size_t        count;
+            dsdl_value_t* elements;
+        } set;
+        void*          type_ref; ///< dsdl_value_type (pointer to dsdl_type_composite_t)
+        dsdl_closure_t deferred; ///< dsdl_value_deferred
+    } as;
+};
 
 // DSDL values are represented natively as follows:
 //

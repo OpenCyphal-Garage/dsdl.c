@@ -8,6 +8,7 @@
 #include "unity.h"
 
 #include <dirent.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -16,6 +17,10 @@
 // ============================================================================
 
 static dsdl_t g_dsdl;
+
+#ifndef DSDL_TEST_ROOT
+#define DSDL_TEST_ROOT "."
+#endif
 
 /// Standard realloc wrapper for tests
 static void* test_realloc(dsdl_t* self, void* ptr, size_t new_size)
@@ -152,6 +157,67 @@ static void setup_dsdl(void)
 
 static void teardown_dsdl(void) { dsdl_destroy(&g_dsdl); }
 
+static bool add_namespace_rel(const char* const rel_path)
+{
+    if (rel_path == NULL) {
+        return false;
+    }
+    char path_buf[512];
+    const int len = snprintf(path_buf, sizeof(path_buf), "%s/%s", DSDL_TEST_ROOT, rel_path);
+    if ((len < 0) || ((size_t)len >= sizeof(path_buf))) {
+        return false;
+    }
+    return dsdl_add_namespace(&g_dsdl, wkv_key(path_buf));
+}
+
+static void assert_intmax_eq(const intmax_t expected, const intmax_t actual)
+{
+#ifdef UNITY_SUPPORT_64
+    TEST_ASSERT_EQUAL_INT64(expected, actual);
+#else
+    TEST_ASSERT_EQUAL_INT32((int32_t)expected, (int32_t)actual);
+#endif
+}
+
+static void assert_uintmax_eq(const uintmax_t expected, const uintmax_t actual)
+{
+#ifdef UNITY_SUPPORT_64
+    TEST_ASSERT_EQUAL_UINT64(expected, actual);
+#else
+    TEST_ASSERT_EQUAL_UINT32((uint32_t)expected, (uint32_t)actual);
+#endif
+}
+
+static const dsdl_value_t* find_constant(const dsdl_type_composite_t* const type, const char* const name)
+{
+    if ((type == NULL) || (name == NULL)) {
+        return NULL;
+    }
+    const size_t name_len = strlen(name);
+    for (size_t i = 0; i < type->constant_count; i++) {
+        if ((type->constant_names[i].len == name_len) &&
+            (memcmp(type->constant_names[i].str, name, name_len) == 0)) {
+            return &type->constant_values[i];
+        }
+    }
+    return NULL;
+}
+
+static const dsdl_type_t* find_field_type(const dsdl_type_composite_t* const type, const char* const name)
+{
+    if ((type == NULL) || (name == NULL)) {
+        return NULL;
+    }
+    const size_t name_len = strlen(name);
+    for (size_t i = 0; i < type->field_count; i++) {
+        if ((type->field_names[i].len == name_len) &&
+            (memcmp(type->field_names[i].str, name, name_len) == 0)) {
+            return type->field_types[i];
+        }
+    }
+    return NULL;
+}
+
 // ============================================================================
 // Type resolution tests
 // ============================================================================
@@ -162,7 +228,7 @@ static void test_load_simple_type(void)
 
     // Add namespace root
     TEST_ASSERT_TRUE(
-      dsdl_add_namespace(&g_dsdl, wkv_key("test_dsdl_root_namespaces/nunavut_test_types/nested_array_types")));
+      add_namespace_rel("test_dsdl_root_namespaces/nunavut_test_types/nested_array_types"));
 
     // Load Simple.1.0 (no dependencies)
     const dsdl_type_composite_t* simple = dsdl_read(&g_dsdl, wkv_key("mymsgs.Simple.1.0"));
@@ -186,7 +252,7 @@ static void test_load_type_with_dependency(void)
 
     // Add namespace root
     TEST_ASSERT_TRUE(
-      dsdl_add_namespace(&g_dsdl, wkv_key("test_dsdl_root_namespaces/nunavut_test_types/nested_array_types")));
+      add_namespace_rel("test_dsdl_root_namespaces/nunavut_test_types/nested_array_types"));
 
     // Load Outer.1.0 which references Inner.1.0
     const dsdl_type_composite_t* outer = dsdl_read(&g_dsdl, wkv_key("mymsgs.Outer.1.0"));
@@ -209,7 +275,7 @@ static void test_cache_hit(void)
 
     // Add namespace root
     TEST_ASSERT_TRUE(
-      dsdl_add_namespace(&g_dsdl, wkv_key("test_dsdl_root_namespaces/nunavut_test_types/nested_array_types")));
+      add_namespace_rel("test_dsdl_root_namespaces/nunavut_test_types/nested_array_types"));
 
     // Load same type twice
     const dsdl_type_composite_t* type1 = dsdl_read(&g_dsdl, wkv_key("mymsgs.Inner.1.0"));
@@ -230,7 +296,7 @@ static void test_type_not_found(void)
 
     // Add namespace root
     TEST_ASSERT_TRUE(
-      dsdl_add_namespace(&g_dsdl, wkv_key("test_dsdl_root_namespaces/nunavut_test_types/nested_array_types")));
+      add_namespace_rel("test_dsdl_root_namespaces/nunavut_test_types/nested_array_types"));
 
     // Try to load non-existent type
     const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("mymsgs.DoesNotExist.1.0"));
@@ -244,7 +310,7 @@ static void test_serialized_footprint_simple(void)
     setup_dsdl();
 
     TEST_ASSERT_TRUE(
-      dsdl_add_namespace(&g_dsdl, wkv_key("test_dsdl_root_namespaces/nunavut_test_types/nested_array_types")));
+      add_namespace_rel("test_dsdl_root_namespaces/nunavut_test_types/nested_array_types"));
 
     // Simple.1.0: int32 a, float16 b, bool c
     // = 32 + 16 + 1 = 49 bits = 7 bytes (byte-aligned)
@@ -260,7 +326,7 @@ static void test_serialized_footprint_array(void)
     setup_dsdl();
 
     TEST_ASSERT_TRUE(
-      dsdl_add_namespace(&g_dsdl, wkv_key("test_dsdl_root_namespaces/nunavut_test_types/nested_array_types")));
+      add_namespace_rel("test_dsdl_root_namespaces/nunavut_test_types/nested_array_types"));
 
     // Inner.1.0: uint32[<=5] inner_items
     // Length prefix: ceil(log2(5+1)) = ceil(log2(6)) = 3 bits
@@ -278,7 +344,7 @@ static void test_serialized_footprint_nested(void)
     setup_dsdl();
 
     TEST_ASSERT_TRUE(
-      dsdl_add_namespace(&g_dsdl, wkv_key("test_dsdl_root_namespaces/nunavut_test_types/nested_array_types")));
+      add_namespace_rel("test_dsdl_root_namespaces/nunavut_test_types/nested_array_types"));
 
     // Outer.1.0: float32[<=8] outer_items, Inner.1.0 inner
     // float32[<=8]: ceil(log2(9))=4 prefix bits + 8*32=256 element bits = 260 bits
@@ -296,7 +362,7 @@ static void test_bit_length_set_simple(void)
     setup_dsdl();
 
     TEST_ASSERT_TRUE(
-      dsdl_add_namespace(&g_dsdl, wkv_key("test_dsdl_root_namespaces/nunavut_test_types/nested_array_types")));
+      add_namespace_rel("test_dsdl_root_namespaces/nunavut_test_types/nested_array_types"));
 
     // Simple.1.0: int32 a, float16 b, bool c
     // = 32 + 16 + 1 = 49 bits (fixed)
@@ -323,7 +389,7 @@ static void test_bit_length_set_variable_array(void)
     setup_dsdl();
 
     TEST_ASSERT_TRUE(
-      dsdl_add_namespace(&g_dsdl, wkv_key("test_dsdl_root_namespaces/nunavut_test_types/nested_array_types")));
+      add_namespace_rel("test_dsdl_root_namespaces/nunavut_test_types/nested_array_types"));
 
     // Inner.1.0: uint32[<=5] inner_items
     // Length prefix: ceil(log2(5+1)) = ceil(log2(6)) = 3 bits
@@ -352,7 +418,7 @@ static void test_load_message_with_fixed_port_id(void)
 {
     setup_dsdl();
 
-    TEST_ASSERT_TRUE(dsdl_add_namespace(&g_dsdl, wkv_key("test_dsdl_root_namespaces")));
+    TEST_ASSERT_TRUE(add_namespace_rel("test_dsdl_root_namespaces"));
 
     // Load message type with fixed port-ID in filename: 7000.FixedPortMessage.1.0.dsdl
     const dsdl_type_composite_t* msg = dsdl_read(&g_dsdl, wkv_key("validation.FixedPortMessage.1.0"));
@@ -372,7 +438,7 @@ static void test_load_service_with_fixed_port_id(void)
 {
     setup_dsdl();
 
-    TEST_ASSERT_TRUE(dsdl_add_namespace(&g_dsdl, wkv_key("test_dsdl_root_namespaces")));
+    TEST_ASSERT_TRUE(add_namespace_rel("test_dsdl_root_namespaces"));
 
     // Load service type with fixed port-ID in filename: 300.FixedPortService.0.1.dsdl
     const dsdl_type_composite_t* svc = dsdl_read(&g_dsdl, wkv_key("validation.FixedPortService.0.1"));
@@ -395,7 +461,7 @@ static void test_load_type_without_fixed_port_id(void)
 {
     setup_dsdl();
 
-    TEST_ASSERT_TRUE(dsdl_add_namespace(&g_dsdl, wkv_key("test_dsdl_root_namespaces")));
+    TEST_ASSERT_TRUE(add_namespace_rel("test_dsdl_root_namespaces"));
 
     // Load a type without fixed port-ID: Empty.0.1.dsdl
     const dsdl_type_composite_t* t = dsdl_read(&g_dsdl, wkv_key("validation.Empty.0.1"));
@@ -403,6 +469,135 @@ static void test_load_type_without_fixed_port_id(void)
 
     // Check that fixed_port_id is NONE
     TEST_ASSERT_EQUAL_UINT16(DSDL_FIXED_PORT_ID_NONE, t->fixed_port_id);
+
+    teardown_dsdl();
+}
+
+static void test_constants_evaluated(void)
+{
+    setup_dsdl();
+
+    TEST_ASSERT_TRUE(add_namespace_rel("test_dsdl_root_namespaces"));
+
+    const dsdl_type_composite_t* expr = dsdl_read(&g_dsdl, wkv_key("validation.Expressions.0.1"));
+    TEST_ASSERT_NOT_NULL(expr);
+
+    const dsdl_value_t* val = find_constant(expr, "ADD");
+    TEST_ASSERT_NOT_NULL(val);
+    TEST_ASSERT_EQUAL(dsdl_value_rational, val->kind);
+    assert_intmax_eq(300, val->as.rational.num);
+
+    val = find_constant(expr, "POW");
+    TEST_ASSERT_NOT_NULL(val);
+    TEST_ASSERT_EQUAL(dsdl_value_rational, val->kind);
+    assert_intmax_eq(1024, val->as.rational.num);
+
+    val = find_constant(expr, "BIT_OR");
+    TEST_ASSERT_NOT_NULL(val);
+    TEST_ASSERT_EQUAL(dsdl_value_rational, val->kind);
+    assert_intmax_eq(255, val->as.rational.num);
+
+    const dsdl_type_composite_t* str = dsdl_read(&g_dsdl, wkv_key("validation.StringOps.0.1"));
+    TEST_ASSERT_NOT_NULL(str);
+
+    val = find_constant(str, "CHAR_A");
+    TEST_ASSERT_NOT_NULL(val);
+    TEST_ASSERT_EQUAL(dsdl_value_rational, val->kind);
+    assert_intmax_eq(65, val->as.rational.num);
+
+    teardown_dsdl();
+}
+
+static void test_type_constant_and_attribute_access(void)
+{
+    setup_dsdl();
+
+    TEST_ASSERT_TRUE(add_namespace_rel("test_dsdl_root_namespaces"));
+
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("validation.ComplexRefExpr.0.1"));
+    TEST_ASSERT_NOT_NULL(type);
+
+    const dsdl_type_t* field_type = find_field_type(type, "expr_capacity_array");
+    TEST_ASSERT_NOT_NULL(field_type);
+    TEST_ASSERT_TRUE(dsdl_type_is_array(*field_type));
+
+    const dsdl_type_array_t* arr = (const dsdl_type_array_t*)field_type;
+    TEST_ASSERT_EQUAL(DSDL_ARRAY_FIXED, arr->type);
+    assert_uintmax_eq(6U, arr->capacity);
+    TEST_ASSERT_EQUAL(DSDL_UINT(8), *arr->member_type);
+
+    teardown_dsdl();
+}
+
+static void test_type_attributes_in_asserts(void)
+{
+    setup_dsdl();
+
+    TEST_ASSERT_TRUE(add_namespace_rel("test_dsdl_root_namespaces"));
+
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("validation.TypeAttributes.0.1"));
+    TEST_ASSERT_NOT_NULL(type);
+    TEST_ASSERT_TRUE(type->sealed);
+
+    teardown_dsdl();
+}
+
+static void test_array_capacity_expressions(void)
+{
+    setup_dsdl();
+
+    TEST_ASSERT_TRUE(add_namespace_rel("test_dsdl_root_namespaces"));
+
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("validation.ArrayCapExpr.0.1"));
+    TEST_ASSERT_NOT_NULL(type);
+
+    const dsdl_type_t* fixed_type = find_field_type(type, "fixed_expr");
+    TEST_ASSERT_NOT_NULL(fixed_type);
+    TEST_ASSERT_TRUE(dsdl_type_is_array(*fixed_type));
+    const dsdl_type_array_t* fixed_arr = (const dsdl_type_array_t*)fixed_type;
+    TEST_ASSERT_EQUAL(DSDL_ARRAY_FIXED, fixed_arr->type);
+    assert_uintmax_eq(15U, fixed_arr->capacity);
+
+    const dsdl_type_t* var_type = find_field_type(type, "var_excl_expr");
+    TEST_ASSERT_NOT_NULL(var_type);
+    TEST_ASSERT_TRUE(dsdl_type_is_array(*var_type));
+    const dsdl_type_array_t* var_arr = (const dsdl_type_array_t*)var_type;
+    TEST_ASSERT_EQUAL(DSDL_ARRAY_VARIABLE, var_arr->type);
+    assert_uintmax_eq(123U, var_arr->capacity);
+
+    teardown_dsdl();
+}
+
+static void test_service_response_type(void)
+{
+    setup_dsdl();
+
+    TEST_ASSERT_TRUE(add_namespace_rel("test_dsdl_root_namespaces"));
+
+    const dsdl_type_composite_t* svc = dsdl_read(&g_dsdl, wkv_key("validation.Service.0.1"));
+    TEST_ASSERT_NOT_NULL(svc);
+    TEST_ASSERT_NOT_NULL(svc->response);
+    TEST_ASSERT_EQUAL_size_t(3, svc->response->field_count);
+    TEST_ASSERT_TRUE(svc->response->sealed);
+
+    teardown_dsdl();
+}
+
+static void test_deprecated_flag(void)
+{
+    setup_dsdl();
+
+    TEST_ASSERT_TRUE(add_namespace_rel("test_dsdl_root_namespaces"));
+
+    const dsdl_type_composite_t* msg = dsdl_read(&g_dsdl, wkv_key("validation.Deprecated.0.1"));
+    TEST_ASSERT_NOT_NULL(msg);
+    TEST_ASSERT_TRUE(msg->deprecated);
+
+    const dsdl_type_composite_t* svc = dsdl_read(&g_dsdl, wkv_key("validation.DeprecatedService.0.1"));
+    TEST_ASSERT_NOT_NULL(svc);
+    TEST_ASSERT_TRUE(svc->deprecated);
+    TEST_ASSERT_NOT_NULL(svc->response);
+    TEST_ASSERT_TRUE(svc->response->deprecated);
 
     teardown_dsdl();
 }
@@ -415,7 +610,7 @@ static void test_version_resolution_exact(void)
 {
     setup_dsdl();
 
-    TEST_ASSERT_TRUE(dsdl_add_namespace(&g_dsdl, wkv_key("test_dsdl_root_namespaces")));
+    TEST_ASSERT_TRUE(add_namespace_rel("test_dsdl_root_namespaces"));
 
     // Request exact version 0.1
     const dsdl_type_composite_t* v01 = dsdl_read(&g_dsdl, wkv_key("validation.Versioned.0.1"));
@@ -436,7 +631,7 @@ static void test_version_resolution_major_only(void)
 {
     setup_dsdl();
 
-    TEST_ASSERT_TRUE(dsdl_add_namespace(&g_dsdl, wkv_key("test_dsdl_root_namespaces")));
+    TEST_ASSERT_TRUE(add_namespace_rel("test_dsdl_root_namespaces"));
 
     // Request major version 1 - should find the highest minor for major 1 (1.0 is the only one)
     const dsdl_type_composite_t* v1 = dsdl_read(&g_dsdl, wkv_key("validation.Versioned.1"));
@@ -457,7 +652,7 @@ static void test_version_resolution_no_version(void)
 {
     setup_dsdl();
 
-    TEST_ASSERT_TRUE(dsdl_add_namespace(&g_dsdl, wkv_key("test_dsdl_root_namespaces")));
+    TEST_ASSERT_TRUE(add_namespace_rel("test_dsdl_root_namespaces"));
 
     // Request without version - should find the highest major.minor (255.255)
     const dsdl_type_composite_t* v = dsdl_read(&g_dsdl, wkv_key("validation.Versioned"));
@@ -472,7 +667,7 @@ static void test_version_resolution_versioned_v2(void)
 {
     setup_dsdl();
 
-    TEST_ASSERT_TRUE(dsdl_add_namespace(&g_dsdl, wkv_key("test_dsdl_root_namespaces")));
+    TEST_ASSERT_TRUE(add_namespace_rel("test_dsdl_root_namespaces"));
 
     // VersionedV2 has 1.0 and 2.0, so requesting major 2 should give 2.0
     const dsdl_type_composite_t* v2 = dsdl_read(&g_dsdl, wkv_key("validation.VersionedV2.2"));
@@ -564,6 +759,12 @@ int main(void)
     RUN_TEST(test_load_message_with_fixed_port_id);
     RUN_TEST(test_load_service_with_fixed_port_id);
     RUN_TEST(test_load_type_without_fixed_port_id);
+    RUN_TEST(test_constants_evaluated);
+    RUN_TEST(test_type_constant_and_attribute_access);
+    RUN_TEST(test_type_attributes_in_asserts);
+    RUN_TEST(test_array_capacity_expressions);
+    RUN_TEST(test_service_response_type);
+    RUN_TEST(test_deprecated_flag);
 
     // Version resolution tests
     RUN_TEST(test_version_resolution_exact);
