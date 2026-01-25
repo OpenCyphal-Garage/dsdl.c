@@ -61,7 +61,6 @@ typedef uint16_t dsdl_type_t;
 #define DSDL_FLOAT(w) ((dsdl_type_t)(0x0500U | (w)))
 
 // Primitive type extensions
-#define DSDL_INT_TRUNC(w)   ((dsdl_type_t)(DSDL_TYPE_TRUNCATED_FLAG | DSDL_INT(w)))
 #define DSDL_UINT_TRUNC(w)  ((dsdl_type_t)(DSDL_TYPE_TRUNCATED_FLAG | DSDL_UINT(w)))
 #define DSDL_FLOAT_TRUNC(w) ((dsdl_type_t)(DSDL_TYPE_TRUNCATED_FLAG | DSDL_FLOAT(w)))
 #define DSDL_BOOL           ((dsdl_type_t)(0x2000U | DSDL_UINT(1)))
