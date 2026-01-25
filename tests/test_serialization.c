@@ -207,16 +207,16 @@ void test_bitbuf_write_cross_byte(void)
     TEST_ASSERT_EQUAL_UINT64(0x1234, dsdl_bitbuf_read(&buf, 16));
 }
 
-void test_bitbuf_implicit_zero_extension(void)
+void test_bitbuf_read_overflow_fails(void)
 {
     uint8_t       buffer[2] = { 0xAB, 0xCD };
     dsdl_bitbuf_t buf       = { buffer, 16, 0, false };
 
-    // Read more bits than available - should zero-extend
+    // Read more bits than available - should fail
     buf.offset_bits = 8;
     uint64_t value  = dsdl_bitbuf_read(&buf, 16);
-    // First 8 bits from buffer[1] = 0xCD, remaining 8 bits = 0
-    TEST_ASSERT_EQUAL_UINT64(0x00CD, value);
+    TEST_ASSERT_EQUAL_UINT64(0, value);
+    TEST_ASSERT_TRUE(buf.error);
 }
 
 // ============================================================================
@@ -588,9 +588,176 @@ void test_deserialize_array_overflow_fails(void)
     dsdl_value_struct_t small_sval   = { .values = small_ptrs };
 
     size_t consumed = dsdl_deserialize(inner, &small_sval, size, buffer);
-    TEST_ASSERT_EQUAL_size_t(0, consumed); // Should fail (return 0)
+    TEST_ASSERT_EQUAL_size_t(SIZE_MAX, consumed); // Should fail
 
     teardown_dsdl();
+}
+
+void test_serialize_array_overflow_fails(void)
+{
+    setup_dsdl();
+
+    TEST_ASSERT_TRUE(
+      dsdl_add_namespace(&g_dsdl, wkv_key("test_dsdl_root_namespaces/nunavut_test_types/nested_array_types")));
+
+    const dsdl_type_composite_t* inner = dsdl_read(&g_dsdl, wkv_key("mymsgs.Inner.1.0"));
+    TEST_ASSERT_NOT_NULL(inner);
+
+    uint32_t                    elements[6] = { 1, 2, 3, 4, 5, 6 };
+    dsdl_value_array_variable_t array_val    = { .count = 6, .members = elements };
+
+    void*               field_ptrs[] = { &array_val };
+    dsdl_value_struct_t sval         = { .values = field_ptrs };
+
+    uint8_t buffer[64] = { 0 };
+    size_t  size       = dsdl_serialize(inner, &sval, sizeof(buffer), buffer);
+    TEST_ASSERT_EQUAL_size_t(SIZE_MAX, size);
+
+    teardown_dsdl();
+}
+
+void test_deserialize_array_prefix_exceeds_capacity_fails(void)
+{
+    setup_dsdl();
+
+    TEST_ASSERT_TRUE(
+      dsdl_add_namespace(&g_dsdl, wkv_key("test_dsdl_root_namespaces/nunavut_test_types/nested_array_types")));
+
+    const dsdl_type_composite_t* inner = dsdl_read(&g_dsdl, wkv_key("mymsgs.Inner.1.0"));
+    TEST_ASSERT_NOT_NULL(inner);
+
+    // Prefix bits for capacity 5: ceil(log2(6)) = 3. Encode count = 6 (0b110).
+    uint8_t buffer[1] = { 0x06 };
+
+    uint32_t                    elements[5] = { 0 };
+    dsdl_value_array_variable_t array_val   = { .count = 5, .members = elements };
+    void*                       field_ptrs[] = { &array_val };
+    dsdl_value_struct_t         sval         = { .values = field_ptrs };
+
+    size_t consumed = dsdl_deserialize(inner, &sval, sizeof(buffer), buffer);
+    TEST_ASSERT_EQUAL_size_t(SIZE_MAX, consumed);
+
+    teardown_dsdl();
+}
+
+void test_serialize_union_invalid_tag_fails(void)
+{
+    static dsdl_type_t field_a_type = DSDL_UINT(8);
+    static dsdl_type_t field_b_type = DSDL_UINT(16);
+    static dsdl_type_t field_c_type = DSDL_UINT(32);
+
+    static dsdl_type_t* field_types[3];
+    field_types[0] = &field_a_type;
+    field_types[1] = &field_b_type;
+    field_types[2] = &field_c_type;
+
+    static wkv_str_t field_names[3] = { { 1, "a" }, { 1, "b" }, { 1, "c" } };
+
+    dsdl_type_composite_t union_type = {
+        .type        = DSDL_COMPOSITE_UNION,
+        .name        = { 12, "BadTagUnion" },
+        .version     = { 1, 0 },
+        .extent      = 8,
+        .sealed      = true,
+        .field_count = 3,
+        .field_names = field_names,
+        .field_types = field_types,
+    };
+
+    uint32_t           value = 0x12345678;
+    dsdl_value_union_t uval  = { .tag = 3, .value = &value }; // Invalid tag for 3 fields
+
+    uint8_t buffer[8] = { 0 };
+    size_t  size      = dsdl_serialize(&union_type, &uval, sizeof(buffer), buffer);
+    TEST_ASSERT_EQUAL_size_t(SIZE_MAX, size);
+}
+
+void test_deserialize_union_invalid_tag_fails(void)
+{
+    static dsdl_type_t field_a_type = DSDL_UINT(8);
+    static dsdl_type_t field_b_type = DSDL_UINT(16);
+    static dsdl_type_t field_c_type = DSDL_UINT(32);
+
+    static dsdl_type_t* field_types[3];
+    field_types[0] = &field_a_type;
+    field_types[1] = &field_b_type;
+    field_types[2] = &field_c_type;
+
+    static wkv_str_t field_names[3] = { { 1, "a" }, { 1, "b" }, { 1, "c" } };
+
+    dsdl_type_composite_t union_type = {
+        .type        = DSDL_COMPOSITE_UNION,
+        .name        = { 12, "BadTagUnion" },
+        .version     = { 1, 0 },
+        .extent      = 8,
+        .sealed      = true,
+        .field_count = 3,
+        .field_names = field_names,
+        .field_types = field_types,
+    };
+
+    // Tag bits = 2, encode invalid tag 3 (0b11) in low bits.
+    uint8_t buffer[1] = { 0x03 };
+
+    uint8_t            value = 0;
+    dsdl_value_union_t uval  = { .tag = 0, .value = &value };
+
+    size_t consumed = dsdl_deserialize(&union_type, &uval, sizeof(buffer), buffer);
+    TEST_ASSERT_EQUAL_size_t(SIZE_MAX, consumed);
+}
+
+void test_serialize_unsigned_range_fails(void)
+{
+    static dsdl_type_t field_type = DSDL_UINT(7);
+    static dsdl_type_t* field_types[1];
+    field_types[0] = &field_type;
+    static wkv_str_t field_names[1] = { { 1, "a" } };
+
+    dsdl_type_composite_t struct_type = {
+        .type        = DSDL_COMPOSITE_STRUCT,
+        .name        = { 12, "UInt7Struct" },
+        .version     = { 1, 0 },
+        .extent      = 1,
+        .sealed      = true,
+        .field_count = 1,
+        .field_names = field_names,
+        .field_types = field_types,
+    };
+
+    uint_least8_t value = 200; // Exceeds 7-bit range
+    void*         field_ptrs[] = { &value };
+    dsdl_value_struct_t sval   = { .values = field_ptrs };
+
+    uint8_t buffer[4] = { 0 };
+    size_t  size      = dsdl_serialize(&struct_type, &sval, sizeof(buffer), buffer);
+    TEST_ASSERT_EQUAL_size_t(SIZE_MAX, size);
+}
+
+void test_serialize_signed_range_fails(void)
+{
+    static dsdl_type_t field_type = DSDL_INT(5);
+    static dsdl_type_t* field_types[1];
+    field_types[0] = &field_type;
+    static wkv_str_t field_names[1] = { { 1, "a" } };
+
+    dsdl_type_composite_t struct_type = {
+        .type        = DSDL_COMPOSITE_STRUCT,
+        .name        = { 11, "Int5Struct" },
+        .version     = { 1, 0 },
+        .extent      = 1,
+        .sealed      = true,
+        .field_count = 1,
+        .field_names = field_names,
+        .field_types = field_types,
+    };
+
+    int_least8_t value = 20; // Exceeds 5-bit signed range [-16, 15]
+    void*        field_ptrs[] = { &value };
+    dsdl_value_struct_t sval  = { .values = field_ptrs };
+
+    uint8_t buffer[4] = { 0 };
+    size_t  size      = dsdl_serialize(&struct_type, &sval, sizeof(buffer), buffer);
+    TEST_ASSERT_EQUAL_size_t(SIZE_MAX, size);
 }
 
 void test_roundtrip_nested_struct(void)
@@ -848,7 +1015,7 @@ int main(void)
     RUN_TEST(test_bitbuf_write_read_byte_aligned);
     RUN_TEST(test_bitbuf_write_read_non_aligned);
     RUN_TEST(test_bitbuf_write_cross_byte);
-    RUN_TEST(test_bitbuf_implicit_zero_extension);
+    RUN_TEST(test_bitbuf_read_overflow_fails);
 
     // Primitive serialization tests
     RUN_TEST(test_serialize_uint8);
@@ -873,10 +1040,16 @@ int main(void)
     RUN_TEST(test_roundtrip_simple_struct);
     RUN_TEST(test_roundtrip_variable_array);
     RUN_TEST(test_deserialize_array_overflow_fails);
+    RUN_TEST(test_serialize_array_overflow_fails);
+    RUN_TEST(test_deserialize_array_prefix_exceeds_capacity_fails);
     RUN_TEST(test_roundtrip_nested_struct);
 
     // Union tests
     RUN_TEST(test_serialize_union);
+    RUN_TEST(test_serialize_union_invalid_tag_fails);
+    RUN_TEST(test_deserialize_union_invalid_tag_fails);
+    RUN_TEST(test_serialize_unsigned_range_fails);
+    RUN_TEST(test_serialize_signed_range_fails);
 
     return UNITY_END();
 }

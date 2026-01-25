@@ -1,183 +1,81 @@
 # Test suite for dsdl.c
 # Uses ThrowTheSwitch Unity framework
 
-# ------------------------------------------------------------------------------
-# Unity test framework
-# ------------------------------------------------------------------------------
-add_library(unity STATIC
-    unity/src/unity.c
-)
+set(unity_root "${CMAKE_CURRENT_SOURCE_DIR}/unity")
 
-target_include_directories(unity PUBLIC
-    unity/src
-)
+function(gen_test name files compile_flags link_flags c_standard is_cpp)
+    # Unity
+    add_library("${name}_unity" STATIC "${unity_root}/src/unity.c")
+    target_include_directories("${name}_unity" SYSTEM PUBLIC "${unity_root}/src")
+    set_target_properties(
+        "${name}_unity"
+        PROPERTIES
+        COMPILE_FLAGS "${compile_flags} -w"
+        LINK_FLAGS "${link_flags}"
+        C_STANDARD "${c_standard}"
+        C_EXTENSIONS OFF
+    )
 
-# Disable warnings for Unity (third-party code)
-target_compile_options(unity PRIVATE
-    -w
-)
+    # Test executable
+    add_executable(${name} ${files})
+    target_include_directories(${name} PUBLIC
+        ${CMAKE_SOURCE_DIR}
+        ${CMAKE_SOURCE_DIR}/lib
+        ${unity_root}/src
+    )
+    target_compile_definitions(${name} PUBLIC DSDL_CONFIG_TRACE=1)
+    target_link_libraries(${name} "${name}_unity" m)
+    set_target_properties(
+        ${name}
+        PROPERTIES
+        COMPILE_FLAGS "${compile_flags}"
+        LINK_FLAGS "${link_flags}"
+    )
 
-# ------------------------------------------------------------------------------
-# Test helper library (for internal access to dsdl.c)
-# ------------------------------------------------------------------------------
-# Some tests need access to internal functions. We achieve this by
-# including dsdl.c directly into test files that need it, similar to
-# libcanard/libudpard test patterns.
+    if (is_cpp)
+        set_target_properties(${name} PROPERTIES
+            CXX_STANDARD 20
+            CXX_STANDARD_REQUIRED ON
+            CXX_EXTENSIONS OFF
+        )
+    else()
+        set_target_properties(${name} PROPERTIES
+            C_STANDARD "${c_standard}"
+            C_EXTENSIONS OFF
+        )
+    endif()
 
-add_library(dsdl_test_internals INTERFACE)
-target_include_directories(dsdl_test_internals INTERFACE
-    ${CMAKE_SOURCE_DIR}
-    ${CMAKE_SOURCE_DIR}/lib
-)
-target_link_libraries(dsdl_test_internals INTERFACE m)
+    add_test(NAME "run_${name}" COMMAND ${name})
+endfunction()
 
-# ------------------------------------------------------------------------------
-# Trace implementation (provides dsdl_trace() for DSDL_CONFIG_TRACE)
-# ------------------------------------------------------------------------------
-add_library(dsdl_trace STATIC
-    dsdl_trace_stderr.c
-)
-target_include_directories(dsdl_trace PUBLIC
-    ${CMAKE_SOURCE_DIR}
-    ${CMAKE_SOURCE_DIR}/lib
-)
-# Enable tracing for test builds
-target_compile_definitions(dsdl_trace PUBLIC DSDL_CONFIG_TRACE=1)
+function(gen_test_matrix name files is_cpp)
+    gen_test("${name}_x64" "${files}" "-m64" "-m64" "99" ${is_cpp})
+    gen_test("${name}_x32" "${files}" "-m32" "-m32" "99" ${is_cpp})
+endfunction()
 
-# ------------------------------------------------------------------------------
-# Test executable - Main test suite (C) - Public API tests
-# ------------------------------------------------------------------------------
-add_executable(test_dsdl
-    test_main.c
-)
+set(trace_source "${CMAKE_CURRENT_SOURCE_DIR}/dsdl_trace_stderr.c")
+set(dsdl_source "${CMAKE_SOURCE_DIR}/dsdl.c")
 
-target_link_libraries(test_dsdl PRIVATE
-    dsdl
-    unity
-)
+# Main API tests (public API)
+gen_test_matrix(test_dsdl "${dsdl_source};${trace_source};${CMAKE_CURRENT_SOURCE_DIR}/test_main.c" FALSE)
 
-target_include_directories(test_dsdl PRIVATE
-    ${CMAKE_SOURCE_DIR}
-    ${CMAKE_SOURCE_DIR}/lib
-)
+# Serialization tests (include dsdl.c directly)
+gen_test_matrix(test_dsdl_serialization "${trace_source};${CMAKE_CURRENT_SOURCE_DIR}/test_serialization.c" FALSE)
 
-add_test(NAME dsdl_tests COMMAND test_dsdl)
+# Parser tests (include dsdl.c directly)
+gen_test_matrix(test_dsdl_parser "${trace_source};${CMAKE_CURRENT_SOURCE_DIR}/test_parser.c" FALSE)
 
-# ------------------------------------------------------------------------------
-# Test executable - Serialization tests (includes dsdl.c directly)
-# ------------------------------------------------------------------------------
-add_executable(test_dsdl_serialization
-    test_serialization.c
-)
+# Rational arithmetic tests (include dsdl.c directly)
+gen_test_matrix(test_dsdl_rational "${trace_source};${CMAKE_CURRENT_SOURCE_DIR}/test_rational.c" FALSE)
 
-target_link_libraries(test_dsdl_serialization PRIVATE
-    unity
-    dsdl_test_internals
-    dsdl_trace
-)
+# C++20 API compatibility test
+gen_test_matrix(test_dsdl_cpp "${dsdl_source};${trace_source};${CMAKE_CURRENT_SOURCE_DIR}/test_api_cpp.cpp" TRUE)
 
-add_test(NAME dsdl_serialization_tests COMMAND test_dsdl_serialization
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-)
+# Internal tests (include dsdl.c directly)
+gen_test_matrix(test_dsdl_internals "${trace_source};${CMAKE_CURRENT_SOURCE_DIR}/test_internals.c" FALSE)
 
-# ------------------------------------------------------------------------------
-# Test executable - Parser tests (includes dsdl.c directly)
-# ------------------------------------------------------------------------------
-add_executable(test_dsdl_parser
-    test_parser.c
-)
+# Type resolution tests (include dsdl.c directly)
+gen_test_matrix(test_dsdl_type_resolution "${trace_source};${CMAKE_CURRENT_SOURCE_DIR}/test_type_resolution.c" FALSE)
 
-target_link_libraries(test_dsdl_parser PRIVATE
-    unity
-    dsdl_test_internals
-    dsdl_trace
-)
-
-add_test(NAME dsdl_parser_tests COMMAND test_dsdl_parser)
-
-# ------------------------------------------------------------------------------
-# Test executable - Rational arithmetic tests (includes dsdl.c directly)
-# ------------------------------------------------------------------------------
-add_executable(test_dsdl_rational
-    test_rational.c
-)
-
-target_link_libraries(test_dsdl_rational PRIVATE
-    unity
-    dsdl_test_internals
-    dsdl_trace
-)
-
-add_test(NAME dsdl_rational_tests COMMAND test_dsdl_rational)
-
-# ------------------------------------------------------------------------------
-# Test executable - C++20 API compatibility test
-# ------------------------------------------------------------------------------
-add_executable(test_dsdl_cpp
-    test_api_cpp.cpp
-)
-
-target_link_libraries(test_dsdl_cpp PRIVATE
-    dsdl
-    unity
-)
-
-target_include_directories(test_dsdl_cpp PRIVATE
-    ${CMAKE_SOURCE_DIR}
-    ${CMAKE_SOURCE_DIR}/lib
-)
-
-# Ensure C++20 for this test
-set_target_properties(test_dsdl_cpp PROPERTIES
-    CXX_STANDARD 20
-    CXX_STANDARD_REQUIRED ON
-)
-
-add_test(NAME dsdl_cpp_compatibility COMMAND test_dsdl_cpp)
-
-# ------------------------------------------------------------------------------
-# Test that links against dsdl.c directly for internal testing
-# ------------------------------------------------------------------------------
-add_executable(test_dsdl_internals
-    test_internals.c
-)
-
-target_link_libraries(test_dsdl_internals PRIVATE
-    unity
-    dsdl_test_internals
-    dsdl_trace
-)
-
-add_test(NAME dsdl_internal_tests COMMAND test_dsdl_internals)
-
-# ------------------------------------------------------------------------------
-# Test executable - Type resolution tests (integration tests)
-# ------------------------------------------------------------------------------
-add_executable(test_dsdl_type_resolution
-    test_type_resolution.c
-)
-
-target_link_libraries(test_dsdl_type_resolution PRIVATE
-    unity
-    dsdl_test_internals
-    dsdl_trace
-)
-
-add_test(NAME dsdl_type_resolution_tests COMMAND test_dsdl_type_resolution
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-)
-
-# ------------------------------------------------------------------------------
-# Test executable - Bit Length Set tests (symbolic evaluation)
-# ------------------------------------------------------------------------------
-add_executable(test_dsdl_bls
-    test_bls.c
-)
-
-target_link_libraries(test_dsdl_bls PRIVATE
-    unity
-    dsdl_test_internals
-    dsdl_trace
-)
-
-add_test(NAME dsdl_bls_tests COMMAND test_dsdl_bls)
+# Bit Length Set tests (include dsdl.c directly)
+gen_test_matrix(test_dsdl_bls "${trace_source};${CMAKE_CURRENT_SOURCE_DIR}/test_bls.c" FALSE)

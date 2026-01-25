@@ -51,4 +51,4 @@ The code must not make assumptions about the execution platform (pointer width, 
 
 - IMPORTANT: Adjust the test suite such that it builds & runs both in x86 (`-m32`) and AMD64 (`-m64`) mode!
 
-- Add a simple QEMU AVR test suite, or adapt the existing test suite to build for QEMU AVR, to ensure that sizes above `SIZE_MAX=65535` are handled correctly.
+- Finish the semantic analysis phase as described in `semantic_analysis_plan.md`.

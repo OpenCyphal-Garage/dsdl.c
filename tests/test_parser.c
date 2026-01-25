@@ -32,7 +32,13 @@ static dsdl_parser_t g_parser;
 static void init_parser(const char* input)
 {
     g_dsdl.realloc = test_realloc;
-    dsdl_parser_init(&g_parser, &g_dsdl, input, strlen(input));
+    dsdl_parser_init(&g_parser, &g_dsdl, input, strlen(input), NULL);
+}
+
+static void init_parser_with_eval(const char* input, dsdl_eval_context_t* eval_ctx)
+{
+    g_dsdl.realloc = test_realloc;
+    dsdl_parser_init(&g_parser, &g_dsdl, input, strlen(input), eval_ctx);
 }
 
 // ============================================================================
@@ -488,6 +494,150 @@ static void test_parse_expr_complex(void)
     TEST_ASSERT_TRUE(val.as.boolean);
 }
 
+static void test_parse_expr_offset_closure(void)
+{
+    g_dsdl.realloc               = test_realloc;
+    dsdl_bls_t*         offset   = dsdl_bls_new_single(&g_dsdl, 16);
+    dsdl_eval_context_t eval_ctx = { .dsdl = &g_dsdl, .offset = offset };
+
+    init_parser_with_eval("_offset_ + 8", &eval_ctx);
+    dsdl_value_t val;
+    TEST_ASSERT_TRUE(dsdl_parse_expression(&g_parser, &val));
+    TEST_ASSERT_EQUAL(dsdl_value_deferred, val.kind);
+
+    TEST_ASSERT_TRUE(dsdl_resolve_value(&val));
+    TEST_ASSERT_EQUAL(dsdl_value_set, val.kind);
+    TEST_ASSERT_EQUAL_size_t(1, val.as.set.count);
+    TEST_ASSERT_EQUAL_INT64(24, val.as.set.elements[0].as.rational.num);
+
+    dsdl_value_dispose(&g_dsdl, &val);
+    dsdl_free(&g_dsdl, offset);
+}
+
+static void test_parse_expr_offset_attribute_min(void)
+{
+    g_dsdl.realloc               = test_realloc;
+    dsdl_bls_t*         offset   = dsdl_bls_new_single(&g_dsdl, 32);
+    dsdl_eval_context_t eval_ctx = { .dsdl = &g_dsdl, .offset = offset };
+
+    init_parser_with_eval("_offset_.min", &eval_ctx);
+    dsdl_value_t val;
+    TEST_ASSERT_TRUE(dsdl_parse_expression(&g_parser, &val));
+    TEST_ASSERT_EQUAL(dsdl_value_deferred, val.kind);
+
+    TEST_ASSERT_TRUE(dsdl_resolve_value(&val));
+    TEST_ASSERT_EQUAL(dsdl_value_rational, val.kind);
+    TEST_ASSERT_EQUAL_INT64(32, val.as.rational.num);
+
+    dsdl_free(&g_dsdl, offset);
+}
+
+static void test_parse_expr_offset_set_addition(void)
+{
+    g_dsdl.realloc = test_realloc;
+    const uint64_t values[] = { 8U, 16U };
+    dsdl_bls_t* offset = dsdl_bls_new_set(&g_dsdl, 2, values);
+    TEST_ASSERT_NOT_NULL(offset);
+    dsdl_eval_context_t eval_ctx = { .dsdl = &g_dsdl, .offset = offset };
+
+    init_parser_with_eval("_offset_ + 4", &eval_ctx);
+    dsdl_value_t val;
+    TEST_ASSERT_TRUE(dsdl_parse_expression(&g_parser, &val));
+    TEST_ASSERT_EQUAL(dsdl_value_deferred, val.kind);
+
+    TEST_ASSERT_TRUE(dsdl_resolve_value(&val));
+    TEST_ASSERT_EQUAL(dsdl_value_set, val.kind);
+    TEST_ASSERT_EQUAL_size_t(2, val.as.set.count);
+
+    bool has_12 = false;
+    bool has_20 = false;
+    for (size_t i = 0; i < val.as.set.count; i++) {
+        if (val.as.set.elements[i].as.rational.num == 12) {
+            has_12 = true;
+        } else if (val.as.set.elements[i].as.rational.num == 20) {
+            has_20 = true;
+        }
+    }
+    TEST_ASSERT_TRUE(has_12);
+    TEST_ASSERT_TRUE(has_20);
+
+    dsdl_value_dispose(&g_dsdl, &val);
+    dsdl_free(&g_dsdl, offset);
+}
+
+static void test_parse_expr_offset_set_modulo(void)
+{
+    g_dsdl.realloc = test_realloc;
+    const uint64_t values[] = { 8U, 16U, 20U };
+    dsdl_bls_t* offset = dsdl_bls_new_set(&g_dsdl, 3, values);
+    TEST_ASSERT_NOT_NULL(offset);
+    dsdl_eval_context_t eval_ctx = { .dsdl = &g_dsdl, .offset = offset };
+
+    init_parser_with_eval("_offset_ % 8", &eval_ctx);
+    dsdl_value_t val;
+    TEST_ASSERT_TRUE(dsdl_parse_expression(&g_parser, &val));
+    TEST_ASSERT_EQUAL(dsdl_value_deferred, val.kind);
+
+    TEST_ASSERT_TRUE(dsdl_resolve_value(&val));
+    TEST_ASSERT_EQUAL(dsdl_value_set, val.kind);
+    TEST_ASSERT_EQUAL_size_t(2, val.as.set.count);
+
+    bool has_0 = false;
+    bool has_4 = false;
+    for (size_t i = 0; i < val.as.set.count; i++) {
+        if (val.as.set.elements[i].as.rational.num == 0) {
+            has_0 = true;
+        } else if (val.as.set.elements[i].as.rational.num == 4) {
+            has_4 = true;
+        }
+    }
+    TEST_ASSERT_TRUE(has_0);
+    TEST_ASSERT_TRUE(has_4);
+
+    dsdl_value_dispose(&g_dsdl, &val);
+    dsdl_free(&g_dsdl, offset);
+}
+
+static void test_parse_expr_offset_set_equality(void)
+{
+    g_dsdl.realloc = test_realloc;
+    const uint64_t values[] = { 16U, 8U };
+    dsdl_bls_t* offset = dsdl_bls_new_set(&g_dsdl, 2, values);
+    TEST_ASSERT_NOT_NULL(offset);
+    dsdl_eval_context_t eval_ctx = { .dsdl = &g_dsdl, .offset = offset };
+
+    init_parser_with_eval("_offset_ == {16, 8}", &eval_ctx);
+    dsdl_value_t val;
+    TEST_ASSERT_TRUE(dsdl_parse_expression(&g_parser, &val));
+    TEST_ASSERT_EQUAL(dsdl_value_deferred, val.kind);
+
+    TEST_ASSERT_TRUE(dsdl_resolve_value(&val));
+    TEST_ASSERT_EQUAL(dsdl_value_bool, val.kind);
+    TEST_ASSERT_TRUE(val.as.boolean);
+
+    dsdl_free(&g_dsdl, offset);
+}
+
+static void test_parse_expr_type_bit_length(void)
+{
+    init_parser("uint16._bit_length_");
+    dsdl_value_t val;
+    TEST_ASSERT_TRUE(dsdl_parse_expression(&g_parser, &val));
+    TEST_ASSERT_EQUAL(dsdl_value_set, val.kind);
+    TEST_ASSERT_EQUAL_size_t(1, val.as.set.count);
+    TEST_ASSERT_EQUAL_INT64(16, val.as.set.elements[0].as.rational.num);
+    dsdl_value_dispose(&g_dsdl, &val);
+}
+
+static void test_parse_expr_type_extent(void)
+{
+    init_parser("uint16._extent_");
+    dsdl_value_t val;
+    TEST_ASSERT_TRUE(dsdl_parse_expression(&g_parser, &val));
+    TEST_ASSERT_EQUAL(dsdl_value_rational, val.kind);
+    TEST_ASSERT_EQUAL_INT64(16, val.as.rational.num);
+}
+
 static void test_parse_expr_power_associativity(void)
 {
     // 2 ** 3 ** 2 = 2 ** 9 = 512 (right-associative)
@@ -563,7 +713,7 @@ static void test_parse_set_single(void)
     TEST_ASSERT_EQUAL_size_t(1, val.as.set.count);
     TEST_ASSERT_EQUAL(dsdl_value_rational, val.as.set.elements[0].kind);
     TEST_ASSERT_EQUAL_INT64(42, val.as.set.elements[0].as.rational.num);
-    dsdl_free(&g_dsdl, val.as.set.elements);
+    dsdl_value_dispose(&g_dsdl, &val);
 }
 
 static void test_parse_set_multiple(void)
@@ -576,7 +726,7 @@ static void test_parse_set_multiple(void)
     TEST_ASSERT_EQUAL_INT64(1, val.as.set.elements[0].as.rational.num);
     TEST_ASSERT_EQUAL_INT64(2, val.as.set.elements[1].as.rational.num);
     TEST_ASSERT_EQUAL_INT64(3, val.as.set.elements[2].as.rational.num);
-    dsdl_free(&g_dsdl, val.as.set.elements);
+    dsdl_value_dispose(&g_dsdl, &val);
 }
 
 static void test_parse_set_large(void)
@@ -608,7 +758,7 @@ static void test_parse_set_large(void)
         TEST_ASSERT_EQUAL_INT64(i, val.as.set.elements[i].as.rational.num);
     }
 
-    dsdl_free(&g_dsdl, val.as.set.elements);
+    dsdl_value_dispose(&g_dsdl, &val);
 }
 
 // ============================================================================
@@ -1072,6 +1222,13 @@ int main(void)
     RUN_TEST(test_parse_expr_logical_or);
     RUN_TEST(test_parse_expr_logical_not);
     RUN_TEST(test_parse_expr_complex);
+    RUN_TEST(test_parse_expr_offset_closure);
+    RUN_TEST(test_parse_expr_offset_attribute_min);
+    RUN_TEST(test_parse_expr_offset_set_addition);
+    RUN_TEST(test_parse_expr_offset_set_modulo);
+    RUN_TEST(test_parse_expr_offset_set_equality);
+    RUN_TEST(test_parse_expr_type_bit_length);
+    RUN_TEST(test_parse_expr_type_extent);
     RUN_TEST(test_parse_expr_power_associativity);
     RUN_TEST(test_parse_expr_power_fractional_exponent);
     RUN_TEST(test_parse_expr_power_fractional_base_and_exp);

@@ -302,7 +302,7 @@ uint64_t dsdl_serialized_footprint(const dsdl_type_composite_t* type);
 /// @param value        Pointer to dsdl_value_struct_t or dsdl_value_union_t, depending on the type.
 /// @param output_size  Size of output buffer in bytes
 /// @param output       Output buffer
-/// @return Number of bytes written, or 0 on error
+/// @return Number of bytes written, or SIZE_MAX on error
 size_t dsdl_serialize(const dsdl_type_composite_t* type, const void* value, size_t output_size, void* output);
 
 /// Deserialize a byte buffer into a composite type instance.
@@ -314,7 +314,7 @@ size_t dsdl_serialize(const dsdl_type_composite_t* type, const void* value, size
 /// @param value       Pointer to dsdl_value_struct_t or dsdl_value_union_t, depending on the type.
 /// @param input_size  Size of input buffer in bytes
 /// @param input       Input buffer
-/// @return Number of bytes consumed, or 0 on error
+/// @return Number of bytes consumed, or SIZE_MAX on error
 size_t dsdl_deserialize(const dsdl_type_composite_t* type, void* value, size_t input_size, const void* input);
 
 /// For diagnostics and logging only. Usage in production is not recommended.

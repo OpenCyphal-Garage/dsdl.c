@@ -40,7 +40,24 @@ typedef struct
     uintmax_t den; ///< Denominator (always positive, 0 means NaN, 1 for integers)
 } dsdl_rational_t;
 
+/// Forward declaration for recursive type.
+typedef struct dsdl_value_t dsdl_value_t;
+/// Forward declaration for bit length sets (used in deferred evaluation).
+typedef struct dsdl_bls_t dsdl_bls_t;
+
+/// The context needs to be freed afterward.
+/// The result is true on success, false on error.
+typedef struct dsdl_closure_t
+{
+    void* context;
+    bool (*fun)(struct dsdl_closure_t* self, dsdl_value_t* out);
+    void (*cleanup)(struct dsdl_closure_t* self);
+    bool (*clone)(const struct dsdl_closure_t* self, struct dsdl_closure_t* out);
+} dsdl_closure_t;
+
 /// Expression value types for compile-time evaluation.
+/// A closure may return another closure, which needs to be evaluated in turn; repeat the loop until you get a concrete
+/// value.
 typedef enum
 {
     dsdl_value_rational, ///< Numeric value (integer or rational)
@@ -48,26 +65,14 @@ typedef enum
     dsdl_value_bool,     ///< Boolean
     dsdl_value_set,      ///< Set of values
     dsdl_value_type,     ///< Serializable metatype reference
+    dsdl_value_deferred, ///< A closure that needs to be evaluated, that returns a value.
 } dsdl_value_kind_t;
-
-/// Forward declaration for recursive type.
-typedef struct dsdl_value_t dsdl_value_t;
-
-/// Comparison operator for deferred assertions
-typedef enum
-{
-    dsdl_cmp_eq, ///< ==
-    dsdl_cmp_ne, ///< !=
-    dsdl_cmp_lt, ///< <
-    dsdl_cmp_le, ///< <=
-    dsdl_cmp_gt, ///< >
-    dsdl_cmp_ge, ///< >=
-} dsdl_cmp_op_t;
 
 /// Runtime value during expression evaluation.
 struct dsdl_value_t
 {
     dsdl_value_kind_t kind;
+    uint8_t           flags;
     union dsdl_value_data_t
     {
         dsdl_rational_t rational; ///< dsdl_value_rational
@@ -78,9 +83,39 @@ struct dsdl_value_t
             size_t        count;
             dsdl_value_t* elements;
         } set;
-        void* type_ref; ///< dsdl_value_type (pointer to dsdl_type_composite_t)
+        void*          type_ref; ///< dsdl_value_type (pointer to dsdl_type_composite_t)
+        dsdl_closure_t deferred; ///< dsdl_value_deferred
     } as;
 };
+
+#define DSDL_VALUE_FLAG_OWNED 0x01U
+
+/// Evaluation context for deferred expressions.
+typedef struct
+{
+    dsdl_t*     dsdl;
+    dsdl_bls_t* offset;
+} dsdl_eval_context_t;
+
+/// If the value is deferred, invokes it until it obtains a concrete value.
+/// False if any evaluation fails.
+static bool dsdl_resolve_value(dsdl_value_t* value)
+{
+    assert(value != NULL);
+    while (value->kind == dsdl_value_deferred) {
+        dsdl_value_t  out     = { 0 };
+        dsdl_closure_t closure = value->as.deferred;
+        const bool    ok      = closure.fun(&closure, &out);
+        if (!ok) {
+            return false;
+        }
+        if (closure.cleanup != NULL) {
+            closure.cleanup(&closure);
+        }
+        *value = out;
+    }
+    return true;
+}
 
 // ============================================================================
 // Rational arithmetic
@@ -441,9 +476,6 @@ typedef enum
     dsdl_bls_union,        ///< Set union of children (union variants)
     dsdl_bls_pad,          ///< Padding: align child to boundary
 } dsdl_bls_kind_t;
-
-/// Forward declaration.
-typedef struct dsdl_bls_t dsdl_bls_t;
 
 /// Symbolic bit length set node.
 /// Instances are heap-allocated via dsdl_alloc().
@@ -1110,6 +1142,323 @@ static bool dsdl_bls_is_aligned(dsdl_t* const dsdl, dsdl_bls_t* const bls, const
     return result;
 }
 
+static size_t dsdl_u64_sort_dedup(uint64_t* const values, const size_t count)
+{
+    if ((values == NULL) || (count < 2)) {
+        return count;
+    }
+    // Insertion sort for small sets.
+    for (size_t i = 1; i < count; i++) {
+        const uint64_t key = values[i];
+        size_t         j   = i;
+        while ((j > 0) && (values[j - 1] > key)) {
+            values[j] = values[j - 1];
+            j--;
+        }
+        values[j] = key;
+    }
+    size_t out = 1;
+    for (size_t i = 1; i < count; i++) {
+        if (values[i] != values[out - 1]) {
+            values[out++] = values[i];
+        }
+    }
+    return out;
+}
+
+static bool dsdl_bls_expand(dsdl_t* const     dsdl,
+                            dsdl_bls_t* const bls,
+                            uint64_t** const  out_values,
+                            size_t* const     out_count)
+{
+    if ((dsdl == NULL) || (bls == NULL) || (out_values == NULL) || (out_count == NULL)) {
+        return false;
+    }
+
+    switch (bls->kind) {
+        case dsdl_bls_nullary: {
+            const size_t    count  = bls->data.nullary.count;
+            uint64_t* const values = (uint64_t*)dsdl_alloc(dsdl, count * sizeof(uint64_t));
+            if ((values == NULL) && (count > 0)) {
+                return false;
+            }
+            for (size_t i = 0; i < count; i++) {
+                values[i] = bls->data.nullary.values[i];
+            }
+            *out_values = values;
+            *out_count  = count;
+            return true;
+        }
+
+        case dsdl_bls_union: {
+            uint64_t* values = NULL;
+            size_t    count  = 0;
+            for (size_t i = 0; i < bls->data.set_union.count; i++) {
+                uint64_t* child_values = NULL;
+                size_t    child_count  = 0;
+                if (!dsdl_bls_expand(dsdl, bls->data.set_union.children[i], &child_values, &child_count)) {
+                    dsdl_free(dsdl, values);
+                    return false;
+                }
+                if (child_count > 0) {
+                    if (count > SIZE_MAX - child_count) {
+                        dsdl_free(dsdl, child_values);
+                        dsdl_free(dsdl, values);
+                        return false;
+                    }
+                    uint64_t* const new_values =
+                      (uint64_t*)dsdl_realloc(dsdl, values, (count + child_count) * sizeof(uint64_t));
+                    if (new_values == NULL) {
+                        dsdl_free(dsdl, child_values);
+                        dsdl_free(dsdl, values);
+                        return false;
+                    }
+                    values = new_values;
+                    memcpy(values + count, child_values, child_count * sizeof(uint64_t));
+                    count += child_count;
+                }
+                dsdl_free(dsdl, child_values);
+            }
+            count       = dsdl_u64_sort_dedup(values, count);
+            *out_values = values;
+            *out_count  = count;
+            return count > 0;
+        }
+
+        case dsdl_bls_concat: {
+            uint64_t* sums       = (uint64_t*)dsdl_alloc(dsdl, sizeof(uint64_t));
+            size_t    sums_count = 1;
+            if (sums == NULL) {
+                return false;
+            }
+            sums[0] = 0;
+            for (size_t i = 0; i < bls->data.concat.count; i++) {
+                uint64_t* child_values = NULL;
+                size_t    child_count  = 0;
+                if (!dsdl_bls_expand(dsdl, bls->data.concat.children[i], &child_values, &child_count)) {
+                    dsdl_free(dsdl, sums);
+                    return false;
+                }
+                if ((child_count > 0) && (sums_count > SIZE_MAX / child_count)) {
+                    dsdl_free(dsdl, child_values);
+                    dsdl_free(dsdl, sums);
+                    return false;
+                }
+                const size_t    new_count = sums_count * child_count;
+                uint64_t* const new_sums =
+                  (new_count > 0) ? (uint64_t*)dsdl_alloc(dsdl, new_count * sizeof(uint64_t)) : NULL;
+                if ((new_sums == NULL) && (new_count > 0)) {
+                    dsdl_free(dsdl, child_values);
+                    dsdl_free(dsdl, sums);
+                    return false;
+                }
+                size_t idx = 0;
+                for (size_t s = 0; s < sums_count; s++) {
+                    for (size_t c = 0; c < child_count; c++) {
+                        if (UINT64_MAX - sums[s] < child_values[c]) {
+                            dsdl_free(dsdl, child_values);
+                            dsdl_free(dsdl, sums);
+                            dsdl_free(dsdl, new_sums);
+                            return false;
+                        }
+                        new_sums[idx++] = sums[s] + child_values[c];
+                    }
+                }
+                dsdl_free(dsdl, child_values);
+                dsdl_free(dsdl, sums);
+                sums       = new_sums;
+                sums_count = dsdl_u64_sort_dedup(sums, new_count);
+            }
+            *out_values = sums;
+            *out_count  = sums_count;
+            return sums_count > 0;
+        }
+
+        case dsdl_bls_repeat: {
+            uint64_t* child_values = NULL;
+            size_t    child_count  = 0;
+            if (!dsdl_bls_expand(dsdl, bls->data.repeat.child, &child_values, &child_count)) {
+                return false;
+            }
+            uint64_t* sums       = (uint64_t*)dsdl_alloc(dsdl, sizeof(uint64_t));
+            size_t    sums_count = 1;
+            if (sums == NULL) {
+                dsdl_free(dsdl, child_values);
+                return false;
+            }
+            sums[0] = 0;
+            for (uint64_t rep = 0; rep < bls->data.repeat.k; rep++) {
+                if ((child_count > 0) && (sums_count > SIZE_MAX / child_count)) {
+                    dsdl_free(dsdl, child_values);
+                    dsdl_free(dsdl, sums);
+                    return false;
+                }
+                const size_t    new_count = sums_count * child_count;
+                uint64_t* const new_sums =
+                  (new_count > 0) ? (uint64_t*)dsdl_alloc(dsdl, new_count * sizeof(uint64_t)) : NULL;
+                if ((new_sums == NULL) && (new_count > 0)) {
+                    dsdl_free(dsdl, child_values);
+                    dsdl_free(dsdl, sums);
+                    return false;
+                }
+                size_t idx = 0;
+                for (size_t s = 0; s < sums_count; s++) {
+                    for (size_t c = 0; c < child_count; c++) {
+                        if (UINT64_MAX - sums[s] < child_values[c]) {
+                            dsdl_free(dsdl, child_values);
+                            dsdl_free(dsdl, sums);
+                            dsdl_free(dsdl, new_sums);
+                            return false;
+                        }
+                        new_sums[idx++] = sums[s] + child_values[c];
+                    }
+                }
+                dsdl_free(dsdl, sums);
+                sums       = new_sums;
+                sums_count = dsdl_u64_sort_dedup(sums, new_count);
+            }
+            dsdl_free(dsdl, child_values);
+            *out_values = sums;
+            *out_count  = sums_count;
+            return sums_count > 0;
+        }
+
+        case dsdl_bls_repeat_range: {
+            uint64_t* child_values = NULL;
+            size_t    child_count  = 0;
+            if (!dsdl_bls_expand(dsdl, bls->data.repeat_range.child, &child_values, &child_count)) {
+                return false;
+            }
+            uint64_t* total   = (uint64_t*)dsdl_alloc(dsdl, sizeof(uint64_t));
+            uint64_t* current = (uint64_t*)dsdl_alloc(dsdl, sizeof(uint64_t));
+            if ((total == NULL) || (current == NULL)) {
+                dsdl_free(dsdl, child_values);
+                dsdl_free(dsdl, total);
+                dsdl_free(dsdl, current);
+                return false;
+            }
+            size_t total_count   = 1;
+            size_t current_count = 1;
+            total[0]             = 0;
+            current[0]           = 0;
+
+            for (uint64_t rep = 1; rep <= bls->data.repeat_range.k_max; rep++) {
+                if ((child_count > 0) && (current_count > SIZE_MAX / child_count)) {
+                    dsdl_free(dsdl, child_values);
+                    dsdl_free(dsdl, total);
+                    dsdl_free(dsdl, current);
+                    return false;
+                }
+                const size_t    new_count = current_count * child_count;
+                uint64_t* const new_values =
+                  (new_count > 0) ? (uint64_t*)dsdl_alloc(dsdl, new_count * sizeof(uint64_t)) : NULL;
+                if ((new_values == NULL) && (new_count > 0)) {
+                    dsdl_free(dsdl, child_values);
+                    dsdl_free(dsdl, total);
+                    dsdl_free(dsdl, current);
+                    return false;
+                }
+                size_t idx = 0;
+                for (size_t s = 0; s < current_count; s++) {
+                    for (size_t c = 0; c < child_count; c++) {
+                        if (UINT64_MAX - current[s] < child_values[c]) {
+                            dsdl_free(dsdl, child_values);
+                            dsdl_free(dsdl, total);
+                            dsdl_free(dsdl, current);
+                            dsdl_free(dsdl, new_values);
+                            return false;
+                        }
+                        new_values[idx++] = current[s] + child_values[c];
+                    }
+                }
+                dsdl_free(dsdl, current);
+                current       = new_values;
+                current_count = dsdl_u64_sort_dedup(current, new_count);
+
+                if (total_count > SIZE_MAX - current_count) {
+                    dsdl_free(dsdl, child_values);
+                    dsdl_free(dsdl, total);
+                    dsdl_free(dsdl, current);
+                    return false;
+                }
+                uint64_t* const new_total =
+                  (uint64_t*)dsdl_realloc(dsdl, total, (total_count + current_count) * sizeof(uint64_t));
+                if (new_total == NULL) {
+                    dsdl_free(dsdl, child_values);
+                    dsdl_free(dsdl, total);
+                    dsdl_free(dsdl, current);
+                    return false;
+                }
+                total = new_total;
+                memcpy(total + total_count, current, current_count * sizeof(uint64_t));
+                total_count += current_count;
+            }
+
+            dsdl_free(dsdl, child_values);
+            dsdl_free(dsdl, current);
+            total_count = dsdl_u64_sort_dedup(total, total_count);
+            *out_values = total;
+            *out_count  = total_count;
+            return total_count > 0;
+        }
+
+        case dsdl_bls_pad: {
+            uint64_t* child_values = NULL;
+            size_t    child_count  = 0;
+            if (!dsdl_bls_expand(dsdl, bls->data.pad.child, &child_values, &child_count)) {
+                return false;
+            }
+            uint64_t* const values =
+              (child_count > 0) ? (uint64_t*)dsdl_alloc(dsdl, child_count * sizeof(uint64_t)) : NULL;
+            if ((values == NULL) && (child_count > 0)) {
+                dsdl_free(dsdl, child_values);
+                return false;
+            }
+            for (size_t i = 0; i < child_count; i++) {
+                values[i] = dsdl_align_up(child_values[i], bls->data.pad.alignment);
+            }
+            dsdl_free(dsdl, child_values);
+            child_count = dsdl_u64_sort_dedup(values, child_count);
+            *out_values = values;
+            *out_count  = child_count;
+            return child_count > 0;
+        }
+    }
+    return false;
+}
+
+static bool dsdl_value_from_bls(dsdl_t* const dsdl, dsdl_bls_t* const bls, dsdl_value_t* const out)
+{
+    if ((dsdl == NULL) || (out == NULL)) {
+        return false;
+    }
+    uint64_t* values = NULL;
+    size_t    count  = 0;
+    if (!dsdl_bls_expand(dsdl, bls, &values, &count)) {
+        return false;
+    }
+    dsdl_value_t* const elements = (count > 0) ? (dsdl_value_t*)dsdl_alloc(dsdl, count * sizeof(dsdl_value_t)) : NULL;
+    if ((elements == NULL) && (count > 0)) {
+        dsdl_free(dsdl, values);
+        return false;
+    }
+    for (size_t i = 0; i < count; i++) {
+        if (values[i] > (uint64_t)INTMAX_MAX) {
+            dsdl_free(dsdl, values);
+            return false;
+        }
+        elements[i].kind        = dsdl_value_rational;
+        elements[i].flags       = 0;
+        elements[i].as.rational = dsdl_rational_from_int((intmax_t)values[i]);
+    }
+    dsdl_free(dsdl, values);
+    out->kind            = dsdl_value_set;
+    out->flags           = DSDL_VALUE_FLAG_OWNED;
+    out->as.set.count    = count;
+    out->as.set.elements = elements;
+    return true;
+}
+
 // ============================================================================
 // Parser state
 // ============================================================================
@@ -1117,12 +1466,13 @@ static bool dsdl_bls_is_aligned(dsdl_t* const dsdl, dsdl_bls_t* const bls, const
 /// Internal parser state.
 typedef struct
 {
-    const char* input; ///< Input buffer (not NUL-terminated necessarily)
-    size_t      len;   ///< Input length in bytes
-    size_t      pos;   ///< Current parse position
-    size_t      line;  ///< Current line number (1-based)
-    size_t      col;   ///< Current column number (1-based)
-    dsdl_t*     dsdl;  ///< Parent state for memory allocation and type cache
+    const char*          input;    ///< Input buffer (not NUL-terminated necessarily)
+    size_t               len;      ///< Input length in bytes
+    size_t               pos;      ///< Current parse position
+    size_t               line;     ///< Current line number (1-based)
+    size_t               col;      ///< Current column number (1-based)
+    dsdl_t*              dsdl;     ///< Parent state for memory allocation and type cache
+    dsdl_eval_context_t* eval_ctx; ///< Expression evaluation context (optional)
 } dsdl_parser_t;
 
 // ============================================================================
@@ -1168,21 +1518,155 @@ static void* dsdl_realloc(dsdl_t* const self, void* const ptr, const size_t new_
     return self->realloc(self, ptr, new_size);
 }
 
+static void dsdl_value_dispose(dsdl_t* const dsdl, dsdl_value_t* const value);
+
+static bool dsdl_value_set_string_copy(dsdl_t* const dsdl, const wkv_str_t src, dsdl_value_t* const out)
+{
+    if ((dsdl == NULL) || (out == NULL)) {
+        return false;
+    }
+    if ((src.len > 0) && (src.str == NULL)) {
+        return false;
+    }
+    char* buf = NULL;
+    if (src.len > 0) {
+        buf = (char*)dsdl_alloc(dsdl, src.len);
+        if (buf == NULL) {
+            return false;
+        }
+        (void)memcpy(buf, src.str, src.len);
+    }
+    out->kind      = dsdl_value_string;
+    out->flags     = DSDL_VALUE_FLAG_OWNED;
+    out->as.string = (wkv_str_t){ .len = src.len, .str = buf };
+    return true;
+}
+
+static bool dsdl_value_clone(dsdl_t* const dsdl, const dsdl_value_t* const src, dsdl_value_t* const out)
+{
+    if ((dsdl == NULL) || (src == NULL) || (out == NULL)) {
+        return false;
+    }
+    switch (src->kind) {
+        case dsdl_value_rational:
+            out->kind        = dsdl_value_rational;
+            out->flags       = 0;
+            out->as.rational = src->as.rational;
+            return true;
+        case dsdl_value_bool:
+            out->kind       = dsdl_value_bool;
+            out->flags      = 0;
+            out->as.boolean = src->as.boolean;
+            return true;
+        case dsdl_value_type:
+            out->kind        = dsdl_value_type;
+            out->flags       = 0;
+            out->as.type_ref = src->as.type_ref;
+            return true;
+        case dsdl_value_string:
+            if ((src->as.string.len > 0) && (src->as.string.str == NULL)) {
+                return false;
+            }
+            return dsdl_value_set_string_copy(dsdl, src->as.string, out);
+        case dsdl_value_set: {
+            const size_t count = src->as.set.count;
+            if ((count > 0) && (src->as.set.elements == NULL)) {
+                return false;
+            }
+            dsdl_value_t* elements =
+              (count > 0) ? (dsdl_value_t*)dsdl_alloc(dsdl, count * sizeof(dsdl_value_t)) : NULL;
+            if ((elements == NULL) && (count > 0)) {
+                return false;
+            }
+            for (size_t i = 0; i < count; i++) {
+                if (!dsdl_value_clone(dsdl, &src->as.set.elements[i], &elements[i])) {
+                    for (size_t j = 0; j < i; j++) {
+                        dsdl_value_dispose(dsdl, &elements[j]);
+                    }
+                    dsdl_free(dsdl, elements);
+                    return false;
+                }
+            }
+            out->kind            = dsdl_value_set;
+            out->flags           = DSDL_VALUE_FLAG_OWNED;
+            out->as.set.count    = count;
+            out->as.set.elements = elements;
+            return true;
+        }
+        case dsdl_value_deferred: {
+            if (src->as.deferred.clone == NULL) {
+                return false;
+            }
+            dsdl_closure_t cloned = { 0 };
+            if (!src->as.deferred.clone(&src->as.deferred, &cloned)) {
+                return false;
+            }
+            out->kind        = dsdl_value_deferred;
+            out->flags       = DSDL_VALUE_FLAG_OWNED;
+            out->as.deferred = cloned;
+            return true;
+        }
+    }
+    return false;
+}
+
+static void dsdl_value_dispose(dsdl_t* const dsdl, dsdl_value_t* const value)
+{
+    if ((dsdl == NULL) || (value == NULL)) {
+        return;
+    }
+    switch (value->kind) {
+        case dsdl_value_string:
+            if ((value->flags & DSDL_VALUE_FLAG_OWNED) != 0U) {
+                dsdl_free_str(dsdl, value->as.string.str);
+            }
+            break;
+        case dsdl_value_set:
+            if ((value->flags & DSDL_VALUE_FLAG_OWNED) != 0U) {
+                for (size_t i = 0; i < value->as.set.count; i++) {
+                    dsdl_value_dispose(dsdl, &value->as.set.elements[i]);
+                }
+                dsdl_free(dsdl, value->as.set.elements);
+            }
+            break;
+        case dsdl_value_deferred:
+            if ((value->flags & DSDL_VALUE_FLAG_OWNED) != 0U) {
+                if (value->as.deferred.cleanup != NULL) {
+                    value->as.deferred.cleanup(&value->as.deferred);
+                } else if (value->as.deferred.context != NULL) {
+                    dsdl_free(dsdl, value->as.deferred.context);
+                }
+            }
+            break;
+        case dsdl_value_rational:
+        case dsdl_value_bool:
+        case dsdl_value_type:
+        default:
+            break;
+    }
+    (void)memset(value, 0, sizeof(*value));
+}
+
 // ============================================================================
 // Parser foundation
 // ============================================================================
 
 /// Initialize parser state.
-static void dsdl_parser_init(dsdl_parser_t* const parser, dsdl_t* const dsdl, const char* const input, const size_t len)
+static void dsdl_parser_init(dsdl_parser_t* const       parser,
+                             dsdl_t* const              dsdl,
+                             const char* const          input,
+                             const size_t               len,
+                             dsdl_eval_context_t* const eval_ctx)
 {
     assert((parser != NULL) && (dsdl != NULL));
     assert((input != NULL) || (len == 0));
-    parser->input = input;
-    parser->len   = len;
-    parser->pos   = 0;
-    parser->line  = 1;
-    parser->col   = 1;
-    parser->dsdl  = dsdl;
+    parser->input    = input;
+    parser->len      = len;
+    parser->pos      = 0;
+    parser->line     = 1;
+    parser->col      = 1;
+    parser->dsdl     = dsdl;
+    parser->eval_ctx = eval_ctx;
 }
 
 /// Check if parser has reached end of input.
@@ -1794,6 +2278,7 @@ static bool dsdl_parse_set(dsdl_parser_t* const parser, dsdl_value_t* const out_
 
     // Initialize as empty set
     out_value->kind            = dsdl_value_set;
+    out_value->flags           = DSDL_VALUE_FLAG_OWNED;
     out_value->as.set.count    = 0;
     out_value->as.set.elements = NULL;
 
@@ -1815,6 +2300,9 @@ static bool dsdl_parse_set(dsdl_parser_t* const parser, dsdl_value_t* const out_
         // Parse expression
         dsdl_value_t elem;
         if (!dsdl_parse_expression(parser, &elem)) {
+            for (size_t i = 0; i < count; i++) {
+                dsdl_value_dispose(parser->dsdl, &elements[i]);
+            }
             dsdl_free(parser->dsdl, elements);
             return false; // Parse error
         }
@@ -1825,6 +2313,10 @@ static bool dsdl_parse_set(dsdl_parser_t* const parser, dsdl_value_t* const out_
             dsdl_value_t* const new_elements =
               (dsdl_value_t*)dsdl_realloc(parser->dsdl, elements, new_capacity * sizeof(dsdl_value_t));
             if (new_elements == NULL) {
+                for (size_t i = 0; i < count; i++) {
+                    dsdl_value_dispose(parser->dsdl, &elements[i]);
+                }
+                dsdl_value_dispose(parser->dsdl, &elem);
                 dsdl_free(parser->dsdl, elements);
                 return false; // OOM
             }
@@ -1842,6 +2334,9 @@ static bool dsdl_parse_set(dsdl_parser_t* const parser, dsdl_value_t* const out_
         } else if (dsdl_parser_peek(parser, 0) == '}') {
             break;
         } else {
+            for (size_t i = 0; i < count; i++) {
+                dsdl_value_dispose(parser->dsdl, &elements[i]);
+            }
             dsdl_free(parser->dsdl, elements);
             return false; // Unexpected character
         }
@@ -1849,6 +2344,9 @@ static bool dsdl_parse_set(dsdl_parser_t* const parser, dsdl_value_t* const out_
 
     // Consume closing brace
     if (dsdl_parser_peek(parser, 0) != '}') {
+        for (size_t i = 0; i < count; i++) {
+            dsdl_value_dispose(parser->dsdl, &elements[i]);
+        }
         dsdl_free(parser->dsdl, elements);
         return false;
     }
@@ -1882,9 +2380,7 @@ static bool dsdl_parse_literal(dsdl_parser_t* const parser, dsdl_value_t* const 
     if ((c == '"') || (c == '\'')) {
         wkv_str_t str = dsdl_parse_string(parser);
         if (str.str != NULL) {
-            out_value->kind      = dsdl_value_string;
-            out_value->as.string = str;
-            return true;
+            return dsdl_value_set_string_copy(parser->dsdl, str, out_value);
         }
         return false;
     }
@@ -1893,6 +2389,7 @@ static bool dsdl_parse_literal(dsdl_parser_t* const parser, dsdl_value_t* const 
     bool bool_val;
     if (dsdl_parse_boolean(parser, &bool_val)) {
         out_value->kind       = dsdl_value_bool;
+        out_value->flags      = 0;
         out_value->as.boolean = bool_val;
         return true;
     }
@@ -1901,6 +2398,7 @@ static bool dsdl_parse_literal(dsdl_parser_t* const parser, dsdl_value_t* const 
     dsdl_rational_t num = dsdl_parse_number(parser);
     if (num.den != 0) {
         out_value->kind        = dsdl_value_rational;
+        out_value->flags       = 0;
         out_value->as.rational = num;
         return true;
     }
@@ -1955,6 +2453,26 @@ typedef enum
     // Attribute
     dsdl_op_dot,
 } dsdl_op_t;
+
+/// Attribute names supported for set-like values.
+typedef enum
+{
+    dsdl_attr_min,
+    dsdl_attr_max,
+    dsdl_attr_count,
+    dsdl_attr_bit_length,
+    dsdl_attr_extent,
+} dsdl_attr_kind_t;
+
+/// Unary operator kinds.
+typedef enum
+{
+    dsdl_unary_not,
+    dsdl_unary_neg,
+} dsdl_unary_op_t;
+
+// Forward declaration for _offset_ evaluation.
+static bool dsdl_value_from_bls(dsdl_t* dsdl, dsdl_bls_t* bls, dsdl_value_t* out);
 
 /// Get precedence for a binary operator at current position.
 /// Also returns the operator type and its length.
@@ -2063,42 +2581,1014 @@ static dsdl_prec_t dsdl_get_binary_op(const dsdl_parser_t* const parser, dsdl_op
     return dsdl_prec_none;
 }
 
+static bool dsdl_attr_from_ident(const wkv_str_t attr, dsdl_attr_kind_t* const out_kind)
+{
+    if ((out_kind == NULL) || (attr.str == NULL)) {
+        return false;
+    }
+    if ((attr.len == 3U) && (memcmp(attr.str, "min", 3) == 0)) {
+        *out_kind = dsdl_attr_min;
+        return true;
+    }
+    if ((attr.len == 3U) && (memcmp(attr.str, "max", 3) == 0)) {
+        *out_kind = dsdl_attr_max;
+        return true;
+    }
+    if ((attr.len == 5U) && (memcmp(attr.str, "count", 5) == 0)) {
+        *out_kind = dsdl_attr_count;
+        return true;
+    }
+    if ((attr.len == 12U) && (memcmp(attr.str, "_bit_length_", 12) == 0)) {
+        *out_kind = dsdl_attr_bit_length;
+        return true;
+    }
+    if ((attr.len == 8U) && (memcmp(attr.str, "_extent_", 8) == 0)) {
+        *out_kind = dsdl_attr_extent;
+        return true;
+    }
+    return false;
+}
+
+static bool dsdl_value_equal(const dsdl_value_t* const left, const dsdl_value_t* const right)
+{
+    if ((left == NULL) || (right == NULL) || (left->kind != right->kind)) {
+        return false;
+    }
+    switch (left->kind) {
+        case dsdl_value_rational:
+            return dsdl_rational_cmp(left->as.rational, right->as.rational) == 0;
+        case dsdl_value_string:
+            if (left->as.string.len != right->as.string.len) {
+                return false;
+            }
+            if (left->as.string.len == 0) {
+                return true;
+            }
+            if ((left->as.string.str == NULL) || (right->as.string.str == NULL)) {
+                return false;
+            }
+            return memcmp(left->as.string.str, right->as.string.str, left->as.string.len) == 0;
+        case dsdl_value_bool:
+            return left->as.boolean == right->as.boolean;
+        case dsdl_value_type:
+            return left->as.type_ref == right->as.type_ref;
+        case dsdl_value_set:
+        case dsdl_value_deferred:
+            return false;
+    }
+    return false;
+}
+
+static bool dsdl_set_is_homogeneous(const dsdl_value_t* const set_val, dsdl_value_kind_t* const out_kind)
+{
+    if ((set_val == NULL) || (set_val->kind != dsdl_value_set)) {
+        return false;
+    }
+    if (set_val->as.set.count == 0) {
+        if (out_kind != NULL) {
+            *out_kind = dsdl_value_rational;
+        }
+        return true;
+    }
+    const dsdl_value_kind_t kind = set_val->as.set.elements[0].kind;
+    for (size_t i = 0; i < set_val->as.set.count; i++) {
+        if (set_val->as.set.elements[i].kind != kind) {
+            return false;
+        }
+        if (kind == dsdl_value_deferred) {
+            return false;
+        }
+    }
+    if (out_kind != NULL) {
+        *out_kind = kind;
+    }
+    return true;
+}
+
+static bool dsdl_set_contains(const dsdl_value_t* const set_val, const dsdl_value_t* const needle)
+{
+    if ((set_val == NULL) || (needle == NULL) || (set_val->kind != dsdl_value_set)) {
+        return false;
+    }
+    for (size_t i = 0; i < set_val->as.set.count; i++) {
+        if (dsdl_value_equal(&set_val->as.set.elements[i], needle)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool dsdl_set_is_subset(const dsdl_value_t* const left, const dsdl_value_t* const right)
+{
+    if ((left == NULL) || (right == NULL) || (left->kind != dsdl_value_set) || (right->kind != dsdl_value_set)) {
+        return false;
+    }
+    for (size_t i = 0; i < left->as.set.count; i++) {
+        if (!dsdl_set_contains(right, &left->as.set.elements[i])) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool dsdl_set_union(dsdl_t* const             dsdl,
+                           const dsdl_value_t* const left,
+                           const dsdl_value_t* const right,
+                           dsdl_value_t* const       result)
+{
+    dsdl_value_kind_t left_kind  = dsdl_value_rational;
+    dsdl_value_kind_t right_kind = dsdl_value_rational;
+    if (!dsdl_set_is_homogeneous(left, &left_kind) || !dsdl_set_is_homogeneous(right, &right_kind) ||
+        (left_kind != right_kind)) {
+        return false;
+    }
+    if ((left->as.set.count == 0) && (right->as.set.count == 0)) {
+        result->kind            = dsdl_value_set;
+        result->flags           = DSDL_VALUE_FLAG_OWNED;
+        result->as.set.count    = 0;
+        result->as.set.elements = NULL;
+        return true;
+    }
+
+    const size_t        capacity = left->as.set.count + right->as.set.count;
+    dsdl_value_t* const elements =
+      (capacity > 0) ? (dsdl_value_t*)dsdl_alloc(dsdl, capacity * sizeof(dsdl_value_t)) : NULL;
+    if ((capacity > 0) && (elements == NULL)) {
+        return false;
+    }
+
+    size_t count = 0;
+    for (size_t i = 0; i < left->as.set.count; i++) {
+        if (!dsdl_value_clone(dsdl, &left->as.set.elements[i], &elements[count])) {
+            for (size_t j = 0; j < count; j++) {
+                dsdl_value_dispose(dsdl, &elements[j]);
+            }
+            dsdl_free(dsdl, elements);
+            return false;
+        }
+        count++;
+    }
+    for (size_t i = 0; i < right->as.set.count; i++) {
+        if (!dsdl_set_contains(left, &right->as.set.elements[i])) {
+            if (!dsdl_value_clone(dsdl, &right->as.set.elements[i], &elements[count])) {
+                for (size_t j = 0; j < count; j++) {
+                    dsdl_value_dispose(dsdl, &elements[j]);
+                }
+                dsdl_free(dsdl, elements);
+                return false;
+            }
+            count++;
+        }
+    }
+
+    result->kind            = dsdl_value_set;
+    result->flags           = DSDL_VALUE_FLAG_OWNED;
+    result->as.set.count    = count;
+    result->as.set.elements = elements;
+    return true;
+}
+
+static bool dsdl_set_intersection(dsdl_t* const             dsdl,
+                                  const dsdl_value_t* const left,
+                                  const dsdl_value_t* const right,
+                                  dsdl_value_t* const       result)
+{
+    dsdl_value_kind_t left_kind  = dsdl_value_rational;
+    dsdl_value_kind_t right_kind = dsdl_value_rational;
+    if (!dsdl_set_is_homogeneous(left, &left_kind) || !dsdl_set_is_homogeneous(right, &right_kind) ||
+        (left_kind != right_kind)) {
+        return false;
+    }
+    const size_t capacity = (left->as.set.count < right->as.set.count) ? left->as.set.count : right->as.set.count;
+    dsdl_value_t* const elements =
+      (capacity > 0) ? (dsdl_value_t*)dsdl_alloc(dsdl, capacity * sizeof(dsdl_value_t)) : NULL;
+    if ((capacity > 0) && (elements == NULL)) {
+        return false;
+    }
+    size_t count = 0;
+    for (size_t i = 0; i < left->as.set.count; i++) {
+        if (dsdl_set_contains(right, &left->as.set.elements[i])) {
+            if (!dsdl_value_clone(dsdl, &left->as.set.elements[i], &elements[count])) {
+                for (size_t j = 0; j < count; j++) {
+                    dsdl_value_dispose(dsdl, &elements[j]);
+                }
+                dsdl_free(dsdl, elements);
+                return false;
+            }
+            count++;
+        }
+    }
+    result->kind            = dsdl_value_set;
+    result->flags           = DSDL_VALUE_FLAG_OWNED;
+    result->as.set.count    = count;
+    result->as.set.elements = elements;
+    return true;
+}
+
+static bool dsdl_set_symdiff(dsdl_t* const             dsdl,
+                             const dsdl_value_t* const left,
+                             const dsdl_value_t* const right,
+                             dsdl_value_t* const       result)
+{
+    dsdl_value_kind_t left_kind  = dsdl_value_rational;
+    dsdl_value_kind_t right_kind = dsdl_value_rational;
+    if (!dsdl_set_is_homogeneous(left, &left_kind) || !dsdl_set_is_homogeneous(right, &right_kind) ||
+        (left_kind != right_kind)) {
+        return false;
+    }
+    const size_t        capacity = left->as.set.count + right->as.set.count;
+    dsdl_value_t* const elements =
+      (capacity > 0) ? (dsdl_value_t*)dsdl_alloc(dsdl, capacity * sizeof(dsdl_value_t)) : NULL;
+    if ((capacity > 0) && (elements == NULL)) {
+        return false;
+    }
+    size_t count = 0;
+    for (size_t i = 0; i < left->as.set.count; i++) {
+        if (!dsdl_set_contains(right, &left->as.set.elements[i])) {
+            if (!dsdl_value_clone(dsdl, &left->as.set.elements[i], &elements[count])) {
+                for (size_t j = 0; j < count; j++) {
+                    dsdl_value_dispose(dsdl, &elements[j]);
+                }
+                dsdl_free(dsdl, elements);
+                return false;
+            }
+            count++;
+        }
+    }
+    for (size_t i = 0; i < right->as.set.count; i++) {
+        if (!dsdl_set_contains(left, &right->as.set.elements[i])) {
+            if (!dsdl_value_clone(dsdl, &right->as.set.elements[i], &elements[count])) {
+                for (size_t j = 0; j < count; j++) {
+                    dsdl_value_dispose(dsdl, &elements[j]);
+                }
+                dsdl_free(dsdl, elements);
+                return false;
+            }
+            count++;
+        }
+    }
+    result->kind            = dsdl_value_set;
+    result->flags           = DSDL_VALUE_FLAG_OWNED;
+    result->as.set.count    = count;
+    result->as.set.elements = elements;
+    return true;
+}
+
+static bool dsdl_set_attribute(const dsdl_value_t* const set_val, const dsdl_attr_kind_t attr, dsdl_value_t* const out)
+{
+    if ((set_val == NULL) || (out == NULL) || (set_val->kind != dsdl_value_set)) {
+        return false;
+    }
+    if (attr == dsdl_attr_count) {
+        out->kind        = dsdl_value_rational;
+        out->flags       = 0;
+        out->as.rational = dsdl_rational_from_int((intmax_t)set_val->as.set.count);
+        return true;
+    }
+    if ((attr != dsdl_attr_min) && (attr != dsdl_attr_max)) {
+        return false;
+    }
+    if (set_val->as.set.count == 0) {
+        return false;
+    }
+
+    dsdl_value_kind_t elem_kind = dsdl_value_rational;
+    if (!dsdl_set_is_homogeneous(set_val, &elem_kind) || (elem_kind != dsdl_value_rational)) {
+        return false;
+    }
+
+    dsdl_rational_t best = set_val->as.set.elements[0].as.rational;
+    for (size_t i = 1; i < set_val->as.set.count; i++) {
+        const dsdl_rational_t cand = set_val->as.set.elements[i].as.rational;
+        const int             cmp  = dsdl_rational_cmp(cand, best);
+        if ((attr == dsdl_attr_min) && (cmp < 0)) {
+            best = cand;
+        } else if ((attr == dsdl_attr_max) && (cmp > 0)) {
+            best = cand;
+        }
+    }
+
+    out->kind        = dsdl_value_rational;
+    out->flags       = 0;
+    out->as.rational = best;
+    return true;
+}
+
+static bool dsdl_parse_primitive_bit_width(const wkv_str_t name, uint_least8_t* const out_bits)
+{
+    if ((name.str == NULL) || (out_bits == NULL)) {
+        return false;
+    }
+    if ((name.len == 4U) && (memcmp(name.str, "bool", 4) == 0)) {
+        *out_bits = 1U;
+        return true;
+    }
+    if ((name.len == 4U) && (memcmp(name.str, "byte", 4) == 0)) {
+        *out_bits = 8U;
+        return true;
+    }
+    if ((name.len == 4U) && (memcmp(name.str, "utf8", 4) == 0)) {
+        *out_bits = 8U;
+        return true;
+    }
+
+    const struct
+    {
+        const char*   prefix;
+        size_t        prefix_len;
+        uint_least8_t min_bits;
+        uint_least8_t max_bits;
+        bool          strict_sizes;
+    } prefixes[] = {
+        { "uint", 4U, 1U, 64U, false },
+        { "int",  3U, 2U, 64U, false },
+        { "void", 4U, 1U, 64U, false },
+        { "float", 5U, 0U, 0U, true  },
+    };
+
+    for (size_t i = 0; i < (sizeof(prefixes) / sizeof(prefixes[0])); i++) {
+        if (name.len <= prefixes[i].prefix_len) {
+            continue;
+        }
+        if (memcmp(name.str, prefixes[i].prefix, prefixes[i].prefix_len) != 0) {
+            continue;
+        }
+        uint64_t value = 0;
+        const size_t start = prefixes[i].prefix_len;
+        for (size_t j = start; j < name.len; j++) {
+            const char c = name.str[j];
+            if (!dsdl_is_digit(c)) {
+                return false;
+            }
+            value = (value * 10U) + (uint64_t)(c - '0');
+            if (value > 64U) {
+                return false;
+            }
+        }
+        const uint_least8_t bits = (uint_least8_t)value;
+        if (prefixes[i].strict_sizes) {
+            if ((bits != 16U) && (bits != 32U) && (bits != 64U)) {
+                return false;
+            }
+        } else {
+            if ((bits < prefixes[i].min_bits) || (bits > prefixes[i].max_bits)) {
+                return false;
+            }
+        }
+        *out_bits = bits;
+        return true;
+    }
+
+    return false;
+}
+
+static bool dsdl_apply_type_attribute(dsdl_t* const             dsdl,
+                                      const wkv_str_t           type_name,
+                                      const dsdl_attr_kind_t    attr,
+                                      dsdl_value_t* const       result)
+{
+    uint_least8_t bit_width = 0;
+    if (!dsdl_parse_primitive_bit_width(type_name, &bit_width)) {
+        return false;
+    }
+
+    if (attr == dsdl_attr_bit_length) {
+        dsdl_value_t* const elements = (dsdl_value_t*)dsdl_alloc(dsdl, sizeof(dsdl_value_t));
+        if (elements == NULL) {
+            return false;
+        }
+        elements[0].kind        = dsdl_value_rational;
+        elements[0].flags       = 0;
+        elements[0].as.rational = dsdl_rational_from_int((intmax_t)bit_width);
+        result->kind            = dsdl_value_set;
+        result->flags           = DSDL_VALUE_FLAG_OWNED;
+        result->as.set.count    = 1;
+        result->as.set.elements = elements;
+        return true;
+    }
+    if (attr == dsdl_attr_extent) {
+        result->kind        = dsdl_value_rational;
+        result->flags       = 0;
+        result->as.rational = dsdl_rational_from_int((intmax_t)bit_width);
+        return true;
+    }
+
+    return false;
+}
+
+static bool dsdl_apply_binary_op(dsdl_t* const             dsdl,
+                                 const dsdl_op_t           op,
+                                 const dsdl_value_t* const left,
+                                 const dsdl_value_t* const right,
+                                 dsdl_value_t* const       result);
+
+static bool dsdl_apply_attribute(dsdl_t* const             dsdl,
+                                 const dsdl_attr_kind_t    attr,
+                                 const dsdl_value_t* const value,
+                                 dsdl_value_t* const       result);
+
+static bool dsdl_apply_unary_op(dsdl_t* const             dsdl,
+                                const dsdl_unary_op_t     op,
+                                const dsdl_value_t* const operand,
+                                dsdl_value_t* const       result);
+
+static bool dsdl_set_elementwise_op(dsdl_t* const             dsdl,
+                                    const dsdl_op_t           op,
+                                    const dsdl_value_t* const set_val,
+                                    const dsdl_value_t* const scalar,
+                                    const bool                scalar_left,
+                                    dsdl_value_t* const       out)
+{
+    if ((set_val == NULL) || (scalar == NULL) || (out == NULL) || (set_val->kind != dsdl_value_set)) {
+        return false;
+    }
+    if (scalar->kind == dsdl_value_deferred || set_val->kind == dsdl_value_deferred) {
+        return false;
+    }
+    if (set_val->as.set.count == 0) {
+        out->kind            = dsdl_value_set;
+        out->flags           = DSDL_VALUE_FLAG_OWNED;
+        out->as.set.count    = 0;
+        out->as.set.elements = NULL;
+        return true;
+    }
+
+    if (!dsdl_set_is_homogeneous(set_val, NULL)) {
+        return false;
+    }
+
+    const size_t        capacity = set_val->as.set.count;
+    dsdl_value_t* const elements = (dsdl_value_t*)dsdl_alloc(dsdl, capacity * sizeof(dsdl_value_t));
+    if (elements == NULL) {
+        return false;
+    }
+
+    size_t            count = 0;
+    dsdl_value_kind_t kind  = dsdl_value_rational;
+    for (size_t i = 0; i < set_val->as.set.count; i++) {
+        const dsdl_value_t* lhs = scalar_left ? scalar : &set_val->as.set.elements[i];
+        const dsdl_value_t* rhs = scalar_left ? &set_val->as.set.elements[i] : scalar;
+
+        dsdl_value_t elem_result;
+        if (!dsdl_apply_binary_op(dsdl, op, lhs, rhs, &elem_result)) {
+            for (size_t j = 0; j < count; j++) {
+                dsdl_value_dispose(dsdl, &elements[j]);
+            }
+            dsdl_free(dsdl, elements);
+            return false;
+        }
+        if (elem_result.kind == dsdl_value_set || elem_result.kind == dsdl_value_deferred) {
+            dsdl_value_dispose(dsdl, &elem_result);
+            for (size_t j = 0; j < count; j++) {
+                dsdl_value_dispose(dsdl, &elements[j]);
+            }
+            dsdl_free(dsdl, elements);
+            return false;
+        }
+        if (count == 0) {
+            kind = elem_result.kind;
+        } else if (elem_result.kind != kind) {
+            dsdl_value_dispose(dsdl, &elem_result);
+            for (size_t j = 0; j < count; j++) {
+                dsdl_value_dispose(dsdl, &elements[j]);
+            }
+            dsdl_free(dsdl, elements);
+            return false;
+        }
+        bool duplicate = false;
+        for (size_t j = 0; j < count; j++) {
+            if (dsdl_value_equal(&elements[j], &elem_result)) {
+                duplicate = true;
+                break;
+            }
+        }
+        if (!duplicate) {
+            elements[count++] = elem_result;
+        } else {
+            dsdl_value_dispose(dsdl, &elem_result);
+        }
+    }
+
+    out->kind            = dsdl_value_set;
+    out->flags           = DSDL_VALUE_FLAG_OWNED;
+    out->as.set.count    = count;
+    out->as.set.elements = elements;
+    return true;
+}
+
+typedef struct
+{
+    dsdl_t*      dsdl;
+    dsdl_op_t    op;
+    dsdl_value_t left;
+    dsdl_value_t right;
+} dsdl_closure_binary_ctx_t;
+
+typedef struct
+{
+    dsdl_t*         dsdl;
+    dsdl_unary_op_t op;
+    dsdl_value_t    operand;
+} dsdl_closure_unary_ctx_t;
+
+typedef struct
+{
+    dsdl_t*          dsdl;
+    dsdl_attr_kind_t attr;
+    dsdl_value_t     base;
+} dsdl_closure_attr_ctx_t;
+
+typedef struct
+{
+    dsdl_t*              dsdl;
+    dsdl_eval_context_t* eval;
+} dsdl_closure_offset_ctx_t;
+
+static bool dsdl_closure_eval_binary(dsdl_closure_t* const self, dsdl_value_t* const out)
+{
+    if ((self == NULL) || (out == NULL)) {
+        return false;
+    }
+    dsdl_closure_binary_ctx_t* const ctx = (dsdl_closure_binary_ctx_t*)self->context;
+    if ((ctx == NULL) || (ctx->dsdl == NULL)) {
+        return false;
+    }
+    if (!dsdl_resolve_value(&ctx->left) || !dsdl_resolve_value(&ctx->right)) {
+        return false;
+    }
+    return dsdl_apply_binary_op(ctx->dsdl, ctx->op, &ctx->left, &ctx->right, out);
+}
+
+static bool dsdl_closure_eval_unary(dsdl_closure_t* const self, dsdl_value_t* const out)
+{
+    if ((self == NULL) || (out == NULL)) {
+        return false;
+    }
+    dsdl_closure_unary_ctx_t* const ctx = (dsdl_closure_unary_ctx_t*)self->context;
+    if ((ctx == NULL) || (ctx->dsdl == NULL)) {
+        return false;
+    }
+    if (!dsdl_resolve_value(&ctx->operand)) {
+        return false;
+    }
+    return dsdl_apply_unary_op(ctx->dsdl, ctx->op, &ctx->operand, out);
+}
+
+static bool dsdl_closure_eval_attribute(dsdl_closure_t* const self, dsdl_value_t* const out)
+{
+    if ((self == NULL) || (out == NULL)) {
+        return false;
+    }
+    dsdl_closure_attr_ctx_t* const ctx = (dsdl_closure_attr_ctx_t*)self->context;
+    if ((ctx == NULL) || (ctx->dsdl == NULL)) {
+        return false;
+    }
+    if (!dsdl_resolve_value(&ctx->base)) {
+        return false;
+    }
+    return dsdl_apply_attribute(ctx->dsdl, ctx->attr, &ctx->base, out);
+}
+
+static bool dsdl_closure_eval_offset(dsdl_closure_t* const self, dsdl_value_t* const out)
+{
+    if ((self == NULL) || (out == NULL)) {
+        return false;
+    }
+    dsdl_closure_offset_ctx_t* const ctx = (dsdl_closure_offset_ctx_t*)self->context;
+    if ((ctx == NULL) || (ctx->eval == NULL) || (ctx->eval->dsdl == NULL) || (ctx->eval->offset == NULL)) {
+        return false;
+    }
+    return dsdl_value_from_bls(ctx->eval->dsdl, ctx->eval->offset, out);
+}
+
+static void dsdl_closure_cleanup_binary(dsdl_closure_t* const self)
+{
+    if (self == NULL) {
+        return;
+    }
+    dsdl_closure_binary_ctx_t* const ctx = (dsdl_closure_binary_ctx_t*)self->context;
+    if ((ctx == NULL) || (ctx->dsdl == NULL)) {
+        return;
+    }
+    dsdl_value_dispose(ctx->dsdl, &ctx->left);
+    dsdl_value_dispose(ctx->dsdl, &ctx->right);
+    dsdl_free(ctx->dsdl, ctx);
+    self->context = NULL;
+}
+
+static void dsdl_closure_cleanup_unary(dsdl_closure_t* const self)
+{
+    if (self == NULL) {
+        return;
+    }
+    dsdl_closure_unary_ctx_t* const ctx = (dsdl_closure_unary_ctx_t*)self->context;
+    if ((ctx == NULL) || (ctx->dsdl == NULL)) {
+        return;
+    }
+    dsdl_value_dispose(ctx->dsdl, &ctx->operand);
+    dsdl_free(ctx->dsdl, ctx);
+    self->context = NULL;
+}
+
+static void dsdl_closure_cleanup_attribute(dsdl_closure_t* const self)
+{
+    if (self == NULL) {
+        return;
+    }
+    dsdl_closure_attr_ctx_t* const ctx = (dsdl_closure_attr_ctx_t*)self->context;
+    if ((ctx == NULL) || (ctx->dsdl == NULL)) {
+        return;
+    }
+    dsdl_value_dispose(ctx->dsdl, &ctx->base);
+    dsdl_free(ctx->dsdl, ctx);
+    self->context = NULL;
+}
+
+static void dsdl_closure_cleanup_offset(dsdl_closure_t* const self)
+{
+    if (self == NULL) {
+        return;
+    }
+    dsdl_closure_offset_ctx_t* const ctx = (dsdl_closure_offset_ctx_t*)self->context;
+    if ((ctx == NULL) || (ctx->dsdl == NULL)) {
+        return;
+    }
+    dsdl_free(ctx->dsdl, ctx);
+    self->context = NULL;
+}
+
+static bool dsdl_closure_clone_binary(const dsdl_closure_t* const self, dsdl_closure_t* const out)
+{
+    if ((self == NULL) || (out == NULL)) {
+        return false;
+    }
+    const dsdl_closure_binary_ctx_t* const ctx = (const dsdl_closure_binary_ctx_t*)self->context;
+    if ((ctx == NULL) || (ctx->dsdl == NULL)) {
+        return false;
+    }
+    dsdl_closure_binary_ctx_t* const clone_ctx = (dsdl_closure_binary_ctx_t*)dsdl_alloc(ctx->dsdl, sizeof(*clone_ctx));
+    if (clone_ctx == NULL) {
+        return false;
+    }
+    clone_ctx->dsdl = ctx->dsdl;
+    clone_ctx->op   = ctx->op;
+    if (!dsdl_value_clone(ctx->dsdl, &ctx->left, &clone_ctx->left)) {
+        dsdl_free(ctx->dsdl, clone_ctx);
+        return false;
+    }
+    if (!dsdl_value_clone(ctx->dsdl, &ctx->right, &clone_ctx->right)) {
+        dsdl_value_dispose(ctx->dsdl, &clone_ctx->left);
+        dsdl_free(ctx->dsdl, clone_ctx);
+        return false;
+    }
+    out->context = clone_ctx;
+    out->fun     = dsdl_closure_eval_binary;
+    out->cleanup = dsdl_closure_cleanup_binary;
+    out->clone   = dsdl_closure_clone_binary;
+    return true;
+}
+
+static bool dsdl_closure_clone_unary(const dsdl_closure_t* const self, dsdl_closure_t* const out)
+{
+    if ((self == NULL) || (out == NULL)) {
+        return false;
+    }
+    const dsdl_closure_unary_ctx_t* const ctx = (const dsdl_closure_unary_ctx_t*)self->context;
+    if ((ctx == NULL) || (ctx->dsdl == NULL)) {
+        return false;
+    }
+    dsdl_closure_unary_ctx_t* const clone_ctx = (dsdl_closure_unary_ctx_t*)dsdl_alloc(ctx->dsdl, sizeof(*clone_ctx));
+    if (clone_ctx == NULL) {
+        return false;
+    }
+    clone_ctx->dsdl = ctx->dsdl;
+    clone_ctx->op   = ctx->op;
+    if (!dsdl_value_clone(ctx->dsdl, &ctx->operand, &clone_ctx->operand)) {
+        dsdl_free(ctx->dsdl, clone_ctx);
+        return false;
+    }
+    out->context = clone_ctx;
+    out->fun     = dsdl_closure_eval_unary;
+    out->cleanup = dsdl_closure_cleanup_unary;
+    out->clone   = dsdl_closure_clone_unary;
+    return true;
+}
+
+static bool dsdl_closure_clone_attribute(const dsdl_closure_t* const self, dsdl_closure_t* const out)
+{
+    if ((self == NULL) || (out == NULL)) {
+        return false;
+    }
+    const dsdl_closure_attr_ctx_t* const ctx = (const dsdl_closure_attr_ctx_t*)self->context;
+    if ((ctx == NULL) || (ctx->dsdl == NULL)) {
+        return false;
+    }
+    dsdl_closure_attr_ctx_t* const clone_ctx = (dsdl_closure_attr_ctx_t*)dsdl_alloc(ctx->dsdl, sizeof(*clone_ctx));
+    if (clone_ctx == NULL) {
+        return false;
+    }
+    clone_ctx->dsdl = ctx->dsdl;
+    clone_ctx->attr = ctx->attr;
+    if (!dsdl_value_clone(ctx->dsdl, &ctx->base, &clone_ctx->base)) {
+        dsdl_free(ctx->dsdl, clone_ctx);
+        return false;
+    }
+    out->context = clone_ctx;
+    out->fun     = dsdl_closure_eval_attribute;
+    out->cleanup = dsdl_closure_cleanup_attribute;
+    out->clone   = dsdl_closure_clone_attribute;
+    return true;
+}
+
+static bool dsdl_closure_clone_offset(const dsdl_closure_t* const self, dsdl_closure_t* const out)
+{
+    if ((self == NULL) || (out == NULL)) {
+        return false;
+    }
+    const dsdl_closure_offset_ctx_t* const ctx = (const dsdl_closure_offset_ctx_t*)self->context;
+    if ((ctx == NULL) || (ctx->dsdl == NULL)) {
+        return false;
+    }
+    dsdl_closure_offset_ctx_t* const clone_ctx = (dsdl_closure_offset_ctx_t*)dsdl_alloc(ctx->dsdl, sizeof(*clone_ctx));
+    if (clone_ctx == NULL) {
+        return false;
+    }
+    clone_ctx->dsdl = ctx->dsdl;
+    clone_ctx->eval = ctx->eval;
+    out->context    = clone_ctx;
+    out->fun        = dsdl_closure_eval_offset;
+    out->cleanup    = dsdl_closure_cleanup_offset;
+    out->clone      = dsdl_closure_clone_offset;
+    return true;
+}
+
+static bool dsdl_make_binary_closure(dsdl_t* const             dsdl,
+                                     const dsdl_op_t           op,
+                                     const dsdl_value_t* const left,
+                                     const dsdl_value_t* const right,
+                                     dsdl_value_t* const       result)
+{
+    dsdl_closure_binary_ctx_t* const ctx = (dsdl_closure_binary_ctx_t*)dsdl_alloc(dsdl, sizeof(*ctx));
+    if (ctx == NULL) {
+        return false;
+    }
+    ctx->dsdl                   = dsdl;
+    ctx->op                     = op;
+    if (!dsdl_value_clone(dsdl, left, &ctx->left)) {
+        dsdl_free(dsdl, ctx);
+        return false;
+    }
+    if (!dsdl_value_clone(dsdl, right, &ctx->right)) {
+        dsdl_value_dispose(dsdl, &ctx->left);
+        dsdl_free(dsdl, ctx);
+        return false;
+    }
+    result->kind                = dsdl_value_deferred;
+    result->flags               = DSDL_VALUE_FLAG_OWNED;
+    result->as.deferred.fun     = dsdl_closure_eval_binary;
+    result->as.deferred.cleanup = dsdl_closure_cleanup_binary;
+    result->as.deferred.clone   = dsdl_closure_clone_binary;
+    result->as.deferred.context = ctx;
+    return true;
+}
+
+static bool dsdl_make_unary_closure(dsdl_t* const             dsdl,
+                                    const dsdl_unary_op_t     op,
+                                    const dsdl_value_t* const operand,
+                                    dsdl_value_t* const       result)
+{
+    dsdl_closure_unary_ctx_t* const ctx = (dsdl_closure_unary_ctx_t*)dsdl_alloc(dsdl, sizeof(*ctx));
+    if (ctx == NULL) {
+        return false;
+    }
+    ctx->dsdl                   = dsdl;
+    ctx->op                     = op;
+    if (!dsdl_value_clone(dsdl, operand, &ctx->operand)) {
+        dsdl_free(dsdl, ctx);
+        return false;
+    }
+    result->kind                = dsdl_value_deferred;
+    result->flags               = DSDL_VALUE_FLAG_OWNED;
+    result->as.deferred.fun     = dsdl_closure_eval_unary;
+    result->as.deferred.cleanup = dsdl_closure_cleanup_unary;
+    result->as.deferred.clone   = dsdl_closure_clone_unary;
+    result->as.deferred.context = ctx;
+    return true;
+}
+
+static bool dsdl_make_attribute_closure(dsdl_t* const             dsdl,
+                                        const dsdl_attr_kind_t    attr,
+                                        const dsdl_value_t* const base,
+                                        dsdl_value_t* const       result)
+{
+    dsdl_closure_attr_ctx_t* const ctx = (dsdl_closure_attr_ctx_t*)dsdl_alloc(dsdl, sizeof(*ctx));
+    if (ctx == NULL) {
+        return false;
+    }
+    ctx->dsdl                   = dsdl;
+    ctx->attr                   = attr;
+    if (!dsdl_value_clone(dsdl, base, &ctx->base)) {
+        dsdl_free(dsdl, ctx);
+        return false;
+    }
+    result->kind                = dsdl_value_deferred;
+    result->flags               = DSDL_VALUE_FLAG_OWNED;
+    result->as.deferred.fun     = dsdl_closure_eval_attribute;
+    result->as.deferred.cleanup = dsdl_closure_cleanup_attribute;
+    result->as.deferred.clone   = dsdl_closure_clone_attribute;
+    result->as.deferred.context = ctx;
+    return true;
+}
+
+static bool dsdl_make_offset_closure(dsdl_t* const dsdl, dsdl_eval_context_t* const eval, dsdl_value_t* const result)
+{
+    if (eval == NULL) {
+        return false;
+    }
+    dsdl_closure_offset_ctx_t* const ctx = (dsdl_closure_offset_ctx_t*)dsdl_alloc(dsdl, sizeof(*ctx));
+    if (ctx == NULL) {
+        return false;
+    }
+    ctx->dsdl                   = dsdl;
+    ctx->eval                   = eval;
+    result->kind                = dsdl_value_deferred;
+    result->flags               = DSDL_VALUE_FLAG_OWNED;
+    result->as.deferred.fun     = dsdl_closure_eval_offset;
+    result->as.deferred.cleanup = dsdl_closure_cleanup_offset;
+    result->as.deferred.clone   = dsdl_closure_clone_offset;
+    result->as.deferred.context = ctx;
+    return true;
+}
+
+static bool dsdl_apply_attribute(dsdl_t* const             dsdl,
+                                 const dsdl_attr_kind_t    attr,
+                                 const dsdl_value_t* const value,
+                                 dsdl_value_t* const       result)
+{
+    if ((value == NULL) || (result == NULL)) {
+        return false;
+    }
+    if (value->kind == dsdl_value_deferred) {
+        return dsdl_make_attribute_closure(dsdl, attr, value, result);
+    }
+    if (value->kind == dsdl_value_set) {
+        return dsdl_set_attribute(value, attr, result);
+    }
+    if (value->kind == dsdl_value_string) {
+        return dsdl_apply_type_attribute(dsdl, value->as.string, attr, result);
+    }
+    return false;
+}
+
+static bool dsdl_apply_unary_op(dsdl_t* const             dsdl,
+                                const dsdl_unary_op_t     op,
+                                const dsdl_value_t* const operand,
+                                dsdl_value_t* const       result)
+{
+    if ((operand == NULL) || (result == NULL)) {
+        return false;
+    }
+    if (operand->kind == dsdl_value_deferred) {
+        return dsdl_make_unary_closure(dsdl, op, operand, result);
+    }
+
+    if (op == dsdl_unary_not) {
+        if (operand->kind != dsdl_value_bool) {
+            return false;
+        }
+        result->kind       = dsdl_value_bool;
+        result->flags      = 0;
+        result->as.boolean = !operand->as.boolean;
+        return true;
+    }
+    if (op == dsdl_unary_neg) {
+        if (operand->kind != dsdl_value_rational) {
+            return false;
+        }
+        result->kind        = dsdl_value_rational;
+        result->flags       = 0;
+        result->as.rational = dsdl_rational_neg(operand->as.rational);
+        return true;
+    }
+    return false;
+}
+
 /// Apply a binary operation to two values.
-static bool dsdl_apply_binary_op(const dsdl_op_t           op,
+static bool dsdl_apply_binary_op(dsdl_t* const             dsdl,
+                                 const dsdl_op_t           op,
                                  const dsdl_value_t* const left,
                                  const dsdl_value_t* const right,
                                  dsdl_value_t* const       result)
 {
-    // Rational arithmetic operations
+    assert((dsdl != NULL) && (left != NULL) && (right != NULL) && (result != NULL));
+
+    if ((left->kind == dsdl_value_deferred) || (right->kind == dsdl_value_deferred)) {
+        return dsdl_make_binary_closure(dsdl, op, left, right, result);
+    }
+
+    if ((left->kind == dsdl_value_set) || (right->kind == dsdl_value_set)) {
+        if ((left->kind == dsdl_value_set) && (right->kind == dsdl_value_set)) {
+            dsdl_value_kind_t left_kind  = dsdl_value_rational;
+            dsdl_value_kind_t right_kind = dsdl_value_rational;
+            if (!dsdl_set_is_homogeneous(left, &left_kind) || !dsdl_set_is_homogeneous(right, &right_kind) ||
+                (left_kind != right_kind)) {
+                return false;
+            }
+
+            const bool subset_lr = dsdl_set_is_subset(left, right);
+            const bool subset_rl = dsdl_set_is_subset(right, left);
+
+            if (op == dsdl_op_eq) {
+                result->kind       = dsdl_value_bool;
+                result->flags      = 0;
+                result->as.boolean = subset_lr && subset_rl;
+                return true;
+            }
+            if (op == dsdl_op_ne) {
+                result->kind       = dsdl_value_bool;
+                result->flags      = 0;
+                result->as.boolean = !(subset_lr && subset_rl);
+                return true;
+            }
+            if (op == dsdl_op_le) {
+                result->kind       = dsdl_value_bool;
+                result->flags      = 0;
+                result->as.boolean = subset_lr;
+                return true;
+            }
+            if (op == dsdl_op_ge) {
+                result->kind       = dsdl_value_bool;
+                result->flags      = 0;
+                result->as.boolean = subset_rl;
+                return true;
+            }
+            if (op == dsdl_op_lt) {
+                result->kind       = dsdl_value_bool;
+                result->flags      = 0;
+                result->as.boolean = subset_lr && !subset_rl;
+                return true;
+            }
+            if (op == dsdl_op_gt) {
+                result->kind       = dsdl_value_bool;
+                result->flags      = 0;
+                result->as.boolean = subset_rl && !subset_lr;
+                return true;
+            }
+            if (op == dsdl_op_bit_or) {
+                return dsdl_set_union(dsdl, left, right, result);
+            }
+            if (op == dsdl_op_bit_and) {
+                return dsdl_set_intersection(dsdl, left, right, result);
+            }
+            if (op == dsdl_op_bit_xor) {
+                return dsdl_set_symdiff(dsdl, left, right, result);
+            }
+            return false;
+        }
+
+        const dsdl_value_t* const set_val     = (left->kind == dsdl_value_set) ? left : right;
+        const dsdl_value_t* const scalar      = (left->kind == dsdl_value_set) ? right : left;
+        const bool                scalar_left = (left->kind != dsdl_value_set);
+
+        if ((op == dsdl_op_add) || (op == dsdl_op_sub) || (op == dsdl_op_mul) || (op == dsdl_op_div) ||
+            (op == dsdl_op_mod) || (op == dsdl_op_pow)) {
+            return dsdl_set_elementwise_op(dsdl, op, set_val, scalar, scalar_left, result);
+        }
+        return false;
+    }
+
     if ((left->kind == dsdl_value_rational) && (right->kind == dsdl_value_rational)) {
         const dsdl_rational_t a = left->as.rational;
         const dsdl_rational_t b = right->as.rational;
 
-        // Arithmetic operators
         if (op == dsdl_op_add) {
             result->kind        = dsdl_value_rational;
+            result->flags       = 0;
             result->as.rational = dsdl_rational_add(a, b);
             return true;
         }
         if (op == dsdl_op_sub) {
             result->kind        = dsdl_value_rational;
+            result->flags       = 0;
             result->as.rational = dsdl_rational_sub(a, b);
             return true;
         }
         if (op == dsdl_op_mul) {
             result->kind        = dsdl_value_rational;
+            result->flags       = 0;
             result->as.rational = dsdl_rational_mul(a, b);
             return true;
         }
         if (op == dsdl_op_div) {
             result->kind        = dsdl_value_rational;
+            result->flags       = 0;
             result->as.rational = dsdl_rational_div(a, b);
             return true;
         }
         if (op == dsdl_op_mod) {
-            // Modulo only defined for integers
             if (dsdl_rational_is_int(a) && dsdl_rational_is_int(b) && (b.num != 0)) {
                 result->kind        = dsdl_value_rational;
+                result->flags       = 0;
                 result->as.rational = dsdl_rational_from_int(a.num % b.num);
                 return true;
             }
@@ -2106,14 +3596,12 @@ static bool dsdl_apply_binary_op(const dsdl_op_t           op,
         }
         if (op == dsdl_op_pow) {
             result->kind = dsdl_value_rational;
+            result->flags = 0;
             if (dsdl_rational_is_int(b)) {
-                // Integer exponent: exact rational arithmetic
                 intmax_t exp            = b.num;
                 result->as.rational.num = 1;
                 result->as.rational.den = 1;
                 if (exp < 0) {
-                    // Negative exponent: invert base
-                    // First ensure denominator fits in intmax_t
                     dsdl_rational_t base = a;
                     while (base.den > (uintmax_t)INTMAX_MAX) {
                         base = dsdl_rational_halve(base);
@@ -2132,20 +3620,16 @@ static bool dsdl_apply_binary_op(const dsdl_op_t           op,
                     }
                 }
             } else {
-                // Non-integer exponent: use floating-point approximation
-                // Per DSDL spec, accuracy is implementation-defined
                 const double base_d   = (double)a.num / (double)a.den;
                 const double exp_d    = (double)b.num / (double)b.den;
                 const double result_d = pow(base_d, exp_d);
                 result->as.rational   = dsdl_rational_from_double(result_d);
                 if (result->as.rational.den == 0) {
-                    return false; // NaN result (e.g., negative base with fractional exponent)
+                    return false;
                 }
             }
             return true;
         }
-
-        // Bitwise operators (integers only)
         if ((op == dsdl_op_bit_or) || (op == dsdl_op_bit_xor) || (op == dsdl_op_bit_and)) {
             if (dsdl_rational_is_int(a) && dsdl_rational_is_int(b)) {
                 intmax_t r = 0;
@@ -2153,20 +3637,20 @@ static bool dsdl_apply_binary_op(const dsdl_op_t           op,
                     r = a.num | b.num;
                 } else if (op == dsdl_op_bit_xor) {
                     r = a.num ^ b.num;
-                } else // dsdl_op_bit_and
-                {
+                } else {
                     r = a.num & b.num;
                 }
                 result->kind        = dsdl_value_rational;
+                result->flags       = 0;
                 result->as.rational = dsdl_rational_from_int(r);
                 return true;
             }
             return false;
         }
 
-        // Comparison operators
         const int cmp = dsdl_rational_cmp(a, b);
         result->kind  = dsdl_value_bool;
+        result->flags = 0;
         if (op == dsdl_op_eq) {
             result->as.boolean = (cmp == 0);
             return true;
@@ -2193,9 +3677,9 @@ static bool dsdl_apply_binary_op(const dsdl_op_t           op,
         }
     }
 
-    // Boolean operations
     if ((left->kind == dsdl_value_bool) && (right->kind == dsdl_value_bool)) {
         result->kind = dsdl_value_bool;
+        result->flags = 0;
         if (op == dsdl_op_or) {
             result->as.boolean = left->as.boolean || right->as.boolean;
             return true;
@@ -2214,72 +3698,42 @@ static bool dsdl_apply_binary_op(const dsdl_op_t           op,
         }
     }
 
-    // _offset_ modulo operation: _offset_ % N -> dsdl_value_offset_mod
-    if ((left->kind == dsdl_value_offset) && (right->kind == dsdl_value_rational) && (op == dsdl_op_mod)) {
-        if (right->as.rational.den != 0) {
-            result->kind        = dsdl_value_offset_mod;
-            result->as.rational = right->as.rational;
-            return true;
-        }
-        return false; // Modulo divisor must be valid (non-zero denominator)
-    }
-
-    // _offset_ attribute arithmetic: _offset_.min / N, _offset_.max / N, etc.
-    // These produce deferred values that will be evaluated during semantic analysis
-    // For now, we just store them as-is (simplification: attribute with division stored in rational)
-    if ((left->kind == dsdl_value_offset_attr) && (right->kind == dsdl_value_rational)) {
-        // Store as a "deferred comparison" - we'll evaluate this during semantic analysis
-        // The value keeps its offset_attr kind, arithmetic deferred to runtime
-        *result = *left; // Copy the offset_attr value; arithmetic will be applied at evaluation time
-        // Store divisor in a way we can use later - for now, we pass through
-        // This is a simplification; full implementation would build expression tree
-        return true;
-    }
-
-    // Comparison of offset expressions with sets: _offset_ % N == {0}
-    // This creates a deferred alignment assertion
-    if ((left->kind == dsdl_value_offset_mod) && (right->kind == dsdl_value_set)) {
-        if (op == dsdl_op_eq) {
-            // Check if right is {0} - the common alignment check pattern
-            if ((right->as.set.count == 1) && (right->as.set.elements[0].kind == dsdl_value_rational) &&
-                (right->as.set.elements[0].as.rational.num == 0) && (right->as.set.elements[0].as.rational.den == 1)) {
-                result->kind                = dsdl_value_rational;
-                result->as.rational.divisor = left->as.rational;
-                return true;
+    if ((left->kind == dsdl_value_string) && (right->kind == dsdl_value_string)) {
+        if (op == dsdl_op_add) {
+            const size_t total = left->as.string.len + right->as.string.len;
+            char*        buf   = NULL;
+            if (total > 0) {
+                buf = (char*)dsdl_alloc(dsdl, total);
+                if (buf == NULL) {
+                    return false;
+                }
+                if (left->as.string.len > 0) {
+                    (void)memcpy(buf, left->as.string.str, left->as.string.len);
+                }
+                if (right->as.string.len > 0) {
+                    (void)memcpy(buf + left->as.string.len, right->as.string.str, right->as.string.len);
+                }
             }
+            result->kind      = dsdl_value_string;
+            result->flags     = DSDL_VALUE_FLAG_OWNED;
+            result->as.string = (wkv_str_t){ .len = total, .str = buf };
+            return true;
         }
-        // For other comparisons or sets, fall through to unsupported
-    }
-
-    // Comparison of offset attributes with numbers: _offset_.count == 1, _offset_.max / 8 <= 63
-    if ((left->kind == dsdl_value_offset_attr) && (right->kind == dsdl_value_rational)) {
-        dsdl_cmp_op_t cmp_op;
         if (op == dsdl_op_eq) {
-            cmp_op = dsdl_cmp_eq;
-        } else if (op == dsdl_op_ne) {
-            cmp_op = dsdl_cmp_ne;
-        } else if (op == dsdl_op_lt) {
-            cmp_op = dsdl_cmp_lt;
-        } else if (op == dsdl_op_le) {
-            cmp_op = dsdl_cmp_le;
-        } else if (op == dsdl_op_gt) {
-            cmp_op = dsdl_cmp_gt;
-        } else if (op == dsdl_op_ge) {
-            cmp_op = dsdl_cmp_ge;
-        } else {
-            return false; // Unsupported comparison operator
+            result->kind       = dsdl_value_bool;
+            result->flags      = 0;
+            result->as.boolean = dsdl_value_equal(left, right);
+            return true;
         }
-
-        if (dsdl_rational_is_int(right->as.rational)) {
-            result->kind                 = dsdl_value_assert_attr;
-            result->as.assert_attr.attr  = left->as.offset_attr;
-            result->as.assert_attr.op    = cmp_op;
-            result->as.assert_attr.value = right->as.rational.num;
+        if (op == dsdl_op_ne) {
+            result->kind       = dsdl_value_bool;
+            result->flags      = 0;
+            result->as.boolean = !dsdl_value_equal(left, right);
             return true;
         }
     }
 
-    return false; // Unsupported operation or type mismatch
+    return false;
 }
 
 // Forward declaration for expression parsing
@@ -2317,13 +3771,10 @@ static bool dsdl_parse_atom(dsdl_parser_t* const parser, dsdl_value_t* const out
     if (ident.str != NULL) {
         // Check for the special _offset_ pseudo-variable
         if ((ident.len == 8) && (memcmp(ident.str, "_offset_", 8) == 0)) {
-            out_value->kind = dsdl_value_offset;
-            return true;
+            return dsdl_make_offset_closure(parser->dsdl, parser->eval_ctx, out_value);
         }
         // For now, just store as a string (will be resolved during semantic analysis)
-        out_value->kind      = dsdl_value_string;
-        out_value->as.string = ident;
-        return true;
+        return dsdl_value_set_string_copy(parser->dsdl, ident, out_value);
     }
 
     return false;
@@ -2345,13 +3796,13 @@ static bool dsdl_parse_unary(dsdl_parser_t* const parser, dsdl_value_t* const ou
         if (!dsdl_parse_unary(parser, &operand)) {
             return false;
         }
-
-        if (operand.kind != dsdl_value_bool) {
-            return false; // NOT only valid for booleans
+        dsdl_value_t result;
+        if (!dsdl_apply_unary_op(parser->dsdl, dsdl_unary_not, &operand, &result)) {
+            dsdl_value_dispose(parser->dsdl, &operand);
+            return false;
         }
-
-        out_value->kind       = dsdl_value_bool;
-        out_value->as.boolean = !operand.as.boolean;
+        dsdl_value_dispose(parser->dsdl, &operand);
+        *out_value = result;
         return true;
     }
 
@@ -2373,13 +3824,13 @@ static bool dsdl_parse_unary(dsdl_parser_t* const parser, dsdl_value_t* const ou
         if (!dsdl_parse_expr_prec(parser, dsdl_prec_exp, &operand)) {
             return false;
         }
-
-        if (operand.kind != dsdl_value_rational) {
-            return false; // Negation only valid for numbers
+        dsdl_value_t result;
+        if (!dsdl_apply_unary_op(parser->dsdl, dsdl_unary_neg, &operand, &result)) {
+            dsdl_value_dispose(parser->dsdl, &operand);
+            return false;
         }
-
-        out_value->kind        = dsdl_value_rational;
-        out_value->as.rational = dsdl_rational_neg(operand.as.rational);
+        dsdl_value_dispose(parser->dsdl, &operand);
+        *out_value = result;
         return true;
     }
 
@@ -2418,24 +3869,24 @@ static bool dsdl_parse_expr_prec(dsdl_parser_t* const parser, const dsdl_prec_t 
             if (attr.str == NULL) {
                 return false;
             }
-            // Handle _offset_.min/max/count
-            if (out_value->kind == dsdl_value_offset) {
-                if ((attr.len == 3) && (memcmp(attr.str, "min", 3) == 0)) {
-                    out_value->kind           = dsdl_value_offset_attr;
-                    out_value->as.offset_attr = dsdl_offset_attr_min;
-                } else if ((attr.len == 3) && (memcmp(attr.str, "max", 3) == 0)) {
-                    out_value->kind           = dsdl_value_offset_attr;
-                    out_value->as.offset_attr = dsdl_offset_attr_max;
-                } else if ((attr.len == 5) && (memcmp(attr.str, "count", 5) == 0)) {
-                    out_value->kind           = dsdl_value_offset_attr;
-                    out_value->as.offset_attr = dsdl_offset_attr_count;
-                } else {
-                    return false; // Unknown _offset_ attribute
+            dsdl_attr_kind_t attr_kind;
+            if (!dsdl_attr_from_ident(attr, &attr_kind)) {
+                if ((out_value->kind == dsdl_value_deferred) || (out_value->kind == dsdl_value_set)) {
+                    dsdl_value_dispose(parser->dsdl, out_value);
+                    return false;
                 }
+                // TODO: Implement other attribute access (e.g., type attributes).
+                // For now, leave the base value unchanged.
                 continue;
             }
-            // TODO: Implement other attribute access (e.g., type attributes)
-            // For now, we'll just skip unknown attribute access
+
+            dsdl_value_t attr_value;
+            if (!dsdl_apply_attribute(parser->dsdl, attr_kind, out_value, &attr_value)) {
+                dsdl_value_dispose(parser->dsdl, out_value);
+                return false;
+            }
+            dsdl_value_dispose(parser->dsdl, out_value);
+            *out_value = attr_value;
             continue;
         }
 
@@ -2448,14 +3899,19 @@ static bool dsdl_parse_expr_prec(dsdl_parser_t* const parser, const dsdl_prec_t 
 
         dsdl_value_t right;
         if (!dsdl_parse_expr_prec(parser, next_prec, &right)) {
+            dsdl_value_dispose(parser->dsdl, out_value);
             return false;
         }
 
         // Apply operator
         dsdl_value_t result;
-        if (!dsdl_apply_binary_op(op, out_value, &right, &result)) {
+        if (!dsdl_apply_binary_op(parser->dsdl, op, out_value, &right, &result)) {
+            dsdl_value_dispose(parser->dsdl, out_value);
+            dsdl_value_dispose(parser->dsdl, &right);
             return false;
         }
+        dsdl_value_dispose(parser->dsdl, out_value);
+        dsdl_value_dispose(parser->dsdl, &right);
         *out_value = result;
     }
 
@@ -2974,11 +4430,13 @@ struct dsdl_parsed_def_t
     wkv_str_t*          response_field_names;
 
     // Directives
-    bool     has_extent;
-    uint64_t extent_bits;
-    bool     is_sealed;
-    bool     is_deprecated;
-    bool     is_union;
+    bool         has_extent;
+    uint64_t     extent_bits;
+    bool         has_extent_expr;
+    dsdl_value_t extent_expr;
+    bool         is_sealed;
+    bool         is_deprecated;
+    bool         is_union;
 
     // Assertions (@assert directives)
     // Each assertion is stored with the field index at which it appeared,
@@ -3036,6 +4494,19 @@ static bool dsdl_parsed_def_init(dsdl_parsed_def_t* const def, dsdl_t* const dsd
 static void dsdl_parsed_def_deinit(dsdl_parsed_def_t* const def)
 {
     if (def->dsdl != NULL) {
+        if (def->const_values != NULL) {
+            for (size_t i = 0; i < def->const_count; i++) {
+                dsdl_value_dispose(def->dsdl, &def->const_values[i]);
+            }
+        }
+        if (def->assert_exprs != NULL) {
+            for (size_t i = 0; i < def->assert_count; i++) {
+                dsdl_value_dispose(def->dsdl, &def->assert_exprs[i]);
+            }
+        }
+        if (def->has_extent_expr) {
+            dsdl_value_dispose(def->dsdl, &def->extent_expr);
+        }
         dsdl_free(def->dsdl, def->field_types);
         dsdl_free(def->dsdl, def->field_names);
         dsdl_free(def->dsdl, def->const_values);
@@ -3187,6 +4658,9 @@ static bool dsdl_parse_definition(dsdl_parser_t* const parser, dsdl_parsed_def_t
                 DSDL_TRACE(
                   parser->dsdl, "Constant '%.*s' at line %zu", (int)stmt.name.len, stmt.name.str, parser->line);
                 if (!dsdl_parsed_def_ensure_const_capacity(out_def)) {
+                    if (stmt.has_value) {
+                        dsdl_value_dispose(parser->dsdl, &stmt.value);
+                    }
                     return false; // OOM
                 }
                 const size_t idx           = out_def->const_count++;
@@ -3211,23 +4685,44 @@ static bool dsdl_parse_definition(dsdl_parser_t* const parser, dsdl_parsed_def_t
                 // Process known directives
                 if ((stmt.name.len == 6) && (memcmp(stmt.name.str, "sealed", 6) == 0)) {
                     out_def->is_sealed = true;
+                    if (stmt.has_value) {
+                        dsdl_value_dispose(parser->dsdl, &stmt.value);
+                    }
                 } else if ((stmt.name.len == 6) && (memcmp(stmt.name.str, "extent", 6) == 0)) {
-                    if (!stmt.has_value || (stmt.value.kind != dsdl_value_rational) ||
-                        !dsdl_rational_is_int(stmt.value.as.rational)) {
+                    if (!stmt.has_value) {
                         return false; // Invalid extent
                     }
-                    out_def->has_extent  = true;
-                    out_def->extent_bits = (uint64_t)stmt.value.as.rational.num;
+                    if ((stmt.value.kind == dsdl_value_rational) && dsdl_rational_is_int(stmt.value.as.rational)) {
+                        out_def->has_extent  = true;
+                        out_def->extent_bits = (uint64_t)stmt.value.as.rational.num;
+                        dsdl_value_dispose(parser->dsdl, &stmt.value);
+                    } else if (stmt.value.kind == dsdl_value_deferred) {
+                        out_def->has_extent_expr = true;
+                        out_def->has_extent      = true;
+                        out_def->extent_expr     = stmt.value;
+                    } else {
+                        if (stmt.has_value) {
+                            dsdl_value_dispose(parser->dsdl, &stmt.value);
+                        }
+                        return false; // Invalid extent
+                    }
                 } else if ((stmt.name.len == 10) && (memcmp(stmt.name.str, "deprecated", 10) == 0)) {
                     out_def->is_deprecated = true;
+                    if (stmt.has_value) {
+                        dsdl_value_dispose(parser->dsdl, &stmt.value);
+                    }
                 } else if ((stmt.name.len == 5) && (memcmp(stmt.name.str, "union", 5) == 0)) {
                     out_def->is_union = true;
+                    if (stmt.has_value) {
+                        dsdl_value_dispose(parser->dsdl, &stmt.value);
+                    }
                 } else if ((stmt.name.len == 6) && (memcmp(stmt.name.str, "assert", 6) == 0)) {
                     // Store assertion for later validation during semantic analysis
                     if (!stmt.has_value) {
                         return false; // @assert requires an expression
                     }
                     if (!dsdl_parsed_def_ensure_assert_capacity(out_def)) {
+                        dsdl_value_dispose(parser->dsdl, &stmt.value);
                         return false; // OOM
                     }
                     const size_t idx           = out_def->assert_count++;
@@ -3236,6 +4731,10 @@ static bool dsdl_parse_definition(dsdl_parser_t* const parser, dsdl_parsed_def_t
                     out_def->assert_field_idx[idx] =
                       parsing_response ? out_def->response_field_count : out_def->field_count;
                     out_def->assert_in_response[idx] = parsing_response;
+                } else {
+                    if (stmt.has_value) {
+                        dsdl_value_dispose(parser->dsdl, &stmt.value);
+                    }
                 }
                 // @print is informational only, ignore for now
                 break;
@@ -3973,71 +5472,22 @@ static dsdl_bls_t*   dsdl_type_bls(dsdl_t* self, dsdl_type_t* type_ptr);
 
 /// Evaluate an assertion expression with the given offset BLS.
 /// Returns true if the assertion passes, false if it fails.
-static bool dsdl_eval_assertion(dsdl_t* const self, const dsdl_value_t* const expr, dsdl_bls_t* const offset)
+static bool dsdl_eval_assertion(dsdl_t* const              self,
+                                dsdl_eval_context_t* const eval,
+                                dsdl_value_t* const        expr,
+                                dsdl_bls_t* const          offset)
 {
-    assert((self != NULL) && (expr != NULL) && (offset != NULL));
-    switch (expr->kind) {
-        case dsdl_value_bool:
-            // Immediate boolean - just return its value
-            return expr->as.boolean;
+    assert((self != NULL) && (eval != NULL) && (expr != NULL) && (offset != NULL));
+    eval->offset = offset;
 
-        case dsdl_value_assert_align: {
-            // Alignment assertion: _offset_ % N == {0}
-            // Divisor must be a positive integer for alignment check
-            const dsdl_rational_t divisor = expr->as.rational;
-            if (!dsdl_rational_is_int(divisor) || (divisor.num <= 0)) {
-                return false; // Invalid divisor for alignment check
-            }
-            return dsdl_bls_is_aligned(self, offset, (uint64_t)divisor.num);
-        }
-
-        case dsdl_value_assert_attr: {
-            // Attribute assertion: _offset_.attr op value
-            uint64_t offset_val;
-            switch (expr->as.assert_attr.attr) {
-                case dsdl_offset_attr_min:
-                    offset_val = dsdl_bls_min(offset);
-                    break;
-                case dsdl_offset_attr_max:
-                    offset_val = dsdl_bls_max(offset);
-                    break;
-                case dsdl_offset_attr_count:
-                    // Count is the number of distinct values - for now, use 1 if fixed, 0 otherwise
-                    offset_val = dsdl_bls_is_fixed(offset) ? 1 : 0;
-                    break;
-            }
-
-            const intmax_t expected = expr->as.assert_attr.value;
-            switch (expr->as.assert_attr.op) {
-                case dsdl_cmp_eq:
-                    return (intmax_t)offset_val == expected;
-                case dsdl_cmp_ne:
-                    return (intmax_t)offset_val != expected;
-                case dsdl_cmp_lt:
-                    return (intmax_t)offset_val < expected;
-                case dsdl_cmp_le:
-                    return (intmax_t)offset_val <= expected;
-                case dsdl_cmp_gt:
-                    return (intmax_t)offset_val > expected;
-                case dsdl_cmp_ge:
-                    return (intmax_t)offset_val >= expected;
-            }
-            return false;
-        }
-
-        case dsdl_value_rational:
-        case dsdl_value_string:
-        case dsdl_value_set:
-        case dsdl_value_type:
-        case dsdl_value_offset:
-        case dsdl_value_offset_mod:
-        case dsdl_value_offset_attr:
-            // These are intermediate expression types, not final assertions.
-            // Per spec, wrong expression kinds in assertions must fail.
-            DSDL_TRACE(self, "Non-assertion expression kind in assertion: %d (FAIL)", (int)expr->kind);
-            return false;
+    if (!dsdl_resolve_value(expr)) {
+        return false;
     }
-    return false; // Unreachable, but needed for some compilers
+    if (expr->kind != dsdl_value_bool) {
+        DSDL_TRACE(self, "Non-boolean expression in assertion: %d (FAIL)", (int)expr->kind);
+        return false;
+    }
+    return expr->as.boolean;
 }
 
 const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_name)
@@ -4097,10 +5547,11 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_
     DSDL_TRACE(self, "Read %zu bytes", file_content.len);
 
     // Parse the file
-    dsdl_parser_t     parser;
-    dsdl_parsed_def_t def;
+    dsdl_parser_t       parser;
+    dsdl_parsed_def_t   def;
+    dsdl_eval_context_t eval_ctx = { .dsdl = self, .offset = NULL };
 
-    dsdl_parser_init(&parser, self, file_content.str, file_content.len);
+    dsdl_parser_init(&parser, self, file_content.str, file_content.len, &eval_ctx);
 
     if (!dsdl_parsed_def_init(&def, self)) {
         dsdl_free_str(self, file_content.str);
@@ -4197,7 +5648,7 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_
     // Semantic analysis: compute _offset_ and validate assertions
     // _offset_ is the bit offset before each field. For structs, it accumulates.
     // For unions, each variant starts at tag_bits offset.
-    if (def.assert_count > 0) {
+    if ((def.assert_count > 0) || def.has_extent_expr) {
         // Compute offset at each field position and validate assertions that appear there
         dsdl_bls_t* offset = dsdl_bls_new_single(self, 0); // Start at 0
 
@@ -4219,7 +5670,7 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_
                                i,
                                dsdl_bls_min(offset),
                                dsdl_bls_max(offset));
-                    if (!dsdl_eval_assertion(self, &def.assert_exprs[a], offset)) {
+                    if (!dsdl_eval_assertion(self, &eval_ctx, &def.assert_exprs[a], offset)) {
                         DSDL_TRACE(self, "Assertion FAILED at field %zu", i);
                         dsdl_parsed_def_deinit(&def);
                         dsdl_free(self, block);
@@ -4241,13 +5692,25 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_
         for (size_t a = 0; a < def.assert_count; a++) {
             if (!def.assert_in_response[a] && (def.assert_field_idx[a] == def.field_count)) {
                 DSDL_TRACE(self, "Final assertion, offset min=%zu max=%zu", dsdl_bls_min(offset), dsdl_bls_max(offset));
-                if (!dsdl_eval_assertion(self, &def.assert_exprs[a], offset)) {
+                if (!dsdl_eval_assertion(self, &eval_ctx, &def.assert_exprs[a], offset)) {
                     DSDL_TRACE(self, "Final assertion FAILED");
                     dsdl_parsed_def_deinit(&def);
                     dsdl_free(self, block);
                     return NULL; // Assertion failed
                 }
             }
+        }
+
+        if (def.has_extent_expr) {
+            eval_ctx.offset         = offset;
+            if (!dsdl_resolve_value(&def.extent_expr) || (def.extent_expr.kind != dsdl_value_rational) ||
+                !dsdl_rational_is_int(def.extent_expr.as.rational) || (def.extent_expr.as.rational.num < 0)) {
+                DSDL_TRACE(self, "Extent expression evaluation FAILED");
+                dsdl_parsed_def_deinit(&def);
+                dsdl_free(self, block);
+                return NULL;
+            }
+            def.extent_bits = (uint64_t)def.extent_expr.as.rational.num;
         }
     }
 
@@ -4616,7 +6079,7 @@ typedef struct
     unsigned char* data;          ///< Pointer to the byte buffer
     uint64_t       capacity_bits; ///< Total capacity in bits
     uint64_t       offset_bits;   ///< Current bit position
-    bool           error;         ///< Set on deserialization error (e.g., array overflow)
+    bool           error;         ///< Set on serialization or deserialization error
 } dsdl_bitbuf_t;
 
 /// Write up to 64 bits to the buffer, little-endian.
@@ -4626,12 +6089,15 @@ static void dsdl_bitbuf_write(dsdl_bitbuf_t* const buf, uint64_t value, uint64_t
     if ((buf == NULL) || (bits == 0)) {
         return;
     }
+    if (buf->error) {
+        return;
+    }
+    if ((bits > 64) || ((buf->offset_bits + bits) > buf->capacity_bits)) {
+        buf->error = true;
+        return;
+    }
 
     while (bits > 0) {
-        if (buf->offset_bits >= buf->capacity_bits) {
-            return; // Buffer overflow - stop writing
-        }
-
         const uint64_t byte_index    = buf->offset_bits / 8;
         const uint64_t bit_in_byte   = buf->offset_bits % 8;
         const uint64_t bits_in_byte  = 8 - bit_in_byte;
@@ -4652,10 +6118,16 @@ static void dsdl_bitbuf_write(dsdl_bitbuf_t* const buf, uint64_t value, uint64_t
 }
 
 /// Read up to 64 bits from the buffer, little-endian.
-/// If the buffer is exhausted, remaining bits are treated as zero (implicit zero extension).
 static uint64_t dsdl_bitbuf_read(dsdl_bitbuf_t* const buf, uint64_t bits)
 {
     if ((buf == NULL) || (bits == 0) || (bits > 64)) {
+        return 0;
+    }
+    if (buf->error) {
+        return 0;
+    }
+    if ((buf->offset_bits + bits) > buf->capacity_bits) {
+        buf->error = true;
         return 0;
     }
 
@@ -4663,11 +6135,6 @@ static uint64_t dsdl_bitbuf_read(dsdl_bitbuf_t* const buf, uint64_t bits)
     uint64_t bit_shift = 0;
 
     while (bits > 0) {
-        if (buf->offset_bits >= buf->capacity_bits) {
-            // Implicit zero extension - remaining bits are zero
-            break;
-        }
-
         const uint64_t byte_index   = buf->offset_bits / 8;
         const uint64_t bit_in_byte  = buf->offset_bits % 8;
         const uint64_t bits_in_byte = 8 - bit_in_byte;
@@ -4690,7 +6157,7 @@ static uint64_t dsdl_bitbuf_read(dsdl_bitbuf_t* const buf, uint64_t bits)
 /// Align the buffer to the next byte boundary by writing zero padding bits.
 static void dsdl_bitbuf_align_write(dsdl_bitbuf_t* const buf)
 {
-    if (buf == NULL) {
+    if ((buf == NULL) || buf->error) {
         return;
     }
     const uint64_t remainder = buf->offset_bits % 8;
@@ -4702,12 +6169,17 @@ static void dsdl_bitbuf_align_write(dsdl_bitbuf_t* const buf)
 /// Align the buffer to the next byte boundary by skipping bits during read.
 static void dsdl_bitbuf_align_read(dsdl_bitbuf_t* const buf)
 {
-    if (buf == NULL) {
+    if ((buf == NULL) || buf->error) {
         return;
     }
     const uint64_t remainder = buf->offset_bits % 8;
     if (remainder != 0) {
-        buf->offset_bits += 8 - remainder;
+        const uint64_t advance = 8 - remainder;
+        if ((buf->offset_bits + advance) > buf->capacity_bits) {
+            buf->error = true;
+            return;
+        }
+        buf->offset_bits += advance;
     }
 }
 
@@ -4779,10 +6251,31 @@ static float dsdl_float16_unpack(const uint16_t value)
 // Primitive serialization helpers
 // ============================================================================
 
+static bool dsdl_uint_fits_bits(const uint64_t value, const uint64_t bits)
+{
+    if (bits >= 64) {
+        return true;
+    }
+    return value <= ((1ULL << bits) - 1ULL);
+}
+
+static bool dsdl_int_fits_bits(const int64_t value, const uint64_t bits)
+{
+    if (bits >= 64) {
+        return (value >= INT64_MIN) && (value <= INT64_MAX);
+    }
+    const int64_t max = (int64_t)((1ULL << (bits - 1U)) - 1ULL);
+    const int64_t min = -((int64_t)(1ULL << (bits - 1U)));
+    return (value >= min) && (value <= max);
+}
+
 /// Write a primitive value to the buffer based on its type.
 static void dsdl_serialize_primitive(dsdl_bitbuf_t* const buf, const dsdl_type_t type, const void* const value)
 {
     if ((buf == NULL) || (value == NULL)) {
+        return;
+    }
+    if (buf->error) {
         return;
     }
 
@@ -4828,14 +6321,38 @@ static void dsdl_serialize_primitive(dsdl_bitbuf_t* const buf, const dsdl_type_t
     if (dsdl_type_is_int(type) || dsdl_type_is_uint(type) || (type == DSDL_BYTE)) {
         // Read the value based on size, then write the appropriate number of bits
         uint64_t raw = 0;
-        if (bits <= 8) {
-            raw = *(const uint_least8_t*)value;
-        } else if (bits <= 16) {
-            raw = *(const uint_least16_t*)value;
-        } else if (bits <= 32) {
-            raw = *(const uint_least32_t*)value;
+        if (dsdl_type_is_int(type)) {
+            int64_t sval = 0;
+            if (bits <= 8) {
+                sval = *(const int_least8_t*)value;
+            } else if (bits <= 16) {
+                sval = *(const int_least16_t*)value;
+            } else if (bits <= 32) {
+                sval = *(const int_least32_t*)value;
+            } else {
+                sval = *(const int_least64_t*)value;
+            }
+            if (!dsdl_int_fits_bits(sval, bits)) {
+                buf->error = true;
+                return;
+            }
+            raw = (uint64_t)sval;
         } else {
-            raw = *(const uint_least64_t*)value;
+            uint64_t uval = 0;
+            if (bits <= 8) {
+                uval = *(const uint_least8_t*)value;
+            } else if (bits <= 16) {
+                uval = *(const uint_least16_t*)value;
+            } else if (bits <= 32) {
+                uval = *(const uint_least32_t*)value;
+            } else {
+                uval = *(const uint_least64_t*)value;
+            }
+            if (!dsdl_uint_fits_bits(uval, bits)) {
+                buf->error = true;
+                return;
+            }
+            raw = uval;
         }
         dsdl_bitbuf_write(buf, raw, bits);
         return;
@@ -4846,6 +6363,9 @@ static void dsdl_serialize_primitive(dsdl_bitbuf_t* const buf, const dsdl_type_t
 static void dsdl_deserialize_primitive(dsdl_bitbuf_t* const buf, const dsdl_type_t type, void* const value)
 {
     if ((buf == NULL) || (value == NULL)) {
+        return;
+    }
+    if (buf->error) {
         return;
     }
 
@@ -4926,13 +6446,17 @@ static void dsdl_serialize_composite_content(dsdl_bitbuf_t* const               
                                              const dsdl_type_composite_t* const composite,
                                              const void* const                  value_ptr)
 {
+    if ((buf == NULL) || (composite == NULL) || (value_ptr == NULL) || buf->error) {
+        return;
+    }
     if (composite->type == DSDL_COMPOSITE_UNION) {
         // Union: value_ptr is dsdl_value_union_t*
         const dsdl_value_union_t* uval = (const dsdl_value_union_t*)value_ptr;
         const size_t              tag  = uval->tag;
 
         if (tag >= composite->field_count) {
-            return; // Invalid tag
+            buf->error = true;
+            return;
         }
 
         // Write tag bits
@@ -4990,6 +6514,9 @@ static void dsdl_deserialize_composite_content(dsdl_bitbuf_t* const             
                                                const dsdl_type_composite_t* const composite,
                                                void* const                        value_ptr)
 {
+    if ((buf == NULL) || (composite == NULL) || (value_ptr == NULL) || buf->error) {
+        return;
+    }
     if (composite->type == DSDL_COMPOSITE_UNION) {
         // Union: value_ptr is dsdl_value_union_t*
         dsdl_value_union_t* uval = (dsdl_value_union_t*)value_ptr;
@@ -4997,9 +6524,13 @@ static void dsdl_deserialize_composite_content(dsdl_bitbuf_t* const             
         // Read tag
         const uint_least8_t tag_bits = dsdl_union_tag_bits(composite->field_count);
         size_t              tag      = (size_t)dsdl_bitbuf_read(buf, tag_bits);
+        if (buf->error) {
+            return;
+        }
 
         if (tag >= composite->field_count) {
-            tag = 0; // Invalid tag, default to first variant
+            buf->error = true;
+            return;
         }
 
         // Store tag
@@ -5050,7 +6581,7 @@ static void dsdl_deserialize_composite(dsdl_bitbuf_t* const               buf,
 /// Serialize any type (primitive, array, or composite).
 static void dsdl_serialize_type(dsdl_bitbuf_t* const buf, const dsdl_type_t* const type_ptr, const void* const value)
 {
-    if ((buf == NULL) || (type_ptr == NULL) || (value == NULL)) {
+    if ((buf == NULL) || (type_ptr == NULL) || (value == NULL) || buf->error) {
         return;
     }
 
@@ -5083,7 +6614,15 @@ static void dsdl_serialize_type(dsdl_bitbuf_t* const buf, const dsdl_type_t* con
 
             // Write length prefix
             const uint_least8_t prefix_bits  = dsdl_array_length_prefix_bits(arr->capacity);
-            const uint64_t      actual_count = (var->count <= arr->capacity) ? var->count : arr->capacity;
+            if (var->count > arr->capacity) {
+                buf->error = true;
+                return;
+            }
+            if ((var->count > 0) && (var->members == NULL)) {
+                buf->error = true;
+                return;
+            }
+            const uint64_t actual_count = var->count;
             dsdl_bitbuf_write(buf, actual_count, prefix_bits);
 
             // Write elements from members pointer
@@ -5111,29 +6650,43 @@ static void dsdl_serialize_type(dsdl_bitbuf_t* const buf, const dsdl_type_t* con
         } else {
             // Delimited composite: byte-align, write 32-bit delimiter, then byte-aligned content
             dsdl_bitbuf_align_write(buf);
+            if (buf->error) {
+                return;
+            }
 
             // Remember position for delimiter
             const size_t delimiter_byte_pos = buf->offset_bits / 8;
 
             // Write placeholder delimiter (32 bits = 4 bytes)
             dsdl_bitbuf_write(buf, 0, 32);
+            if (buf->error) {
+                return;
+            }
 
             // Serialize content
             const size_t content_start = buf->offset_bits;
             dsdl_serialize_composite_content(buf, composite, value);
+            if (buf->error) {
+                return;
+            }
 
             // Byte-align content
             dsdl_bitbuf_align_write(buf);
+            if (buf->error) {
+                return;
+            }
 
             // Calculate content size and update delimiter
             const size_t content_bytes = (buf->offset_bits - content_start + 7) / 8;
-            if (delimiter_byte_pos + 4 <= buf->capacity_bits / 8) {
-                // Write delimiter (little-endian 32-bit)
-                buf->data[delimiter_byte_pos + 0] = (unsigned char)(content_bytes & 0xFFU);
-                buf->data[delimiter_byte_pos + 1] = (unsigned char)((content_bytes >> 8) & 0xFFU);
-                buf->data[delimiter_byte_pos + 2] = (unsigned char)((content_bytes >> 16) & 0xFFU);
-                buf->data[delimiter_byte_pos + 3] = (unsigned char)((content_bytes >> 24) & 0xFFU);
+            if (content_bytes > UINT32_MAX) {
+                buf->error = true;
+                return;
             }
+            // Write delimiter (little-endian 32-bit)
+            buf->data[delimiter_byte_pos + 0] = (unsigned char)(content_bytes & 0xFFU);
+            buf->data[delimiter_byte_pos + 1] = (unsigned char)((content_bytes >> 8) & 0xFFU);
+            buf->data[delimiter_byte_pos + 2] = (unsigned char)((content_bytes >> 16) & 0xFFU);
+            buf->data[delimiter_byte_pos + 3] = (unsigned char)((content_bytes >> 24) & 0xFFU);
         }
         return;
     }
@@ -5142,7 +6695,7 @@ static void dsdl_serialize_type(dsdl_bitbuf_t* const buf, const dsdl_type_t* con
 /// Deserialize any type (primitive, array, or composite).
 static void dsdl_deserialize_type(dsdl_bitbuf_t* const buf, const dsdl_type_t* const type_ptr, void* const value)
 {
-    if ((buf == NULL) || (type_ptr == NULL) || (value == NULL)) {
+    if ((buf == NULL) || (type_ptr == NULL) || (value == NULL) || buf->error) {
         return;
     }
 
@@ -5176,14 +6729,22 @@ static void dsdl_deserialize_type(dsdl_bitbuf_t* const buf, const dsdl_type_t* c
             // Read length prefix
             const uint_least8_t prefix_bits    = dsdl_array_length_prefix_bits(arr->capacity);
             uint64_t            count_from_msg = dsdl_bitbuf_read(buf, prefix_bits);
+            if (buf->error) {
+                return;
+            }
 
-            // Clamp to type capacity (message can't exceed type definition)
+            // Validate against type capacity (message can't exceed type definition)
             if (count_from_msg > arr->capacity) {
-                count_from_msg = arr->capacity;
+                buf->error = true;
+                return;
             }
 
             // Fail if user buffer is too small
             if (count_from_msg > var->count) {
+                buf->error = true;
+                return;
+            }
+            if ((count_from_msg > 0) && (var->members == NULL)) {
                 buf->error = true;
                 return;
             }
@@ -5216,18 +6777,36 @@ static void dsdl_deserialize_type(dsdl_bitbuf_t* const buf, const dsdl_type_t* c
         } else {
             // Delimited composite: byte-align, read 32-bit delimiter, then deserialize content
             dsdl_bitbuf_align_read(buf);
+            if (buf->error) {
+                return;
+            }
 
             // Read delimiter (32 bits = content size in bytes)
             const uint32_t delimiter = (uint32_t)dsdl_bitbuf_read(buf, 32);
+            if (buf->error) {
+                return;
+            }
 
             // Remember where content starts
             const uint64_t content_start_bits = buf->offset_bits;
+            const uint64_t content_end_bits   = content_start_bits + ((uint64_t)delimiter * 8U);
+            if (content_end_bits > buf->capacity_bits) {
+                buf->error = true;
+                return;
+            }
 
             // Deserialize content
             dsdl_deserialize_composite_content(buf, composite, value);
+            if (buf->error) {
+                return;
+            }
+
+            if (buf->offset_bits > content_end_bits) {
+                buf->error = true;
+                return;
+            }
 
             // Skip to end of delimited content (in case there's extra data from newer version)
-            const uint64_t content_end_bits = content_start_bits + ((uint64_t)delimiter * 8);
             if (content_end_bits > buf->offset_bits) {
                 buf->offset_bits = content_end_bits;
             }
@@ -5249,7 +6828,7 @@ size_t dsdl_serialize(const dsdl_type_composite_t* const type,
                       void* const                        output)
 {
     if ((type == NULL) || (value == NULL) || (output == NULL) || (output_size == 0)) {
-        return 0;
+        return SIZE_MAX;
     }
 
     // Zero-initialize output buffer
@@ -5259,10 +6838,15 @@ size_t dsdl_serialize(const dsdl_type_composite_t* const type,
         .data          = (unsigned char*)output,
         .capacity_bits = output_size * 8,
         .offset_bits   = 0,
+        .error         = false,
     };
 
     // Serialize the composite type with the provided value
     dsdl_serialize_composite(&buf, type, value);
+
+    if (buf.error) {
+        return SIZE_MAX;
+    }
 
     // Return bytes written (rounded up)
     return (buf.offset_bits + 7) / 8;
@@ -5274,7 +6858,7 @@ size_t dsdl_deserialize(const dsdl_type_composite_t* const type,
                         const void* const                  input)
 {
     if ((type == NULL) || (value == NULL) || (input == NULL) || (input_size == 0)) {
-        return 0;
+        return SIZE_MAX;
     }
 
     dsdl_bitbuf_t buf = {
@@ -5287,9 +6871,9 @@ size_t dsdl_deserialize(const dsdl_type_composite_t* const type,
     // Deserialize the composite type into the provided value buffer
     dsdl_deserialize_composite(&buf, type, value);
 
-    // Return 0 on error, otherwise bytes consumed (rounded up)
+    // Return SIZE_MAX on error, otherwise bytes consumed (rounded up)
     if (buf.error) {
-        return 0;
+        return SIZE_MAX;
     }
     return (buf.offset_bits + 7) / 8;
 }
