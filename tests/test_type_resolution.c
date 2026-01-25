@@ -202,6 +202,20 @@ static const dsdl_value_t* find_constant(const dsdl_type_composite_t* const type
     return NULL;
 }
 
+static const dsdl_type_t* find_constant_type(const dsdl_type_composite_t* const type, const char* const name)
+{
+    if ((type == NULL) || (name == NULL) || (type->constant_types == NULL)) {
+        return NULL;
+    }
+    const size_t name_len = strlen(name);
+    for (size_t i = 0; i < type->constant_count; i++) {
+        if ((type->constant_names[i].len == name_len) && (memcmp(type->constant_names[i].str, name, name_len) == 0)) {
+            return type->constant_types[i];
+        }
+    }
+    return NULL;
+}
+
 static const dsdl_type_t* find_field_type(const dsdl_type_composite_t* const type, const char* const name)
 {
     if ((type == NULL) || (name == NULL)) {
@@ -493,6 +507,35 @@ static void test_constants_evaluated(void)
     TEST_ASSERT_NOT_NULL(val);
     TEST_ASSERT_EQUAL(dsdl_value_rational, val->kind);
     assert_intmax_eq(65, val->as.rational.num);
+
+    teardown_dsdl();
+}
+
+static void test_constant_types_exposed(void)
+{
+    setup_dsdl();
+
+    TEST_ASSERT_TRUE(add_namespace_rel("test_dsdl_root_namespaces"));
+
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("validation.Literals.0.1"));
+    TEST_ASSERT_NOT_NULL(type);
+    TEST_ASSERT_NOT_NULL(type->constant_types);
+
+    const dsdl_type_t* ctype = find_constant_type(type, "BOOL_TRUE");
+    TEST_ASSERT_NOT_NULL(ctype);
+    TEST_ASSERT_EQUAL(DSDL_BOOL, *ctype);
+
+    ctype = find_constant_type(type, "DECIMAL");
+    TEST_ASSERT_NOT_NULL(ctype);
+    TEST_ASSERT_EQUAL(DSDL_UINT(32), *ctype);
+
+    ctype = find_constant_type(type, "REAL_POINT");
+    TEST_ASSERT_NOT_NULL(ctype);
+    TEST_ASSERT_EQUAL(DSDL_FLOAT(64), *ctype);
+
+    ctype = find_constant_type(type, "CHAR_UPPER_A");
+    TEST_ASSERT_NOT_NULL(ctype);
+    TEST_ASSERT_EQUAL(DSDL_UINT(8), *ctype);
 
     teardown_dsdl();
 }
@@ -803,6 +846,7 @@ int main(void)
     RUN_TEST(test_load_service_with_fixed_port_id);
     RUN_TEST(test_load_type_without_fixed_port_id);
     RUN_TEST(test_constants_evaluated);
+    RUN_TEST(test_constant_types_exposed);
     RUN_TEST(test_type_constant_and_attribute_access);
     RUN_TEST(test_type_attributes_in_asserts);
     RUN_TEST(test_array_capacity_expressions);

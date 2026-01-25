@@ -45,4 +45,4 @@ The code must not make assumptions about the execution platform (pointer width, 
 
 ## Known issues (incomplete list)
 
-Currently nothing.
+- Fix memory leaks.

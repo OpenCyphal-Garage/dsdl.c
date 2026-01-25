@@ -18,23 +18,22 @@ at runtime and provides serialization/deserialization.
 ## Current Status
 
 - **Phase 0 Infrastructure:** CMake + Unity + C++20 API test are in place; x86/x64 test matrix is green.
-  Coverage target exists but needs verified GCC/Clang behavior and docs. No CI and no parity tooling yet.
+  Coverage target is configured for GCC/Clang with gcovr/llvm-cov support; verification pending.
 - **Phase 1 PEG Parser:** Implemented and tested.
 - **Phase 2 Semantic Analysis:** Implemented (type resolution, constants, assertions, extents, response types,
   fixed port ID). Needs full parity verification.
 - **Phase 3 Serialization/Deserialization:** Implemented with basic validation and `SIZE_MAX` error signaling.
   Full cross-validation against Nunavut is missing; truncation/saturation parity needs confirmation.
-- **Phase 4 Testing/Validation:** Unit tests exist; coverage reporting and cross-validation harnesses missing.
+- **Phase 4 Testing/Validation:** Unit tests exist; parity tools (`dsdl_to_dsdl`, `dsdl_to_json`) added.
+  Comparator scripts and cross-validation harnesses are still missing.
 - **Phase 5 Polish/Docs:** Deferred.
 
 
 ## Next Steps
 
-1. Coverage: verify and document coverage targets for GCC and Clang.
-2. Parity tools: add standalone executables under `tools/`:
-   - `dsdl_to_dsdl`: emit normalized DSDL with annotations using public API only.
-   - `dsdl_to_json`: emit stable JSON using public API only.
-3. PyDSDL comparator: Python script to compare outputs against PyDSDL for all valid/invalid namespaces.
+1. Coverage: verify GCC/Clang coverage output (gcovr/llvm-cov) and document caveats.
+2. PyDSDL comparator: Python script to compare `dsdl_to_dsdl` and `dsdl_to_json` outputs against PyDSDL for valid/invalid namespaces.
+3. Full-namespace parse tests using the tools and reference namespaces.
 4. Nunavut cross-validation: generate Nunavut C code + auto-generate a C test that compares dsdl.c
    serialization byte-for-byte for deterministic randomized values.
 5. Fix mismatches and add targeted regression tests.
@@ -57,8 +56,8 @@ at runtime and provides serialization/deserialization.
 ### 0.3 Verification Infrastructure
 
 - Standalone tools in `tools/` (not part of the library):
-  - `dsdl_to_dsdl`: normalized DSDL + annotation comments.
-  - `dsdl_to_json`: stable machine-readable JSON for parity checks.
+  - `dsdl_to_dsdl`: normalized DSDL using declared constant types from the public API (no inference).
+  - `dsdl_to_json`: stable machine-readable JSON with constant types for parity checks.
 - Python comparator against PyDSDL.
 - Nunavut codegen + cross-validation test generation.
 - CI (deferred).

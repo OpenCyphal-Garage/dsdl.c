@@ -6392,6 +6392,7 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_
     total_size += def.field_count * sizeof(wkv_str_t);    // field_names array
     total_size += def.field_count * sizeof(dsdl_type_t*); // field_types array (pointers)
     total_size += def.const_count * sizeof(wkv_str_t);    // constant_names array
+    total_size += def.const_count * sizeof(dsdl_type_t*); // constant_types array
     total_size += def.const_count * sizeof(dsdl_value_t); // constant_values array
 
     // Sum up field name string lengths
@@ -6432,9 +6433,11 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_
     composite->field_types = (dsdl_type_t**)str_ptr;
     str_ptr += def.field_count * sizeof(dsdl_type_t*);
 
-    // Set up constant names and values arrays
+    // Set up constant names/types/values arrays
     composite->constant_names = (wkv_str_t*)str_ptr;
     str_ptr += def.const_count * sizeof(wkv_str_t);
+    composite->constant_types = (dsdl_type_t**)str_ptr;
+    str_ptr += def.const_count * sizeof(dsdl_type_t*);
     composite->constant_values = (dsdl_value_t*)str_ptr;
     str_ptr += def.const_count * sizeof(dsdl_value_t);
 
@@ -6461,6 +6464,17 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_
         composite->constant_names[i].str = str_ptr;
         memcpy(str_ptr, def.const_names[i].str, def.const_names[i].len);
         str_ptr += def.const_names[i].len;
+
+        composite->constant_types[i] = dsdl_create_type_descriptor(self, &def.const_types[i], type_ref.namespace_part);
+        if (composite->constant_types[i] == NULL) {
+            for (size_t j = 0; j < i; j++) {
+                dsdl_value_dispose(self, &composite->constant_values[j]);
+            }
+            dsdl_parsed_def_deinit(&def);
+            dsdl_free_str(self, file_content.str);
+            dsdl_free(self, block);
+            return NULL;
+        }
 
         if (!dsdl_value_clone(self, &def.const_values[i], &composite->constant_values[i])) {
             for (size_t j = 0; j < i; j++) {
@@ -6546,6 +6560,7 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_
 
         response->constant_count  = 0;
         response->constant_names  = NULL;
+        response->constant_types  = NULL;
         response->constant_values = NULL;
 
         for (size_t i = 0; i < def.response_field_count; i++) {

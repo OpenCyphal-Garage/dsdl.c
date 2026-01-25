@@ -22,6 +22,7 @@ project(dsdl_c
 option(DSDL_BUILD_TESTS     "Build the test suite"           ON)
 option(DSDL_ENABLE_COVERAGE "Enable code coverage (GCC/Clang)" OFF)
 option(DSDL_ENABLE_SANITIZERS "Enable ASan/UBSan"            OFF)
+option(DSDL_BUILD_TOOLS     "Build standalone tools"         ON)
 
 # ------------------------------------------------------------------------------
 # Language standards
@@ -120,6 +121,13 @@ if(DSDL_BUILD_TESTS)
 endif()
 
 # ------------------------------------------------------------------------------
+# Tools
+# ------------------------------------------------------------------------------
+if(DSDL_BUILD_TOOLS)
+    add_subdirectory(tools)
+endif()
+
+# ------------------------------------------------------------------------------
 # Clang-Format integration
 # ------------------------------------------------------------------------------
 find_program(clang_format NAMES clang-format)
@@ -156,4 +164,5 @@ message(STATUS "  C++ standard:    ${CMAKE_CXX_STANDARD}")
 message(STATUS "  Build tests:     ${DSDL_BUILD_TESTS}")
 message(STATUS "  Coverage:        ${DSDL_ENABLE_COVERAGE}")
 message(STATUS "  Sanitizers:      ${DSDL_ENABLE_SANITIZERS}")
+message(STATUS "  Build tools:     ${DSDL_BUILD_TOOLS}")
 message(STATUS "")

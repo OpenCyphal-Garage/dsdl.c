@@ -124,6 +124,7 @@ typedef struct dsdl_type_composite_t
 
     size_t               constant_count;  ///< Number of constants
     wkv_str_t*           constant_names;  ///< Array of constant names
+    dsdl_type_t**        constant_types;  ///< Array of pointers to constant types
     struct dsdl_value_t* constant_values; ///< Array of evaluated constant values
 
     struct dsdl_type_composite_t* response; ///< In RPC-service types contains the response type. NULL otherwise.
