@@ -330,14 +330,14 @@ void test_serialize_float32(void)
     dsdl_bitbuf_t buf       = { buffer, 64, 0, false };
 
     float value = 3.14159f;
-    dsdl_serialize_primitive(&buf, DSDL_FLOAT32, &value);
+    dsdl_serialize_primitive(&buf, DSDL_FLOAT(32), &value);
 
     TEST_ASSERT_EQUAL_size_t(32, buf.offset_bits);
 
     // Deserialize
     buf.offset_bits = 0;
     float result    = 0.0f;
-    dsdl_deserialize_primitive(&buf, DSDL_FLOAT32, &result);
+    dsdl_deserialize_primitive(&buf, DSDL_FLOAT(32), &result);
     TEST_ASSERT_FLOAT_WITHIN(0.00001f, 3.14159f, result);
 }
 
@@ -988,7 +988,7 @@ static void test_serialize_float16(void)
     dsdl_bitbuf_t buf       = { buffer, sizeof(buffer) * 8, 0, false }; // capacity_bits in bits!
 
     const float value = 3.14f;
-    dsdl_serialize_primitive(&buf, DSDL_FLOAT16, &value);
+    dsdl_serialize_primitive(&buf, DSDL_FLOAT(16), &value);
 
     // Expected: 0x4248 (little-endian: 0x48, 0x42)
     TEST_ASSERT_EQUAL_HEX8(0x48, buffer[0]);
@@ -1003,7 +1003,7 @@ static void test_deserialize_float16(void)
     dsdl_bitbuf_t buf       = { (uint8_t*)buffer, sizeof(buffer) * 8, 0, false }; // capacity_bits in bits!
 
     float value = 0.0f;
-    dsdl_deserialize_primitive(&buf, DSDL_FLOAT16, &value);
+    dsdl_deserialize_primitive(&buf, DSDL_FLOAT(16), &value);
 
     TEST_ASSERT_FLOAT_WITHIN(0.01f, 3.14f, value);
 }

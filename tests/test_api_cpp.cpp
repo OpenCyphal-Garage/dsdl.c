@@ -80,9 +80,9 @@ static void test_cpp_type_helpers()
     TEST_ASSERT_FALSE(dsdl_type_is_int(DSDL_UINT(32)));
 
     TEST_ASSERT_TRUE(dsdl_type_is_uint(DSDL_UINT(64)));
-    TEST_ASSERT_FALSE(dsdl_type_is_uint(DSDL_FLOAT64));
+    TEST_ASSERT_FALSE(dsdl_type_is_uint(DSDL_FLOAT(64)));
 
-    TEST_ASSERT_TRUE(dsdl_type_is_float(DSDL_FLOAT32));
+    TEST_ASSERT_TRUE(dsdl_type_is_float(DSDL_FLOAT(32)));
     TEST_ASSERT_FALSE(dsdl_type_is_float(DSDL_INT(32)));
 
     TEST_ASSERT_TRUE(dsdl_type_is_array(DSDL_ARRAY_FIXED));
@@ -101,7 +101,7 @@ static void test_cpp_type_helpers()
     // Test bit width extraction
     TEST_ASSERT_EQUAL_UINT8(8, dsdl_type_bit_width(DSDL_UINT(8)));
     TEST_ASSERT_EQUAL_UINT8(16, dsdl_type_bit_width(DSDL_INT(16)));
-    TEST_ASSERT_EQUAL_UINT8(32, dsdl_type_bit_width(DSDL_FLOAT32));
+    TEST_ASSERT_EQUAL_UINT8(32, dsdl_type_bit_width(DSDL_FLOAT(32)));
     TEST_ASSERT_EQUAL_UINT8(64, dsdl_type_bit_width(DSDL_VOID(64)));
 }
 

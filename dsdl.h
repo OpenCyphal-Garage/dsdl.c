@@ -47,46 +47,41 @@ extern "C"
 /// Type identifier encoding:
 /// - Bits 0-7:   Bit width (for primitives) or subtype
 /// - Bits 8-11:  Type category
-/// - Bits 12-15: Alias flag
+/// - Bits 12-15: Flags
 ///
 /// There is a number of structs named `dsdl_type_*_t`; all have a field of type dsdl_type_t as the first element for
 /// runtime type identification. One can interpret a pointer to a type descriptor as dsdl_type_t to find out its
 /// category, and then cast to the specific struct type to obtain further details.
 typedef uint16_t dsdl_type_t;
 
-// Void types (void1..void64)
-#define DSDL_VOID(w) ((dsdl_type_t)(0x0000 + (w)))
+// Primitive types of specified bit width
+#define DSDL_VOID(w)  ((dsdl_type_t)(0x0000U | (w)))
+#define DSDL_INT(w)   ((dsdl_type_t)(0x0100U | (w)))
+#define DSDL_UINT(w)  ((dsdl_type_t)(0x0200U | (w)))
+#define DSDL_FLOAT(w) ((dsdl_type_t)(0x0500U | (w)))
 
-// Signed integer types (int2..int64)
-#define DSDL_INT(w) ((dsdl_type_t)(0x0100 + (w)))
-
-// Unsigned integer types (uint1..uint64)
-#define DSDL_UINT(w) ((dsdl_type_t)(0x0200 + (w)))
-
-// Floating point types
-#define DSDL_FLOAT(w) ((dsdl_type_t)(0x0500 + (w)))
-#define DSDL_FLOAT16  DSDL_FLOAT(16)
-#define DSDL_FLOAT32  DSDL_FLOAT(32)
-#define DSDL_FLOAT64  DSDL_FLOAT(64)
+// Primitive type extensions
+#define DSDL_INT_TRUNC(w)   ((dsdl_type_t)(DSDL_TYPE_TRUNCATED_FLAG | DSDL_INT(w)))
+#define DSDL_UINT_TRUNC(w)  ((dsdl_type_t)(DSDL_TYPE_TRUNCATED_FLAG | DSDL_UINT(w)))
+#define DSDL_FLOAT_TRUNC(w) ((dsdl_type_t)(DSDL_TYPE_TRUNCATED_FLAG | DSDL_FLOAT(w)))
+#define DSDL_BOOL           ((dsdl_type_t)(0x2000U | DSDL_UINT(1)))
+#define DSDL_BYTE           ((dsdl_type_t)(0x2000U | DSDL_UINT_TRUNC(8)))
+#define DSDL_UTF8           ((dsdl_type_t)(0x4000U | DSDL_UINT_TRUNC(8)))
 
 // Array types
-#define DSDL_ARRAY_FIXED    ((dsdl_type_t)0x0A00)
-#define DSDL_ARRAY_VARIABLE ((dsdl_type_t)0x0A01)
+#define DSDL_ARRAY_FIXED    ((dsdl_type_t)0x0A00U)
+#define DSDL_ARRAY_VARIABLE ((dsdl_type_t)0x0A01U)
 
 // Composite types
-#define DSDL_COMPOSITE_STRUCT ((dsdl_type_t)0x0F00)
-#define DSDL_COMPOSITE_UNION  ((dsdl_type_t)0x0F01)
-#define DSDL_COMPOSITE_RPC    ((dsdl_type_t)0x0F02)
+#define DSDL_COMPOSITE_STRUCT ((dsdl_type_t)0x0F00U)
+#define DSDL_COMPOSITE_UNION  ((dsdl_type_t)0x0F01U)
+#define DSDL_COMPOSITE_RPC    ((dsdl_type_t)0x0F02U)
 
-// Aliases (bits above 0xFFF indicate alias, mask with 0x0FFF for base type)
-#define DSDL_BOOL ((dsdl_type_t)(0x1000U + DSDL_UINT(1)))
-#define DSDL_BYTE ((dsdl_type_t)(0x1000U + DSDL_UINT(8)))
-#define DSDL_UTF8 ((dsdl_type_t)(0x2000U + DSDL_UINT(8)))
-
-// Type category masks and checks
-#define DSDL_TYPE_CATEGORY_MASK ((dsdl_type_t)0x0F00)
-#define DSDL_TYPE_BITWIDTH_MASK ((dsdl_type_t)0x00FF)
-#define DSDL_TYPE_ALIAS_MASK    ((dsdl_type_t)0xF000)
+// Type category masks and flags
+#define DSDL_TYPE_CATEGORY_MASK  ((dsdl_type_t)0x0F00U)
+#define DSDL_TYPE_BITWIDTH_MASK  ((dsdl_type_t)0x00FFU)
+#define DSDL_TYPE_ALIAS_MASK     ((dsdl_type_t)0xF000U)
+#define DSDL_TYPE_TRUNCATED_FLAG ((dsdl_type_t)0x1000U)
 
 static inline bool          dsdl_type_is_void(dsdl_type_t t) { return (t & DSDL_TYPE_CATEGORY_MASK) == 0x0000U; }
 static inline bool          dsdl_type_is_int(dsdl_type_t t) { return (t & DSDL_TYPE_CATEGORY_MASK) == 0x0100U; }
@@ -95,6 +90,7 @@ static inline bool          dsdl_type_is_float(dsdl_type_t t) { return (t & DSDL
 static inline bool          dsdl_type_is_array(dsdl_type_t t) { return (t & DSDL_TYPE_CATEGORY_MASK) == 0x0A00U; }
 static inline bool          dsdl_type_is_composite(dsdl_type_t t) { return (t & DSDL_TYPE_CATEGORY_MASK) == 0x0F00U; }
 static inline bool          dsdl_type_is_alias(dsdl_type_t t) { return (t & DSDL_TYPE_ALIAS_MASK) != 0; }
+static inline bool          dsdl_type_is_truncated(dsdl_type_t t) { return (t & DSDL_TYPE_TRUNCATED_FLAG) != 0; }
 static inline uint_least8_t dsdl_type_bit_width(dsdl_type_t t) { return (uint_least8_t)(t & DSDL_TYPE_BITWIDTH_MASK); }
 
 typedef struct dsdl_type_array_t
