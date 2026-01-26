@@ -6437,6 +6437,7 @@ void dsdl_new(dsdl_t* const self, void* (*const realloc_func)(dsdl_t*, void*, si
     assert((self != NULL) && (realloc_func != NULL));
     (void)memset(self, 0, sizeof(*self));
     self->realloc = realloc_func;
+    self->error   = dsdl_error_none;
 
     wkv_init(&self->types, wkv_realloc_adapter);
     self->types.sep     = '.';
@@ -7183,13 +7184,18 @@ static dsdl_type_t* dsdl_create_type_descriptor(dsdl_t* const             self,
 bool dsdl_add_namespace(dsdl_t* const self, const wkv_str_t root_directory)
 {
     if ((self == NULL) || (root_directory.str == NULL) || (root_directory.len == 0)) {
+        if (self != NULL) {
+            self->error = dsdl_error_semantic;
+        }
         return false;
     }
+    self->error = dsdl_error_none;
 
     // Allocate a copy of the directory string
     char* const str_copy = (char*)dsdl_alloc(self, root_directory.len + 1);
     if (str_copy == NULL) {
-        return false; // OOM
+        self->error = dsdl_error_out_of_memory;
+        return false;
     }
     (void)memcpy(str_copy, root_directory.str, root_directory.len);
     str_copy[root_directory.len] = '\0';
@@ -7199,7 +7205,8 @@ bool dsdl_add_namespace(dsdl_t* const self, const wkv_str_t root_directory)
     wkv_str_t* const new_array = (wkv_str_t*)dsdl_realloc(self, self->namespaces, new_count * sizeof(wkv_str_t));
     if (new_array == NULL) {
         dsdl_free(self, str_copy);
-        return false; // OOM
+        self->error = dsdl_error_out_of_memory;
+        return false;
     }
 
     // Add the new namespace at the end
@@ -7419,14 +7426,20 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_
     DSDL_TRACE(self, "type_name='%.*s' (len=%zu)", (int)type_name.len, type_name.str, type_name.len);
     if ((self == NULL) || (type_name.str == NULL) || (type_name.len == 0)) {
         DSDL_TRACE(self, "NULL input");
+        if (self != NULL) {
+            self->error = dsdl_error_semantic;
+        }
+        self->error = dsdl_error_file_not_found;
         return NULL;
     }
+    self->error = dsdl_error_none;
 
     // Parse type name
     dsdl_type_ref_t type_ref;
     if (!dsdl_parse_typename(type_name, &type_ref)) {
         DSDL_TRACE(self, "Failed to parse type name");
-        return NULL; // Malformed type name
+        self->error = dsdl_error_parse;
+        return NULL;
     }
     DSDL_TRACE(self,
                "Parsed: namespace='%.*s' type='%.*s' version=%d.%d",
@@ -7452,24 +7465,28 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_
     if (!dsdl_locate_file(
           self, &type_ref, file_path, sizeof(file_path), &fixed_port_id, &resolved_major, &resolved_minor)) {
         DSDL_TRACE(self, "Failed to locate file");
-        return NULL; // File not found
+        self->error = dsdl_error_file_not_found;
+        return NULL;
     }
     DSDL_TRACE(
       self, "Located file: '%s' (fixed_port_id=%u, v%u.%u)", file_path, fixed_port_id, resolved_major, resolved_minor);
     if ((resolved_major == 0U) && (resolved_minor == 0U)) {
-        return NULL; // Version 0.0 is invalid
+        self->error = dsdl_error_semantic;
+        return NULL;
     }
 
     // Read file contents
     if (self->read == NULL) {
         DSDL_TRACE(self, "No read callback");
-        return NULL; // No read callback
+        self->error = dsdl_error_file_not_found;
+        return NULL;
     }
 
     wkv_str_t file_content = self->read(self, wkv_key(file_path));
     if (file_content.str == NULL) {
         DSDL_TRACE(self, "Failed to read file");
-        return NULL; // Failed to read file
+        self->error = dsdl_error_file_not_found;
+        return NULL;
     }
     DSDL_TRACE(self, "Read %zu bytes", file_content.len);
 
@@ -7485,46 +7502,54 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_
     if (!dsdl_parsed_def_init(&def, self)) {
         dsdl_free_str(self, file_content.str);
         DSDL_TRACE(self, "def init failed");
-        return NULL; // OOM
+        self->error = dsdl_error_out_of_memory;
+        return NULL;
     }
 
     if (!dsdl_parse_definition(&parser, &def)) {
         dsdl_parsed_def_deinit(&def);
         dsdl_free_str(self, file_content.str);
         DSDL_TRACE(self, "parse failed");
-        return NULL; // Parse error
+        self->error = dsdl_error_parse;
+        return NULL;
     }
     DSDL_TRACE(self, "parsed OK, field_count=%zu, sealed=%d", def.field_count, def.request.is_sealed);
 
     if (!def.request.is_sealed && !def.request.has_extent) {
         dsdl_parsed_def_deinit(&def);
         dsdl_free_str(self, file_content.str);
-        return NULL; // Must be sealed or have extent
+        self->error = dsdl_error_semantic;
+        return NULL;
     }
     if (def.request.is_sealed && def.request.has_extent) {
         dsdl_parsed_def_deinit(&def);
         dsdl_free_str(self, file_content.str);
-        return NULL; // Cannot be both sealed and have extent
+        self->error = dsdl_error_semantic;
+        return NULL;
     }
     if (def.is_service && !def.response.is_sealed && !def.response.has_extent) {
         dsdl_parsed_def_deinit(&def);
         dsdl_free_str(self, file_content.str);
-        return NULL; // Response must be sealed or have extent
+        self->error = dsdl_error_semantic;
+        return NULL;
     }
     if (def.is_service && def.response.is_sealed && def.response.has_extent) {
         dsdl_parsed_def_deinit(&def);
         dsdl_free_str(self, file_content.str);
-        return NULL; // Response cannot be both sealed and have extent
+        self->error = dsdl_error_semantic;
+        return NULL;
     }
     if (def.request.is_union && (def.field_count < 2U)) {
         dsdl_parsed_def_deinit(&def);
         dsdl_free_str(self, file_content.str);
-        return NULL; // Union must have at least 2 fields
+        self->error = dsdl_error_semantic;
+        return NULL;
     }
     if (def.is_service && def.response.is_union && (def.response_field_count < 2U)) {
         dsdl_parsed_def_deinit(&def);
         dsdl_free_str(self, file_content.str);
-        return NULL; // Union must have at least 2 fields
+        self->error = dsdl_error_semantic;
+        return NULL;
     }
 
     // Prepare evaluation context for constants and type references.
@@ -7537,6 +7562,7 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_
         if (!dsdl_eval_constant_value(self, &eval_ctx, &def.const_types[i], &def.const_values[i], true)) {
             dsdl_parsed_def_deinit(&def);
             dsdl_free_str(self, file_content.str);
+            self->error = dsdl_error_semantic;
             return NULL;
         }
         eval_ctx.constant_count = i + 1U;
@@ -7547,6 +7573,7 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_
             !dsdl_rational_is_int(def.fixed_port_id_expr.as.rational)) {
             dsdl_parsed_def_deinit(&def);
             dsdl_free_str(self, file_content.str);
+            self->error = dsdl_error_semantic;
             return NULL;
         }
         uintmax_t port_id = 0U;
@@ -7554,6 +7581,7 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_
             (port_id >= (uintmax_t)DSDL_FIXED_PORT_ID_NONE)) {
             dsdl_parsed_def_deinit(&def);
             dsdl_free_str(self, file_content.str);
+            self->error = dsdl_error_semantic;
             return NULL;
         }
         def.fixed_port_id = (uint_least16_t)port_id;
@@ -7563,12 +7591,14 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_
     if (def.is_service && def.has_fixed_port_id) {
         dsdl_parsed_def_deinit(&def);
         dsdl_free_str(self, file_content.str);
+        self->error = dsdl_error_semantic;
         return NULL;
     }
     if (def.has_fixed_port_id) {
         if ((fixed_port_id != DSDL_FIXED_PORT_ID_NONE) && (fixed_port_id != def.fixed_port_id)) {
             dsdl_parsed_def_deinit(&def);
             dsdl_free_str(self, file_content.str);
+            self->error = dsdl_error_semantic;
             return NULL;
         }
         fixed_port_id = def.fixed_port_id;
@@ -7583,6 +7613,7 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_
               self, &eval_ctx, &def.response_const_types[i], &def.response_const_values[i], true)) {
             dsdl_parsed_def_deinit(&def);
             dsdl_free_str(self, file_content.str);
+            self->error = dsdl_error_semantic;
             return NULL;
         }
         eval_ctx.constant_count = i + 1U;
@@ -7621,6 +7652,7 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_
         dsdl_parsed_def_deinit(&def);
         dsdl_free_str(self, file_content.str);
         DSDL_TRACE(self, "alloc failed, size=%zu", total_size);
+        self->error = dsdl_error_out_of_memory;
         return NULL;
     }
     DSDL_TRACE(self, "allocated %zu bytes", total_size);
@@ -7703,6 +7735,7 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_
             dsdl_free_str(self, file_content.str);
             dsdl_composite_cleanup(self, composite);
             dsdl_free(self, block);
+            self->error = dsdl_error_semantic;
             return NULL;
         }
     }
@@ -7754,6 +7787,7 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_
             dsdl_free_str(self, file_content.str);
             dsdl_composite_cleanup(self, composite);
             dsdl_free(self, block);
+            self->error = dsdl_error_out_of_memory;
             return NULL;
         }
 
@@ -7833,6 +7867,7 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_
                 dsdl_composite_cleanup(self, composite);
                 dsdl_free(self, response_block);
                 dsdl_free(self, block);
+                self->error = dsdl_error_parse;
                 return NULL;
             }
         }
@@ -7877,6 +7912,7 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_
                     dsdl_free_str(self, file_content.str);
                     dsdl_composite_cleanup(self, composite);
                     dsdl_free(self, block);
+                    self->error = dsdl_error_parse;
                     return NULL;
                 }
                 eval_ctx.constant_count = next_const + 1U;
@@ -7896,6 +7932,7 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_
                         dsdl_free_str(self, file_content.str);
                         dsdl_composite_cleanup(self, composite);
                         dsdl_free(self, block);
+                        self->error = dsdl_error_parse;
                         return NULL;
                     }
                 }
@@ -7908,6 +7945,7 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_
                         dsdl_free_str(self, file_content.str);
                         dsdl_composite_cleanup(self, composite);
                         dsdl_free(self, block);
+                        self->error = dsdl_error_parse;
                         return NULL;
                     }
                 }
@@ -7920,6 +7958,7 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_
                 dsdl_free_str(self, file_content.str);
                 dsdl_composite_cleanup(self, composite);
                 dsdl_free(self, block);
+                self->error = dsdl_error_parse;
                 return NULL;
             }
             if (composite->field_types[i] == NULL) {
@@ -7931,6 +7970,7 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_
                     dsdl_free_str(self, file_content.str);
                     dsdl_composite_cleanup(self, composite);
                     dsdl_free(self, block);
+                    self->error = dsdl_error_parse;
                     return NULL;
                 }
             }
@@ -7956,6 +7996,7 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_
                     dsdl_free_str(self, file_content.str);
                     dsdl_composite_cleanup(self, composite);
                     dsdl_free(self, block);
+                    self->error = dsdl_error_out_of_memory;
                     return NULL;
                 }
                 for (size_t i = 0; i < def.field_count; i++) {
@@ -7980,6 +8021,7 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_
                 dsdl_free_str(self, file_content.str);
                 dsdl_composite_cleanup(self, composite);
                 dsdl_free(self, block);
+                self->error = dsdl_error_parse;
                 return NULL;
             }
             eval_ctx.constant_count = next_const + 1U;
@@ -7999,6 +8041,7 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_
                     dsdl_free_str(self, file_content.str);
                     dsdl_composite_cleanup(self, composite);
                     dsdl_free(self, block);
+                    self->error = dsdl_error_parse;
                     return NULL;
                 }
             }
@@ -8011,6 +8054,7 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_
                     dsdl_free_str(self, file_content.str);
                     dsdl_composite_cleanup(self, composite);
                     dsdl_free(self, block);
+                    self->error = dsdl_error_parse;
                     return NULL;
                 }
             }
@@ -8026,6 +8070,7 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_
                 dsdl_free_str(self, file_content.str);
                 dsdl_composite_cleanup(self, composite);
                 dsdl_free(self, block);
+                self->error = dsdl_error_parse;
                 return NULL;
             }
             uintmax_t extent_um = 0U;
@@ -8036,6 +8081,7 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_
                 dsdl_free_str(self, file_content.str);
                 dsdl_composite_cleanup(self, composite);
                 dsdl_free(self, block);
+                self->error = dsdl_error_parse;
                 return NULL;
             }
             def.request.extent_bits = (uint64_t)extent_um;
@@ -8073,6 +8119,7 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_
                     dsdl_free_str(self, file_content.str);
                     dsdl_composite_cleanup(self, composite);
                     dsdl_free(self, block);
+                    self->error = dsdl_error_parse;
                     return NULL;
                 }
                 eval_ctx.constant_count = next_const + 1U;
@@ -8093,6 +8140,7 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_
                         dsdl_free_str(self, file_content.str);
                         dsdl_composite_cleanup(self, composite);
                         dsdl_free(self, block);
+                        self->error = dsdl_error_parse;
                         return NULL;
                     }
                 }
@@ -8105,6 +8153,7 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_
                         dsdl_free_str(self, file_content.str);
                         dsdl_composite_cleanup(self, composite);
                         dsdl_free(self, block);
+                        self->error = dsdl_error_parse;
                         return NULL;
                     }
                 }
@@ -8117,6 +8166,7 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_
                 dsdl_free_str(self, file_content.str);
                 dsdl_composite_cleanup(self, composite);
                 dsdl_free(self, block);
+                self->error = dsdl_error_parse;
                 return NULL;
             }
             if (response->field_types[i] == NULL) {
@@ -8127,6 +8177,7 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_
                     dsdl_free_str(self, file_content.str);
                     dsdl_composite_cleanup(self, composite);
                     dsdl_free(self, block);
+                    self->error = dsdl_error_parse;
                     return NULL;
                 }
             }
@@ -8152,6 +8203,7 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_
                     dsdl_free_str(self, file_content.str);
                     dsdl_composite_cleanup(self, composite);
                     dsdl_free(self, block);
+                    self->error = dsdl_error_out_of_memory;
                     return NULL;
                 }
                 for (size_t i = 0; i < response->field_count; i++) {
@@ -8180,6 +8232,7 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_
                 dsdl_free_str(self, file_content.str);
                 dsdl_composite_cleanup(self, composite);
                 dsdl_free(self, block);
+                self->error = dsdl_error_parse;
                 return NULL;
             }
             eval_ctx.constant_count = next_const + 1U;
@@ -8199,6 +8252,7 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_
                     dsdl_free_str(self, file_content.str);
                     dsdl_composite_cleanup(self, composite);
                     dsdl_free(self, block);
+                    self->error = dsdl_error_parse;
                     return NULL;
                 }
             }
@@ -8211,6 +8265,7 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_
                     dsdl_free_str(self, file_content.str);
                     dsdl_composite_cleanup(self, composite);
                     dsdl_free(self, block);
+                    self->error = dsdl_error_parse;
                     return NULL;
                 }
             }
@@ -8226,6 +8281,7 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_
                 dsdl_free_str(self, file_content.str);
                 dsdl_composite_cleanup(self, composite);
                 dsdl_free(self, block);
+                self->error = dsdl_error_parse;
                 return NULL;
             }
             uintmax_t extent_um = 0U;
@@ -8236,6 +8292,7 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_
                 dsdl_free_str(self, file_content.str);
                 dsdl_composite_cleanup(self, composite);
                 dsdl_free(self, block);
+                self->error = dsdl_error_parse;
                 return NULL;
             }
             def.response.extent_bits = (uint64_t)extent_um;
@@ -8261,6 +8318,7 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_
                 dsdl_free_str(self, file_content.str);
                 dsdl_composite_cleanup(self, composite);
                 dsdl_free(self, block);
+                self->error = dsdl_error_parse;
                 return NULL;
             }
             if (def.request.is_sealed && (max_bits != def.request.extent_bits)) {
@@ -8272,6 +8330,7 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_
                 dsdl_free_str(self, file_content.str);
                 dsdl_composite_cleanup(self, composite);
                 dsdl_free(self, block);
+                self->error = dsdl_error_parse;
                 return NULL;
             }
         }
@@ -8291,6 +8350,7 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_
                 dsdl_free_str(self, file_content.str);
                 dsdl_composite_cleanup(self, composite);
                 dsdl_free(self, block);
+                self->error = dsdl_error_parse;
                 return NULL;
             }
             if (def.response.is_sealed && (max_bits != def.response.extent_bits)) {
@@ -8302,6 +8362,7 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_
                 dsdl_free_str(self, file_content.str);
                 dsdl_composite_cleanup(self, composite);
                 dsdl_free(self, block);
+                self->error = dsdl_error_parse;
                 return NULL;
             }
         }
@@ -8332,6 +8393,7 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_
                 dsdl_free_str(self, file_content.str);
                 dsdl_composite_cleanup(self, composite);
                 dsdl_free(self, block);
+                self->error = dsdl_error_parse;
                 return NULL;
             }
             if (offset_bls->kind == dsdl_bls_pad) {
@@ -8345,6 +8407,7 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_
                     dsdl_free_str(self, file_content.str);
                     dsdl_composite_cleanup(self, composite);
                     dsdl_free(self, block);
+                    self->error = dsdl_error_parse;
                     return NULL;
                 }
                 eval_ctx.constant_count = i + 1U;
@@ -8357,6 +8420,7 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_
                 dsdl_free_str(self, file_content.str);
                 dsdl_composite_cleanup(self, composite);
                 dsdl_free(self, block);
+                self->error = dsdl_error_parse;
                 return NULL;
             }
         }
@@ -8381,6 +8445,7 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_
                 dsdl_free_str(self, file_content.str);
                 dsdl_composite_cleanup(self, composite);
                 dsdl_free(self, block);
+                self->error = dsdl_error_parse;
                 return NULL;
             }
             if (offset_bls->kind == dsdl_bls_pad) {
@@ -8395,6 +8460,7 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_
                     dsdl_free_str(self, file_content.str);
                     dsdl_composite_cleanup(self, composite);
                     dsdl_free(self, block);
+                    self->error = dsdl_error_parse;
                     return NULL;
                 }
                 eval_ctx.constant_count = i + 1U;
@@ -8407,6 +8473,7 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_
                 dsdl_free_str(self, file_content.str);
                 dsdl_composite_cleanup(self, composite);
                 dsdl_free(self, block);
+                self->error = dsdl_error_parse;
                 return NULL;
             }
         }
@@ -8419,6 +8486,7 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_
         dsdl_free_str(self, file_content.str);
         dsdl_composite_cleanup(self, composite);
         dsdl_free(self, block);
+        self->error = dsdl_error_parse;
         return NULL;
     }
     cache_node->value = composite;

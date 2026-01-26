@@ -910,6 +910,34 @@ static void test_parse_filename_invalid(void)
 void setUp(void) {}
 void tearDown(void) {}
 
+// Test error codes
+static void test_error_codes(void)
+{
+    dsdl_t dsdl;
+    dsdl_new(&dsdl, test_realloc);
+    dsdl.read = test_read_file;
+    dsdl.list = test_list_dir;
+
+    // Test file not found error
+    const dsdl_type_composite_t* type = dsdl_read(&dsdl, wkv_key("nonexistent.Type.1.0"));
+    TEST_ASSERT_NULL(type);
+    TEST_ASSERT_EQUAL(dsdl_error_file_not_found, dsdl.error);
+
+    // Test parse error (malformed type name)
+    type = dsdl_read(&dsdl, wkv_key(""));
+    TEST_ASSERT_NULL(type);
+    TEST_ASSERT_NOT_EQUAL(dsdl_error_none, dsdl.error);
+
+    // Test successful read clears error
+    dsdl_add_namespace(&dsdl, wkv_key(DSDL_TEST_ROOT "/test_dsdl_root_namespaces/0"));
+    type = dsdl_read(&dsdl, wkv_key("mymsgs.Simple.1.0"));
+    TEST_ASSERT_NOT_NULL(type);
+    TEST_ASSERT_EQUAL(dsdl_error_none, dsdl.error);
+
+    dsdl_destroy(&dsdl);
+}
+
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -950,6 +978,9 @@ int main(void)
     RUN_TEST(test_parse_filename_basic);
     RUN_TEST(test_parse_filename_with_port_id);
     RUN_TEST(test_parse_filename_invalid);
+
+    // Error code tests
+    RUN_TEST(test_error_codes);
 
     return UNITY_END();
 }

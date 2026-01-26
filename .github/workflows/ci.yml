@@ -1,0 +1,107 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  build-and-test:
+    name: Build and Test (${{ matrix.arch }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x64, x32]
+        
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+        
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          cmake \
+          build-essential \
+          clang-format \
+          clang-tidy \
+          python3 \
+          python3-pip
+        if [ "${{ matrix.arch }}" = "x32" ]; then
+          sudo apt-get install -y gcc-multilib g++-multilib
+        fi
+        pip3 install pydsdl nunavut gcovr
+        
+    - name: Configure CMake
+      run: |
+        cmake -S . -B build \
+          -DCMAKE_BUILD_TYPE=Debug \
+          -DDSDL_BUILD_TESTS=ON \
+          -DDSDL_BUILD_TOOLS=ON
+          
+    - name: Build
+      run: cmake --build build -j$(nproc)
+      
+    - name: Run tests
+      run: ctest --test-dir build --output-on-failure
+      
+    - name: Check clang-format
+      run: |
+        clang-format --version
+        find . -name "*.c" -o -name "*.h" | \
+          grep -v "build/" | \
+          grep -v "tests/unity/" | \
+          grep -v "lib/" | \
+          xargs clang-format --dry-run --Werror
+      continue-on-error: true
+
+  coverage:
+    name: Code Coverage
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+        
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          cmake \
+          build-essential \
+          python3 \
+          python3-pip \
+          lcov
+        pip3 install pydsdl nunavut gcovr
+        
+    - name: Configure CMake with coverage
+      run: |
+        cmake -S . -B build \
+          -DCMAKE_BUILD_TYPE=Debug \
+          -DDSDL_ENABLE_COVERAGE=ON \
+          -DDSDL_BUILD_TESTS=ON \
+          -DDSDL_BUILD_TOOLS=ON
+          
+    - name: Build
+      run: cmake --build build -j$(nproc)
+      
+    - name: Run tests
+      run: ctest --test-dir build --output-on-failure
+      
+    - name: Generate coverage report
+      run: |
+        mkdir -p build/coverage
+        cmake --build build --target coverage
+        
+    - name: Upload coverage report
+      uses: actions/upload-artifact@v4
+      with:
+        name: coverage-report
+        path: build/coverage/
+        retention-days: 30

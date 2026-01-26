@@ -271,6 +271,25 @@ typedef struct dsdl_value_union_t
 } dsdl_value_union_t;
 
 // ============================================================================
+// Error codes
+// ============================================================================
+
+/// Error codes for DSDL operations.
+/// The error field in dsdl_t is set to one of these values when an operation fails.
+typedef enum
+{
+    dsdl_error_none = 0,        ///< No error (success)
+    dsdl_error_out_of_memory,   ///< Memory allocation failed
+    dsdl_error_file_not_found,  ///< DSDL file or namespace not found
+    dsdl_error_parse,           ///< Syntax error in DSDL file
+    dsdl_error_semantic,        ///< Type resolution, expression evaluation failure
+    dsdl_error_serialization,   ///< Buffer too small, invalid value during serialization
+    dsdl_error_deserialization, ///< Truncated input, invalid data during deserialization
+    dsdl_error_array_capacity,  ///< Array length exceeds capacity
+    dsdl_error_union_tag,       ///< Union tag exceeds available options
+} dsdl_error_t;
+
+// ============================================================================
 // Parser state
 // ============================================================================
 
@@ -321,6 +340,10 @@ struct dsdl_t
 
     /// Internal: tracked type descriptor allocations for cleanup.
     struct dsdl_type_alloc_t* type_allocations;
+
+    /// Last error code. Set to dsdl_error_none on success, or a specific error code on failure.
+    /// Check this field after any operation that returns NULL or SIZE_MAX.
+    dsdl_error_t error;
 };
 
 // ============================================================================

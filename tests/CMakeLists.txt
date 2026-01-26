@@ -80,6 +80,65 @@ gen_test_matrix(test_dsdl_type_resolution "${trace_source};${CMAKE_CURRENT_SOURC
 # Bit Length Set tests (include dsdl.c directly)
 gen_test_matrix(test_dsdl_bls "${trace_source};${CMAKE_CURRENT_SOURCE_DIR}/test_bls.c" FALSE)
 
+# Nunavut cross-validation tests
+find_package(Python3 COMPONENTS Interpreter)
+if(Python3_Interpreter_FOUND)
+    set(nunavut_out_dir "${CMAKE_BINARY_DIR}/nunavut_out")
+    
+    add_custom_command(
+        OUTPUT "${nunavut_out_dir}/.generated"
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/generate_nunavut_code.py
+            --output-dir ${nunavut_out_dir}
+            --test-root ${CMAKE_SOURCE_DIR}
+        COMMAND ${CMAKE_COMMAND} -E touch "${nunavut_out_dir}/.generated"
+        DEPENDS ${CMAKE_SOURCE_DIR}/tools/generate_nunavut_code.py
+        COMMENT "Generating Nunavut C code for cross-validation"
+    )
+    
+    add_custom_target(generate_nunavut_code
+        DEPENDS "${nunavut_out_dir}/.generated"
+    )
+    
+    function(gen_nunavut_test name files compile_flags link_flags c_standard)
+        add_library("${name}_unity" STATIC "${unity_root}/src/unity.c")
+        target_include_directories("${name}_unity" SYSTEM PUBLIC "${unity_root}/src")
+        set_target_properties(
+            "${name}_unity"
+            PROPERTIES
+            COMPILE_FLAGS "${compile_flags} -w"
+            LINK_FLAGS "${link_flags}"
+            C_STANDARD "${c_standard}"
+            C_EXTENSIONS OFF
+        )
+        
+        add_executable(${name} ${files})
+        target_include_directories(${name} PUBLIC
+            ${CMAKE_SOURCE_DIR}
+            ${CMAKE_SOURCE_DIR}/lib
+            ${unity_root}/src
+            ${nunavut_out_dir}
+        )
+        target_compile_definitions(${name} PUBLIC DSDL_CONFIG_TRACE=1 DSDL_TEST_ROOT=\"${CMAKE_SOURCE_DIR}\")
+        target_link_libraries(${name} "${name}_unity" m)
+        set_target_properties(
+            ${name}
+            PROPERTIES
+            COMPILE_FLAGS "${compile_flags}"
+            LINK_FLAGS "${link_flags}"
+            C_STANDARD "${c_standard}"
+            C_EXTENSIONS OFF
+        )
+        
+        add_dependencies(${name} generate_nunavut_code)
+        add_test(NAME "run_${name}" COMMAND ${name})
+    endfunction()
+    
+    gen_nunavut_test(test_dsdl_nunavut_crossval_x64 "${trace_source};${CMAKE_CURRENT_SOURCE_DIR}/test_nunavut_crossval.c" "-m64" "-m64" "11")
+    gen_nunavut_test(test_dsdl_nunavut_crossval_x32 "${trace_source};${CMAKE_CURRENT_SOURCE_DIR}/test_nunavut_crossval.c" "-m32" "-m32" "11")
+else()
+    message(STATUS "Python3 not found; Nunavut cross-validation test disabled")
+endif()
+
 if(DSDL_BUILD_TOOLS)
     find_package(Python3 COMPONENTS Interpreter)
     if(Python3_Interpreter_FOUND)

@@ -434,20 +434,33 @@ def main() -> int:
     pydsdl_map: dict[str, object] = {}
     valid_paths = [p for p, _ in valid_items]
     if valid_paths:
-        try:
-            pydsdl_map = read_pydsdl_batch(valid_paths, pydsdl_roots, pydsdl_roots, args.strict)
-        except Exception as exc:
-            print(f"PyDSDL batch parse failed ({exc}); falling back to per-file parsing", file=sys.stderr)
-            pydsdl_map = {}
-            for path, type_name in valid_items:
-                comp = read_pydsdl_single(path, pydsdl_roots, pydsdl_roots, args.strict)
-                if comp is None:
-                    errors.append(f"PyDSDL failed to parse expected-valid type: {type_name}")
-                    if args.fail_fast or len(errors) >= args.max_errors:
-                        break
-                    continue
-                key = type_name_key(comp.full_name, comp.version.major, comp.version.minor)
-                pydsdl_map[key] = comp
+        files_by_namespace: dict[tuple[Path, tuple[str, ...]], list[tuple[Path, str]]] = {}
+        for path, root, parts, type_name in items:
+            if path not in valid_paths:
+                continue
+            namespace_key = (root, parts[:-1] if parts else ())
+            if namespace_key not in files_by_namespace:
+                files_by_namespace[namespace_key] = []
+            files_by_namespace[namespace_key].append((path, type_name))
+        
+        for (root, namespace_parts), ns_items in files_by_namespace.items():
+            ns_files = [p for p, _ in ns_items]
+            ns_pydsdl_roots = derive_pydsdl_roots([(p, root, parts, t) for p, root, parts, t in items if p in ns_files])
+            try:
+                ns_map = read_pydsdl_batch(ns_files, ns_pydsdl_roots, pydsdl_roots, args.strict)
+                pydsdl_map.update(ns_map)
+            except Exception as exc:
+                for path, type_name in ns_items:
+                    comp = read_pydsdl_single(path, pydsdl_roots, pydsdl_roots, args.strict)
+                    if comp is None:
+                        errors.append(f"PyDSDL failed to parse expected-valid type: {type_name}")
+                        if args.fail_fast or len(errors) >= args.max_errors:
+                            break
+                        continue
+                    key = type_name_key(comp.full_name, comp.version.major, comp.version.minor)
+                    pydsdl_map[key] = comp
+                if args.fail_fast or len(errors) >= args.max_errors:
+                    break
 
     # Validate invalid items using PyDSDL; promote to valid if PyDSDL accepts them.
     promoted: list[tuple[Path, str]] = []

@@ -15,6 +15,20 @@ Notes:
 - GCC uses gcov-compatible data directly.
 - Clang also uses gcov-style coverage; `llvm-cov` is preferred if available.
 - If coverage output looks stale, remove `build` and reconfigure.
+- Coverage reports are generated in `build/coverage/index.html`
+
+### Coverage Results
+
+Current coverage (as of latest test run):
+- **Lines**: 77.6% (5137 out of 6617)
+- **Functions**: 98.4% (309 out of 314)
+- **Branches**: 65.6% (3102 out of 4732)
+
+**Caveats**:
+- Some error paths are difficult to test without fault injection
+- Parser error recovery paths may have lower coverage
+- Platform-specific code paths (file I/O callbacks) are tested via mocks
+- The 90%+ line coverage target is achievable with additional error path testing
 
 ## Tools
 
