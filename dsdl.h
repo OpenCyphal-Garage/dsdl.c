@@ -278,15 +278,15 @@ typedef struct dsdl_value_union_t
 /// The error field in dsdl_t is set to one of these values when an operation fails.
 typedef enum
 {
-    dsdl_error_none = 0,        ///< No error (success)
-    dsdl_error_out_of_memory,   ///< Memory allocation failed
-    dsdl_error_file_not_found,  ///< DSDL file or namespace not found
-    dsdl_error_parse,           ///< Syntax error in DSDL file
-    dsdl_error_semantic,        ///< Type resolution, expression evaluation failure
-    dsdl_error_serialization,   ///< Buffer too small, invalid value during serialization
-    dsdl_error_deserialization, ///< Truncated input, invalid data during deserialization
-    dsdl_error_array_capacity,  ///< Array length exceeds capacity
-    dsdl_error_union_tag,       ///< Union tag exceeds available options
+    dsdl_error_none = 0,         ///< No error (success)
+    dsdl_error_out_of_memory,    ///< Memory allocation failed
+    dsdl_error_file_not_found,   ///< DSDL file or namespace not found
+    dsdl_error_parse,            ///< Syntax error in DSDL file
+    dsdl_error_semantic,         ///< Type resolution, expression evaluation failure
+    dsdl_error_buffer_too_small, ///< Output buffer insufficient for serialization
+    dsdl_error_array_capacity,   ///< Array length exceeds type capacity
+    dsdl_error_union_tag,        ///< Union discriminant out of range
+    dsdl_error_representation,   ///< Invalid value representation (null pointer, overflow)
 } dsdl_error_t;
 
 // ============================================================================
@@ -405,8 +405,14 @@ uint64_t dsdl_serialized_footprint(const dsdl_type_composite_t* type);
 /// @param value        Pointer to dsdl_value_struct_t or dsdl_value_union_t, depending on the type.
 /// @param output_size  Size of output buffer in bytes
 /// @param output       Output buffer
+/// @param err          Optional error code output (can be NULL if caller doesn't need details).
+///                     If non-NULL, will be set to specific error code on failure.
 /// @return Number of bytes written, or SIZE_MAX on error
-size_t dsdl_serialize(const dsdl_type_composite_t* type, const void* value, size_t output_size, void* output);
+size_t dsdl_serialize(const dsdl_type_composite_t* type,
+                      const void*                  value,
+                      size_t                       output_size,
+                      void*                        output,
+                      dsdl_error_t*                err);
 
 /// Deserialize a byte buffer into a composite type instance.
 ///
@@ -417,8 +423,14 @@ size_t dsdl_serialize(const dsdl_type_composite_t* type, const void* value, size
 /// @param value       Pointer to dsdl_value_struct_t or dsdl_value_union_t, depending on the type.
 /// @param input_size  Size of input buffer in bytes
 /// @param input       Input buffer
+/// @param err         Optional error code output (can be NULL if caller doesn't need details).
+///                    If non-NULL, will be set to specific error code on failure.
 /// @return Number of bytes consumed, or SIZE_MAX on error
-size_t dsdl_deserialize(const dsdl_type_composite_t* type, void* value, size_t input_size, const void* input);
+size_t dsdl_deserialize(const dsdl_type_composite_t* type,
+                        void*                        value,
+                        size_t                       input_size,
+                        const void*                  input,
+                        dsdl_error_t*                err);
 
 /// For diagnostics and logging only. Usage in production is not recommended.
 /// This function is only required if DSDL_CONFIG_TRACE is defined and is nonzero; otherwise it should be left
