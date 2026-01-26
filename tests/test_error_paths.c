@@ -152,19 +152,12 @@ static wkv_str_t* test_list_dir(dsdl_t* self, wkv_str_t path)
     return result;
 }
 
-static void setup_dsdl(void)
-{
-    dsdl_new(&g_dsdl, test_realloc);
-    g_dsdl.read = test_read_file;
-    g_dsdl.list = test_list_dir;
-}
+static void setup_dsdl(void) { dsdl_new(&g_dsdl, test_realloc, test_read_file, test_list_dir); }
 
 static void setup_dsdl_with_oom(int fail_after)
 {
     g_oom_counter = fail_after;
-    dsdl_new(&g_dsdl, oom_realloc);
-    g_dsdl.read = test_read_file;
-    g_dsdl.list = test_list_dir;
+    dsdl_new(&g_dsdl, oom_realloc, test_read_file, test_list_dir);
 }
 
 static void teardown_dsdl(void) { dsdl_destroy(&g_dsdl); }

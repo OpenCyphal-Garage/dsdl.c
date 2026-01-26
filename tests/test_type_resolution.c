@@ -166,12 +166,7 @@ static wkv_str_t* test_list_dir(dsdl_t* self, wkv_str_t path)
     return result;
 }
 
-static void setup_dsdl(void)
-{
-    dsdl_new(&g_dsdl, test_realloc);
-    g_dsdl.read = test_read_file;
-    g_dsdl.list = test_list_dir;
-}
+static void setup_dsdl(void) { dsdl_new(&g_dsdl, test_realloc, test_read_file, test_list_dir); }
 
 static void teardown_dsdl(void) { dsdl_destroy(&g_dsdl); }
 
@@ -840,9 +835,7 @@ static void test_destroy_frees_allocations(void)
     g_alloc_count = 0U;
 
     dsdl_t dsdl;
-    dsdl_new(&dsdl, test_realloc_counting);
-    dsdl.read = test_read_file;
-    dsdl.list = test_list_dir;
+    dsdl_new(&dsdl, test_realloc_counting, test_read_file, test_list_dir);
 
     TEST_ASSERT_TRUE(add_test_roots_for(&dsdl));
 
@@ -914,9 +907,7 @@ void tearDown(void) {}
 static void test_error_codes(void)
 {
     dsdl_t dsdl;
-    dsdl_new(&dsdl, test_realloc);
-    dsdl.read = test_read_file;
-    dsdl.list = test_list_dir;
+    dsdl_new(&dsdl, test_realloc, test_read_file, test_list_dir);
 
     // Test file not found error
     const dsdl_type_composite_t* type = dsdl_read(&dsdl, wkv_key("nonexistent.Type.1.0"));

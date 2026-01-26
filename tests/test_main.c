@@ -156,12 +156,7 @@ static wkv_str_t* test_list_dir(dsdl_t* self, wkv_str_t path)
 // Global DSDL state for tests
 static dsdl_t g_dsdl;
 
-static void setup_dsdl(void)
-{
-    dsdl_new(&g_dsdl, test_realloc);
-    g_dsdl.read = test_read_file;
-    g_dsdl.list = test_list_dir;
-}
+static void setup_dsdl(void) { dsdl_new(&g_dsdl, test_realloc, test_read_file, test_list_dir); }
 
 static void teardown_dsdl(void) { dsdl_destroy(&g_dsdl); }
 
@@ -172,7 +167,7 @@ static void teardown_dsdl(void) { dsdl_destroy(&g_dsdl); }
 void test_dsdl_new_destroy(void)
 {
     dsdl_t dsdl;
-    dsdl_new(&dsdl, test_realloc);
+    dsdl_new(&dsdl, test_realloc, NULL, NULL);
     TEST_ASSERT_NOT_NULL(dsdl.realloc);
     dsdl_destroy(&dsdl);
     TEST_PASS();
@@ -181,7 +176,7 @@ void test_dsdl_new_destroy(void)
 void test_dsdl_add_namespace(void)
 {
     dsdl_t dsdl;
-    dsdl_new(&dsdl, test_realloc);
+    dsdl_new(&dsdl, test_realloc, test_read_file, test_list_dir);
 
     bool result = add_test_roots(&dsdl);
     TEST_ASSERT_TRUE(result);

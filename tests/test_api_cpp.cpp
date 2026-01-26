@@ -48,7 +48,7 @@ void tearDown()
 static void test_cpp_api_init_destroy()
 {
     dsdl_t dsdl{};
-    dsdl_new(&dsdl, test_realloc);
+    dsdl_new(&dsdl, test_realloc, nullptr, nullptr);
 
     // Verify initial state
     TEST_ASSERT_NOT_NULL(dsdl.realloc);
@@ -59,7 +59,7 @@ static void test_cpp_api_init_destroy()
 static void test_cpp_api_add_namespace()
 {
     dsdl_t dsdl{};
-    dsdl_new(&dsdl, test_realloc);
+    dsdl_new(&dsdl, test_realloc, nullptr, nullptr);
 
     const char*     path = "/test/namespace";
     const wkv_str_t ns   = { std::strlen(path), path };
@@ -130,7 +130,7 @@ static void test_cpp_lambda_allocator()
     };
 
     dsdl_t dsdl{};
-    dsdl_new(&dsdl, allocator);
+    dsdl_new(&dsdl, allocator, nullptr, nullptr);
 
     TEST_ASSERT_NOT_NULL(dsdl.realloc);
 

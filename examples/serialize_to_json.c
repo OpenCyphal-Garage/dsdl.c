@@ -165,9 +165,7 @@ int main(int argc, char* argv[])
 
     // Initialize DSDL parser
     dsdl_t dsdl;
-    dsdl_new(&dsdl, dsdl_realloc);
-    dsdl.read = dsdl_read_file;
-    dsdl.list = dsdl_list_dir;
+    dsdl_new(&dsdl, dsdl_realloc, dsdl_read_file, dsdl_list_dir);
 
     // Add namespace
     const wkv_str_t ns_path = wkv_key(argv[1]);

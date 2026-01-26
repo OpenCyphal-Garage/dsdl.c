@@ -206,12 +206,7 @@ void dsdl_tool_print_usage(FILE* const out, const char* const tool_name, const c
                   name);
 }
 
-void dsdl_tool_init(dsdl_t* const dsdl)
-{
-    dsdl_new(dsdl, dsdl_tool_realloc);
-    dsdl->read = dsdl_tool_read_file;
-    dsdl->list = dsdl_tool_list_dir;
-}
+void dsdl_tool_init(dsdl_t* const dsdl) { dsdl_new(dsdl, dsdl_tool_realloc, dsdl_tool_read_file, dsdl_tool_list_dir); }
 
 bool dsdl_tool_add_roots(dsdl_t* const dsdl, const dsdl_tool_args_t* const args)
 {

@@ -27,7 +27,7 @@ static void* test_realloc(dsdl_t* self, void* ptr, size_t new_size)
 
 static dsdl_t test_dsdl;
 
-void setUp(void) { dsdl_new(&test_dsdl, test_realloc); }
+void setUp(void) { dsdl_new(&test_dsdl, test_realloc, NULL, NULL); }
 
 void tearDown(void) { dsdl_destroy(&test_dsdl); }
 

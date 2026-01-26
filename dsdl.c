@@ -6442,11 +6442,16 @@ static void* wkv_realloc_adapter(wkv_t* const self, void* const ptr, const size_
     return owner->realloc(owner, ptr, new_size);
 }
 
-void dsdl_new(dsdl_t* const self, void* (*const realloc_func)(dsdl_t*, void*, size_t))
+void dsdl_new(dsdl_t* const self,
+              void* (*const realloc_func)(dsdl_t*, void*, size_t),
+              wkv_str_t (*const read)(dsdl_t*, wkv_str_t),
+              wkv_str_t* (*const list)(dsdl_t*, wkv_str_t))
 {
     assert((self != NULL) && (realloc_func != NULL));
     (void)memset(self, 0, sizeof(*self));
     self->realloc = realloc_func;
+    self->read    = read;
+    self->list    = list;
     self->error   = dsdl_error_none;
 
     wkv_init(&self->types, wkv_realloc_adapter);

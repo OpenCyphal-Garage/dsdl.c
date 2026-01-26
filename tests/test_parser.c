@@ -1393,9 +1393,7 @@ static wkv_str_t* test_list_dir_for_read(dsdl_t* self, wkv_str_t path)
 static void test_parse_error_bad_array_syntax_dsdl(void)
 {
     dsdl_t dsdl;
-    dsdl_new(&dsdl, test_realloc_for_read);
-    dsdl.read = test_read_file_for_read;
-    dsdl.list = test_list_dir_for_read;
+    dsdl_new(&dsdl, test_realloc_for_read, test_read_file_for_read, test_list_dir_for_read);
 
     char      path[512];
     const int ret = snprintf(path, sizeof(path), "%s/test_dsdl_root_namespaces/1", DSDL_TEST_ROOT);
@@ -1413,9 +1411,7 @@ static void test_parse_error_bad_array_syntax_dsdl(void)
 static void test_parse_error_missing_type_dsdl(void)
 {
     dsdl_t dsdl;
-    dsdl_new(&dsdl, test_realloc_for_read);
-    dsdl.read = test_read_file_for_read;
-    dsdl.list = test_list_dir_for_read;
+    dsdl_new(&dsdl, test_realloc_for_read, test_read_file_for_read, test_list_dir_for_read);
 
     char      path[512];
     const int ret = snprintf(path, sizeof(path), "%s/test_dsdl_root_namespaces/1", DSDL_TEST_ROOT);
