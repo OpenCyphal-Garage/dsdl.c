@@ -192,7 +192,7 @@ void test_error_file_not_found(void)
 
 void test_error_oom_during_read(void)
 {
-    setup_dsdl_with_oom(10); // Allow some allocations, then fail
+    setup_dsdl_with_oom(20); // Allow some allocations, then fail
     TEST_ASSERT_TRUE(add_test_roots());
 
     const dsdl_type_composite_t* result = dsdl_read(&g_dsdl, wkv_key("mymsgs.Simple.1.0"));
