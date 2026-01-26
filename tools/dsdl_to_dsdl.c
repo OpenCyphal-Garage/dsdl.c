@@ -70,8 +70,8 @@ static void emit_type_expr(FILE* const out, const dsdl_type_t* const type_ptr)
         base = (dsdl_type_t)(base & (dsdl_type_t)~DSDL_TYPE_ALIAS_MASK);
     }
 
-    const bool      truncated = dsdl_type_is_truncated(base);
-    const dsdl_type_t raw      = (dsdl_type_t)(base & (dsdl_type_t)~DSDL_TYPE_TRUNCATED_FLAG);
+    const bool        truncated = dsdl_type_is_truncated(base);
+    const dsdl_type_t raw       = (dsdl_type_t)(base & (dsdl_type_t)~DSDL_TYPE_TRUNCATED_FLAG);
     if (truncated && (dsdl_type_is_uint(raw) || dsdl_type_is_float(raw))) {
         (void)fputs("truncated ", out);
     }
@@ -259,8 +259,8 @@ int main(int argc, char** argv)
 
     int exit_code = 0;
     for (size_t i = 0U; i < args.type_count; i++) {
-        const char* const type_name = args.types[i];
-        const dsdl_type_composite_t* const type = dsdl_read(&dsdl, wkv_key(type_name));
+        const char* const                  type_name = args.types[i];
+        const dsdl_type_composite_t* const type      = dsdl_read(&dsdl, wkv_key(type_name));
         if (type == NULL) {
             (void)fprintf(stderr, "Failed to parse type: %s\n", type_name);
             exit_code = 1;

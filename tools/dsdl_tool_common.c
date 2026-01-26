@@ -123,8 +123,8 @@ static wkv_str_t* dsdl_tool_list_dir(dsdl_t* const self, const wkv_str_t path)
 
 static bool dsdl_tool_args_push(const char* const value, const char*** const items, size_t* const count)
 {
-    const size_t    new_count = *count + 1U;
-    const char**    new_items = (const char**)realloc((void*)(*items), new_count * sizeof(*new_items));
+    const size_t new_count = *count + 1U;
+    const char** new_items = (const char**)realloc((void*)(*items), new_count * sizeof(*new_items));
     if (new_items == NULL) {
         return false;
     }

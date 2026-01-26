@@ -9,11 +9,11 @@
 
 typedef struct
 {
-    size_t      root_count;
+    size_t       root_count;
     const char** roots;
-    size_t      type_count;
+    size_t       type_count;
     const char** types;
-    bool        help_requested;
+    bool         help_requested;
 } dsdl_tool_args_t;
 
 bool dsdl_tool_parse_args(dsdl_tool_args_t* out, int argc, char** argv);

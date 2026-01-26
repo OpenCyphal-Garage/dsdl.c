@@ -143,33 +143,27 @@ static void json_write_type(FILE* const out, const dsdl_type_t* const type_ptr)
         base = (dsdl_type_t)(base & (dsdl_type_t)~DSDL_TYPE_ALIAS_MASK);
     }
 
-    const bool      truncated = dsdl_type_is_truncated(base);
-    const dsdl_type_t raw      = (dsdl_type_t)(base & (dsdl_type_t)~DSDL_TYPE_TRUNCATED_FLAG);
-    const uint_least8_t bits   = dsdl_type_bit_width(raw);
+    const bool          truncated = dsdl_type_is_truncated(base);
+    const dsdl_type_t   raw       = (dsdl_type_t)(base & (dsdl_type_t)~DSDL_TYPE_TRUNCATED_FLAG);
+    const uint_least8_t bits      = dsdl_type_bit_width(raw);
 
     if (dsdl_type_is_void(raw)) {
         (void)fprintf(out, "{\"kind\":\"void\",\"bits\":%" PRIuLEAST8 "}", bits);
         return;
     }
     if (dsdl_type_is_int(raw)) {
-        (void)fprintf(out,
-                      "{\"kind\":\"int\",\"bits\":%" PRIuLEAST8 ",\"truncated\":%s}",
-                      bits,
-                      truncated ? "true" : "false");
+        (void)fprintf(
+          out, "{\"kind\":\"int\",\"bits\":%" PRIuLEAST8 ",\"truncated\":%s}", bits, truncated ? "true" : "false");
         return;
     }
     if (dsdl_type_is_uint(raw)) {
-        (void)fprintf(out,
-                      "{\"kind\":\"uint\",\"bits\":%" PRIuLEAST8 ",\"truncated\":%s}",
-                      bits,
-                      truncated ? "true" : "false");
+        (void)fprintf(
+          out, "{\"kind\":\"uint\",\"bits\":%" PRIuLEAST8 ",\"truncated\":%s}", bits, truncated ? "true" : "false");
         return;
     }
     if (dsdl_type_is_float(raw)) {
-        (void)fprintf(out,
-                      "{\"kind\":\"float\",\"bits\":%" PRIuLEAST8 ",\"truncated\":%s}",
-                      bits,
-                      truncated ? "true" : "false");
+        (void)fprintf(
+          out, "{\"kind\":\"float\",\"bits\":%" PRIuLEAST8 ",\"truncated\":%s}", bits, truncated ? "true" : "false");
         return;
     }
 
@@ -221,8 +215,7 @@ static void json_write_constants(FILE* const out, const dsdl_type_composite_t* c
 static void json_write_section(FILE* const out, const dsdl_type_composite_t* const type, const bool include_constants)
 {
     const uint64_t extent_bytes = type->extent;
-    const uint64_t extent_bits =
-      (extent_bytes > 0U) ? (extent_bytes * 8U) : (dsdl_serialized_footprint(type) * 8U);
+    const uint64_t extent_bits  = (extent_bytes > 0U) ? (extent_bytes * 8U) : (dsdl_serialized_footprint(type) * 8U);
 
     (void)fputc('{', out);
     (void)fprintf(out, "\"kind\":\"%s\",", composite_kind_name(type));
@@ -240,8 +233,7 @@ static void json_write_section(FILE* const out, const dsdl_type_composite_t* con
 static void json_write_composite(FILE* const out, const dsdl_type_composite_t* const type)
 {
     const uint64_t extent_bytes = type->extent;
-    const uint64_t extent_bits =
-      (extent_bytes > 0U) ? (extent_bytes * 8U) : (dsdl_serialized_footprint(type) * 8U);
+    const uint64_t extent_bits  = (extent_bytes > 0U) ? (extent_bytes * 8U) : (dsdl_serialized_footprint(type) * 8U);
 
     (void)fputc('{', out);
     (void)fputs("\"name\":", out);
@@ -271,10 +263,7 @@ static void json_write_composite(FILE* const out, const dsdl_type_composite_t* c
             (void)fputs(",\"fixed_port_id\":null", out);
         }
         (void)fprintf(out, ",\"sealed\":%s", type->sealed ? "true" : "false");
-        (void)fprintf(out,
-                      ",\"extent_bytes\":%" PRIu64 ",\"extent_bits\":%" PRIu64,
-                      extent_bytes,
-                      extent_bits);
+        (void)fprintf(out, ",\"extent_bytes\":%" PRIu64 ",\"extent_bits\":%" PRIu64, extent_bytes, extent_bits);
         (void)fputs(",\"fields\":", out);
         json_write_fields(out, type);
         (void)fputs(",\"constants\":", out);
@@ -315,8 +304,8 @@ int main(int argc, char** argv)
     (void)fputc('[', stdout);
     int exit_code = 0;
     for (size_t i = 0U; i < args.type_count; i++) {
-        const char* const type_name = args.types[i];
-        const dsdl_type_composite_t* const type = dsdl_read(&dsdl, wkv_key(type_name));
+        const char* const                  type_name = args.types[i];
+        const dsdl_type_composite_t* const type      = dsdl_read(&dsdl, wkv_key(type_name));
         if (type == NULL) {
             (void)fprintf(stderr, "Failed to parse type: %s\n", type_name);
             exit_code = 1;

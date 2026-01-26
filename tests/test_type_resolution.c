@@ -937,7 +937,6 @@ static void test_error_codes(void)
     dsdl_destroy(&dsdl);
 }
 
-
 int main(void)
 {
     UNITY_BEGIN();
