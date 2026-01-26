@@ -8,6 +8,7 @@
 
 #include "unity.h"
 
+#include <dirent.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -28,6 +29,10 @@ static void* test_realloc(dsdl_t* self, void* ptr, size_t size)
 
 static dsdl_t        g_dsdl;
 static dsdl_parser_t g_parser;
+
+#ifndef DSDL_TEST_ROOT
+#define DSDL_TEST_ROOT "."
+#endif
 
 static void init_parser(const char* input)
 {
@@ -1190,6 +1195,242 @@ static void test_parse_def_with_padding(void)
 }
 
 // ============================================================================
+// Error recovery tests
+// ============================================================================
+
+static void test_parse_error_incomplete_expression_addition(void)
+{
+    init_parser("1 +");
+    dsdl_value_t val;
+    TEST_ASSERT_FALSE(dsdl_parse_expression(&g_parser, &val));
+}
+
+static void test_parse_error_incomplete_expression_multiplication(void)
+{
+    init_parser("2 *");
+    dsdl_value_t val;
+    TEST_ASSERT_FALSE(dsdl_parse_expression(&g_parser, &val));
+}
+
+static void test_parse_error_incomplete_expression_power(void)
+{
+    init_parser("3 **");
+    dsdl_value_t val;
+    TEST_ASSERT_FALSE(dsdl_parse_expression(&g_parser, &val));
+}
+
+static void test_parse_error_invalid_binary_digit(void)
+{
+    init_parser("0b2");
+    dsdl_rational_t r = dsdl_parse_integer(&g_parser);
+    TEST_ASSERT_EQUAL(0, r.num.limb_count);
+}
+
+static void test_parse_error_invalid_octal_digit(void)
+{
+    init_parser("0o9");
+    dsdl_rational_t r = dsdl_parse_integer(&g_parser);
+    TEST_ASSERT_EQUAL(0, r.num.limb_count);
+}
+
+static void test_parse_error_invalid_hex_empty(void)
+{
+    init_parser("0x");
+    dsdl_rational_t r = dsdl_parse_integer(&g_parser);
+    TEST_ASSERT_EQUAL(0, r.num.limb_count);
+}
+
+static void test_parse_error_unclosed_string_double_quote(void)
+{
+    init_parser("\"hello");
+    dsdl_value_t val;
+    TEST_ASSERT_FALSE(dsdl_parse_expression(&g_parser, &val));
+}
+
+static void test_parse_error_unclosed_string_single_quote(void)
+{
+    init_parser("'world");
+    dsdl_value_t val;
+    TEST_ASSERT_FALSE(dsdl_parse_expression(&g_parser, &val));
+}
+
+static void test_parse_error_unclosed_parenthesis(void)
+{
+    init_parser("(1 + 2");
+    dsdl_value_t val;
+    TEST_ASSERT_FALSE(dsdl_parse_expression(&g_parser, &val));
+}
+
+static void test_parse_error_nested_unclosed_parenthesis(void)
+{
+    init_parser("((3 * 4)");
+    dsdl_value_t val;
+    TEST_ASSERT_FALSE(dsdl_parse_expression(&g_parser, &val));
+}
+
+static void test_parse_error_invalid_type_syntax_missing_type(void)
+{
+    init_parser("my_field");
+    dsdl_parsed_type_t type;
+    TEST_ASSERT_FALSE(dsdl_parse_type(&g_parser, &type));
+}
+
+// ============================================================================
+// High-level dsdl_read() error tests
+// ============================================================================
+
+static void* test_realloc_for_read(dsdl_t* self, void* ptr, size_t size)
+{
+    (void)self;
+    if (size == 0) {
+        free(ptr);
+        return NULL;
+    }
+    return realloc(ptr, size);
+}
+
+static wkv_str_t test_read_file_for_read(dsdl_t* self, wkv_str_t path)
+{
+    wkv_str_t result = { 0, NULL };
+    char      path_buf[512];
+    if (path.len >= sizeof(path_buf)) {
+        return result;
+    }
+    (void)memcpy(path_buf, path.str, path.len);
+    path_buf[path.len] = '\0';
+
+    FILE* f = fopen(path_buf, "rb");
+    if (f == NULL) {
+        return result;
+    }
+
+    (void)fseek(f, 0, SEEK_END);
+    const long size = ftell(f);
+    (void)fseek(f, 0, SEEK_SET);
+
+    if (size < 0) {
+        (void)fclose(f);
+        return result;
+    }
+
+    char* buffer = (char*)self->realloc(self, NULL, (size_t)size);
+    if (buffer == NULL) {
+        (void)fclose(f);
+        return result;
+    }
+
+    const size_t read_count = fread(buffer, 1, (size_t)size, f);
+    (void)fclose(f);
+
+    if (read_count != (size_t)size) {
+        self->realloc(self, buffer, 0);
+        return result;
+    }
+
+    result.len = (size_t)size;
+    result.str = buffer;
+    return result;
+}
+
+static wkv_str_t* test_list_dir_for_read(dsdl_t* self, wkv_str_t path)
+{
+    char path_buf[512];
+    if (path.len >= sizeof(path_buf)) {
+        return NULL;
+    }
+    (void)memcpy(path_buf, path.str, path.len);
+    path_buf[path.len] = '\0';
+
+    DIR* dir = opendir(path_buf);
+    if (dir == NULL) {
+        return NULL;
+    }
+
+    size_t         count = 0;
+    struct dirent* entry = NULL;
+    while ((entry = readdir(dir)) != NULL) {
+        if ((strcmp(entry->d_name, ".") == 0) || (strcmp(entry->d_name, "..") == 0)) {
+            continue;
+        }
+        count++;
+    }
+
+    wkv_str_t* result = (wkv_str_t*)self->realloc(self, NULL, (count + 1) * sizeof(wkv_str_t));
+    if (result == NULL) {
+        (void)closedir(dir);
+        return NULL;
+    }
+
+    rewinddir(dir);
+    size_t idx = 0;
+    while ((entry = readdir(dir)) != NULL) {
+        if ((strcmp(entry->d_name, ".") == 0) || (strcmp(entry->d_name, "..") == 0)) {
+            continue;
+        }
+        const size_t name_len  = strlen(entry->d_name);
+        char*        name_copy = (char*)self->realloc(self, NULL, name_len);
+        if (name_copy == NULL) {
+            for (size_t i = 0; i < idx; i++) {
+                self->realloc(self, (void*)result[i].str, 0);
+            }
+            self->realloc(self, result, 0);
+            (void)closedir(dir);
+            return NULL;
+        }
+        (void)memcpy(name_copy, entry->d_name, name_len);
+        result[idx].len = name_len;
+        result[idx].str = name_copy;
+        idx++;
+    }
+
+    result[idx].len = 0;
+    result[idx].str = NULL;
+
+    (void)closedir(dir);
+    return result;
+}
+
+static void test_parse_error_bad_array_syntax_dsdl(void)
+{
+    dsdl_t dsdl;
+    dsdl_new(&dsdl, test_realloc_for_read);
+    dsdl.read = test_read_file_for_read;
+    dsdl.list = test_list_dir_for_read;
+
+    char      path[512];
+    const int ret = snprintf(path, sizeof(path), "%s/test_dsdl_root_namespaces/1", DSDL_TEST_ROOT);
+    TEST_ASSERT_TRUE((ret > 0) && (ret < (int)sizeof(path)));
+
+    (void)dsdl_add_namespace(&dsdl, wkv_key(path));
+
+    const dsdl_type_composite_t* result = dsdl_read(&dsdl, wkv_key("invalid.SyntaxBadArraySyntax.0.1"));
+    TEST_ASSERT_NULL(result);
+    TEST_ASSERT_EQUAL(dsdl_error_parse, dsdl.error);
+
+    dsdl_destroy(&dsdl);
+}
+
+static void test_parse_error_missing_type_dsdl(void)
+{
+    dsdl_t dsdl;
+    dsdl_new(&dsdl, test_realloc_for_read);
+    dsdl.read = test_read_file_for_read;
+    dsdl.list = test_list_dir_for_read;
+
+    char      path[512];
+    const int ret = snprintf(path, sizeof(path), "%s/test_dsdl_root_namespaces/1", DSDL_TEST_ROOT);
+    TEST_ASSERT_TRUE((ret > 0) && (ret < (int)sizeof(path)));
+
+    (void)dsdl_add_namespace(&dsdl, wkv_key(path));
+
+    const dsdl_type_composite_t* result = dsdl_read(&dsdl, wkv_key("invalid.SyntaxMissingType.0.1"));
+    TEST_ASSERT_NULL(result);
+    TEST_ASSERT_EQUAL(dsdl_error_parse, dsdl.error);
+
+    dsdl_destroy(&dsdl);
+}
+
+// ============================================================================
 // Main
 // ============================================================================
 
@@ -1313,6 +1554,21 @@ int main(void)
     RUN_TEST(test_parse_def_union);
     RUN_TEST(test_parse_def_with_comments);
     RUN_TEST(test_parse_def_with_padding);
+
+    // Error recovery tests
+    RUN_TEST(test_parse_error_incomplete_expression_addition);
+    RUN_TEST(test_parse_error_incomplete_expression_multiplication);
+    RUN_TEST(test_parse_error_incomplete_expression_power);
+    RUN_TEST(test_parse_error_invalid_binary_digit);
+    RUN_TEST(test_parse_error_invalid_octal_digit);
+    RUN_TEST(test_parse_error_invalid_hex_empty);
+    RUN_TEST(test_parse_error_unclosed_string_double_quote);
+    RUN_TEST(test_parse_error_unclosed_string_single_quote);
+    RUN_TEST(test_parse_error_unclosed_parenthesis);
+    RUN_TEST(test_parse_error_nested_unclosed_parenthesis);
+    RUN_TEST(test_parse_error_invalid_type_syntax_missing_type);
+    RUN_TEST(test_parse_error_bad_array_syntax_dsdl);
+    RUN_TEST(test_parse_error_missing_type_dsdl);
 
     return UNITY_END();
 }

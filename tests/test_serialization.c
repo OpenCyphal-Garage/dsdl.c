@@ -1105,6 +1105,244 @@ static void test_deserialize_float16(void)
 }
 
 // ============================================================================
+// Float32 special value tests
+// ============================================================================
+
+static void test_serialize_float32_nan(void)
+{
+    uint8_t       buffer[8] = { 0 };
+    dsdl_bitbuf_t buf       = { buffer, 64, 0, dsdl_error_none };
+
+    float value = NAN;
+    dsdl_serialize_primitive(&buf, DSDL_FLOAT(32), &value);
+
+    TEST_ASSERT_EQUAL_size_t(32, buf.offset_bits);
+
+    // Deserialize
+    buf.offset_bits = 0;
+    float result    = 0.0f;
+    dsdl_deserialize_primitive(&buf, DSDL_FLOAT(32), &result);
+    TEST_ASSERT_FLOAT_IS_NAN(result);
+}
+
+static void test_serialize_float32_infinity(void)
+{
+    uint8_t       buffer[8] = { 0 };
+    dsdl_bitbuf_t buf       = { buffer, 64, 0, dsdl_error_none };
+
+    // Test positive infinity
+    float value_pos_inf = INFINITY;
+    dsdl_serialize_primitive(&buf, DSDL_FLOAT(32), &value_pos_inf);
+    TEST_ASSERT_EQUAL_size_t(32, buf.offset_bits);
+
+    buf.offset_bits      = 0;
+    float result_pos_inf = 0.0f;
+    dsdl_deserialize_primitive(&buf, DSDL_FLOAT(32), &result_pos_inf);
+    TEST_ASSERT_FLOAT_IS_INF(result_pos_inf);
+    TEST_ASSERT_TRUE(result_pos_inf > 0.0f);
+
+    // Test negative infinity
+    (void)memset(buffer, 0, sizeof(buffer));
+    buf.offset_bits     = 0;
+    buf.error           = false;
+    float value_neg_inf = -INFINITY;
+    dsdl_serialize_primitive(&buf, DSDL_FLOAT(32), &value_neg_inf);
+    TEST_ASSERT_EQUAL_size_t(32, buf.offset_bits);
+
+    buf.offset_bits      = 0;
+    float result_neg_inf = 0.0f;
+    dsdl_deserialize_primitive(&buf, DSDL_FLOAT(32), &result_neg_inf);
+    TEST_ASSERT_FLOAT_IS_NEG_INF(result_neg_inf);
+}
+
+static void test_serialize_float32_negative_zero(void)
+{
+    uint8_t       buffer[8] = { 0 };
+    dsdl_bitbuf_t buf       = { buffer, 64, 0, dsdl_error_none };
+
+    float value = -0.0f;
+    dsdl_serialize_primitive(&buf, DSDL_FLOAT(32), &value);
+
+    TEST_ASSERT_EQUAL_size_t(32, buf.offset_bits);
+
+    // Deserialize
+    buf.offset_bits = 0;
+    float result    = 0.0f;
+    dsdl_deserialize_primitive(&buf, DSDL_FLOAT(32), &result);
+
+    // Verify bit pattern: -0.0f should have sign bit set (0x80000000)
+    uint32_t result_bits;
+    (void)memcpy(&result_bits, &result, sizeof(result_bits));
+    TEST_ASSERT_EQUAL_HEX32(0x80000000, result_bits);
+}
+
+// ============================================================================
+// Float64 special value tests
+// ============================================================================
+
+static void test_serialize_float64_nan(void)
+{
+    uint8_t       buffer[16] = { 0 };
+    dsdl_bitbuf_t buf        = { buffer, 128, 0, dsdl_error_none };
+
+    double value = (double)NAN;
+    dsdl_serialize_primitive(&buf, DSDL_FLOAT(64), &value);
+
+    TEST_ASSERT_EQUAL_size_t(64, buf.offset_bits);
+
+    buf.offset_bits = 0;
+    double result   = 0.0;
+    dsdl_deserialize_primitive(&buf, DSDL_FLOAT(64), &result);
+    TEST_ASSERT_TRUE(isnan(result));
+}
+
+static void test_serialize_float64_infinity(void)
+{
+    uint8_t       buffer[16] = { 0 };
+    dsdl_bitbuf_t buf        = { buffer, 128, 0, dsdl_error_none };
+
+    double value_pos_inf = (double)INFINITY;
+    dsdl_serialize_primitive(&buf, DSDL_FLOAT(64), &value_pos_inf);
+    TEST_ASSERT_EQUAL_size_t(64, buf.offset_bits);
+
+    buf.offset_bits       = 0;
+    double result_pos_inf = 0.0;
+    dsdl_deserialize_primitive(&buf, DSDL_FLOAT(64), &result_pos_inf);
+    TEST_ASSERT_TRUE(isinf(result_pos_inf));
+    TEST_ASSERT_TRUE(result_pos_inf > 0.0);
+
+    (void)memset(buffer, 0, sizeof(buffer));
+    buf.offset_bits      = 0;
+    buf.error            = false;
+    double value_neg_inf = (double)(-INFINITY);
+    dsdl_serialize_primitive(&buf, DSDL_FLOAT(64), &value_neg_inf);
+    TEST_ASSERT_EQUAL_size_t(64, buf.offset_bits);
+
+    buf.offset_bits       = 0;
+    double result_neg_inf = 0.0;
+    dsdl_deserialize_primitive(&buf, DSDL_FLOAT(64), &result_neg_inf);
+    TEST_ASSERT_TRUE(isinf(result_neg_inf));
+    TEST_ASSERT_TRUE(result_neg_inf < 0.0);
+}
+
+// ============================================================================
+// Exact buffer size and array boundary tests
+// ============================================================================
+
+static void test_serialize_exact_buffer_size(void)
+{
+    setup_dsdl();
+
+    TEST_ASSERT_TRUE(add_test_roots());
+
+    // Load Simple.1.0: int32 a, float16 b, bool c
+    const dsdl_type_composite_t* simple = dsdl_read(&g_dsdl, wkv_key("mymsgs.Simple.1.0"));
+    TEST_ASSERT_NOT_NULL(simple);
+
+    // Get footprint (should be 7 bytes for 49 bits)
+    size_t footprint = dsdl_serialized_footprint(simple);
+    TEST_ASSERT_EQUAL_size_t(7, footprint);
+
+    // Create field values
+    int32_t field_a = 0x12345678;
+    float   field_b = 1.0f;
+    bool    field_c = true;
+
+    void*               field_ptrs[] = { &field_a, &field_b, &field_c };
+    dsdl_value_struct_t sval         = { .values = field_ptrs };
+
+    // Serialize with EXACT buffer size (no padding)
+    uint8_t buffer[7] = { 0 };
+    size_t  size      = dsdl_serialize(simple, &sval, sizeof(buffer), buffer, NULL);
+
+    // Should succeed and use exactly the footprint
+    TEST_ASSERT_EQUAL_size_t(7, size);
+
+    teardown_dsdl();
+}
+
+static void test_serialize_array_capacity_boundary(void)
+{
+    setup_dsdl();
+
+    TEST_ASSERT_TRUE(add_test_roots());
+
+    // Load Inner.1.0: uint32[<=5] items
+    const dsdl_type_composite_t* inner = dsdl_read(&g_dsdl, wkv_key("mymsgs.Inner.1.0"));
+    TEST_ASSERT_NOT_NULL(inner);
+
+    // Test 1: Array at capacity (5 elements) - should succeed
+    {
+        uint32_t                    elements[5] = { 1, 2, 3, 4, 5 };
+        dsdl_value_array_variable_t array_val   = { .count = 5, .members = elements };
+
+        void*               field_ptrs[] = { &array_val };
+        dsdl_value_struct_t sval         = { .values = field_ptrs };
+
+        uint8_t buffer[32] = { 0 };
+        size_t  size       = dsdl_serialize(inner, &sval, sizeof(buffer), buffer, NULL);
+
+        // 8 prefix bits + 5*32 = 168 bits = 21 bytes
+        TEST_ASSERT_EQUAL_size_t(21, size);
+    }
+
+    // Test 2: Array exceeding capacity (6 elements) - should fail
+    {
+        uint32_t                    elements[6] = { 1, 2, 3, 4, 5, 6 };
+        dsdl_value_array_variable_t array_val   = { .count = 6, .members = elements };
+
+        void*               field_ptrs[] = { &array_val };
+        dsdl_value_struct_t sval         = { .values = field_ptrs };
+
+        uint8_t buffer[32] = { 0 };
+        size_t  size       = dsdl_serialize(inner, &sval, sizeof(buffer), buffer, NULL);
+
+        TEST_ASSERT_EQUAL_size_t(SIZE_MAX, size);
+    }
+
+    teardown_dsdl();
+}
+
+static void test_serialize_empty_array(void)
+{
+    setup_dsdl();
+
+    TEST_ASSERT_TRUE(add_test_roots());
+
+    // Load Inner.1.0: uint32[<=5] items
+    const dsdl_type_composite_t* inner = dsdl_read(&g_dsdl, wkv_key("mymsgs.Inner.1.0"));
+    TEST_ASSERT_NOT_NULL(inner);
+
+    // Create empty array
+    uint32_t                    elements[5] = { 0 };
+    dsdl_value_array_variable_t array_val   = { .count = 0, .members = elements };
+
+    void*               field_ptrs[] = { &array_val };
+    dsdl_value_struct_t sval         = { .values = field_ptrs };
+
+    // Serialize
+    uint8_t buffer[32] = { 0 };
+    size_t  size       = dsdl_serialize(inner, &sval, sizeof(buffer), buffer, NULL);
+
+    // Expected: 8 prefix bits (count=0) = 1 byte
+    TEST_ASSERT_EQUAL_size_t(1, size);
+    TEST_ASSERT_EQUAL_UINT8(0x00, buffer[0]);
+
+    // Deserialize
+    uint32_t                    result_elements[5] = { 0 };
+    dsdl_value_array_variable_t result_array       = { .count = 5, .members = result_elements };
+
+    void*               result_ptrs[] = { &result_array };
+    dsdl_value_struct_t result_sval   = { .values = result_ptrs };
+
+    size_t consumed = dsdl_deserialize(inner, &result_sval, size, buffer, NULL);
+    TEST_ASSERT_EQUAL_size_t(1, consumed);
+    TEST_ASSERT_EQUAL_size_t(0, result_array.count);
+
+    teardown_dsdl();
+}
+
+// ============================================================================
 // Main
 // ============================================================================
 
@@ -1137,6 +1375,20 @@ int main(void)
     RUN_TEST(test_float16_roundtrip);
     RUN_TEST(test_serialize_float16);
     RUN_TEST(test_deserialize_float16);
+
+    // Float32 special value tests
+    RUN_TEST(test_serialize_float32_nan);
+    RUN_TEST(test_serialize_float32_infinity);
+    RUN_TEST(test_serialize_float32_negative_zero);
+
+    // Float64 special value tests
+    RUN_TEST(test_serialize_float64_nan);
+    RUN_TEST(test_serialize_float64_infinity);
+
+    // Exact buffer size and array boundary tests
+    RUN_TEST(test_serialize_exact_buffer_size);
+    RUN_TEST(test_serialize_array_capacity_boundary);
+    RUN_TEST(test_serialize_empty_array);
 
     // Integration tests
     RUN_TEST(test_serialize_simple_struct);
