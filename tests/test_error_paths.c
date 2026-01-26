@@ -316,6 +316,58 @@ void test_error_semantic_undefined_type(void)
     teardown_dsdl();
 }
 
+void test_error_representation_null_value(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("mymsgs.Simple.1.0"));
+    TEST_ASSERT_NOT_NULL(type);
+
+    uint8_t      buffer[64];
+    dsdl_error_t err  = dsdl_error_none;
+    size_t       size = dsdl_serialize(type, NULL, sizeof(buffer), buffer, &err);
+    TEST_ASSERT_EQUAL_size_t(SIZE_MAX, size);
+    TEST_ASSERT_EQUAL(dsdl_error_representation, err);
+
+    teardown_dsdl();
+}
+
+void test_error_oom_add_namespace(void)
+{
+    g_oom_counter = 1;
+    dsdl_new(&g_dsdl, oom_realloc, test_read_file, test_list_dir);
+
+    bool result = dsdl_add_namespace(&g_dsdl, wkv_key("test_dsdl_root_namespaces/0"));
+    TEST_ASSERT_FALSE(result);
+    TEST_ASSERT_EQUAL(dsdl_error_out_of_memory, g_dsdl.error);
+
+    dsdl_destroy(&g_dsdl);
+}
+
+void test_error_deserialize_truncated(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("mymsgs.Simple.1.0"));
+    TEST_ASSERT_NOT_NULL(type);
+
+    uint8_t             buffer[1] = { 0 };
+    uint_least32_t      a         = 0;
+    uint_least16_t      b         = 0;
+    uint_least8_t       c         = 0;
+    void*               fields[]  = { &a, &b, &c };
+    dsdl_value_struct_t value     = { .values = fields };
+
+    dsdl_error_t err  = dsdl_error_none;
+    size_t       size = dsdl_deserialize(type, &value, sizeof(buffer), buffer, &err);
+    TEST_ASSERT_EQUAL_size_t(7, size);
+    TEST_ASSERT_EQUAL(dsdl_error_none, err);
+
+    teardown_dsdl();
+}
+
 // ============================================================================
 // Unity test runner
 // ============================================================================
@@ -334,5 +386,8 @@ int main(void)
     RUN_TEST(test_error_union_tag_invalid);
     RUN_TEST(test_error_parse_invalid_syntax);
     RUN_TEST(test_error_semantic_undefined_type);
+    RUN_TEST(test_error_representation_null_value);
+    RUN_TEST(test_error_oom_add_namespace);
+    RUN_TEST(test_error_deserialize_truncated);
     return UNITY_END();
 }
