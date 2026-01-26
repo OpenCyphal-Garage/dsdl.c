@@ -565,6 +565,209 @@ static void test_bls_modulo_nullary_large_divisor_with_duplicates(void)
     TEST_ASSERT_TRUE(has_300);
 }
 
+static void test_bls_expand_union_simple(void)
+{
+    dsdl_bls_t* const child1      = dsdl_bls_new_single(&test_dsdl, 8);
+    dsdl_bls_t* const child2      = dsdl_bls_new_single(&test_dsdl, 16);
+    dsdl_bls_t*       children[2] = { child1, child2 };
+    dsdl_bls_t* const bls         = dsdl_bls_new_unite(&test_dsdl, 2, children);
+
+    uint64_t*  values = NULL;
+    size_t     count  = 0;
+    const bool result = dsdl_bls_expand(&test_dsdl, bls, &values, &count);
+
+    TEST_ASSERT_TRUE(result);
+    TEST_ASSERT_EQUAL_size_t(2, count);
+    bool has_8 = false, has_16 = false;
+    for (size_t i = 0; i < count; i++) {
+        if (values[i] == 8) {
+            has_8 = true;
+        }
+        if (values[i] == 16) {
+            has_16 = true;
+        }
+    }
+    TEST_ASSERT_TRUE(has_8);
+    TEST_ASSERT_TRUE(has_16);
+    dsdl_free(&test_dsdl, values);
+}
+
+static void test_bls_expand_union_with_duplicates(void)
+{
+    const uint64_t    values1[]   = { 8, 16 };
+    const uint64_t    values2[]   = { 16, 24 };
+    dsdl_bls_t* const child1      = dsdl_bls_new_set(&test_dsdl, 2, values1);
+    dsdl_bls_t* const child2      = dsdl_bls_new_set(&test_dsdl, 2, values2);
+    dsdl_bls_t*       children[2] = { child1, child2 };
+    dsdl_bls_t* const bls         = dsdl_bls_new_unite(&test_dsdl, 2, children);
+
+    uint64_t*  values = NULL;
+    size_t     count  = 0;
+    const bool result = dsdl_bls_expand(&test_dsdl, bls, &values, &count);
+
+    TEST_ASSERT_TRUE(result);
+    TEST_ASSERT_EQUAL_size_t(3, count);
+    bool has_8 = false, has_16 = false, has_24 = false;
+    for (size_t i = 0; i < count; i++) {
+        if (values[i] == 8) {
+            has_8 = true;
+        }
+        if (values[i] == 16) {
+            has_16 = true;
+        }
+        if (values[i] == 24) {
+            has_24 = true;
+        }
+    }
+    TEST_ASSERT_TRUE(has_8);
+    TEST_ASSERT_TRUE(has_16);
+    TEST_ASSERT_TRUE(has_24);
+    dsdl_free(&test_dsdl, values);
+}
+
+static void test_bls_expand_nullary(void)
+{
+    const uint64_t    values[] = { 8, 16, 32 };
+    dsdl_bls_t* const bls      = dsdl_bls_new_set(&test_dsdl, 3, values);
+
+    uint64_t*  out_values = NULL;
+    size_t     out_count  = 0;
+    const bool result     = dsdl_bls_expand(&test_dsdl, bls, &out_values, &out_count);
+
+    TEST_ASSERT_TRUE(result);
+    TEST_ASSERT_EQUAL_size_t(3, out_count);
+    TEST_ASSERT_EQUAL_size_t(8, out_values[0]);
+    TEST_ASSERT_EQUAL_size_t(16, out_values[1]);
+    TEST_ASSERT_EQUAL_size_t(32, out_values[2]);
+    dsdl_free(&test_dsdl, out_values);
+}
+
+static void test_bls_u64_sort_dedup_with_duplicates(void)
+{
+    uint64_t     values[] = { 5, 3, 5, 1, 3, 7, 1 };
+    const size_t result   = dsdl_u64_sort_dedup(values, 7);
+
+    TEST_ASSERT_EQUAL_size_t(4, result);
+    TEST_ASSERT_EQUAL_size_t(1, values[0]);
+    TEST_ASSERT_EQUAL_size_t(3, values[1]);
+    TEST_ASSERT_EQUAL_size_t(5, values[2]);
+    TEST_ASSERT_EQUAL_size_t(7, values[3]);
+}
+
+static void test_bls_u64_sort_dedup_all_duplicates(void)
+{
+    uint64_t     values[] = { 5, 5, 5, 5 };
+    const size_t result   = dsdl_u64_sort_dedup(values, 4);
+
+    TEST_ASSERT_EQUAL_size_t(1, result);
+    TEST_ASSERT_EQUAL_size_t(5, values[0]);
+}
+
+static void test_bls_u64_sort_dedup_already_sorted(void)
+{
+    uint64_t     values[] = { 1, 2, 3, 4, 5 };
+    const size_t result   = dsdl_u64_sort_dedup(values, 5);
+
+    TEST_ASSERT_EQUAL_size_t(5, result);
+    TEST_ASSERT_EQUAL_size_t(1, values[0]);
+    TEST_ASSERT_EQUAL_size_t(2, values[1]);
+    TEST_ASSERT_EQUAL_size_t(3, values[2]);
+    TEST_ASSERT_EQUAL_size_t(4, values[3]);
+    TEST_ASSERT_EQUAL_size_t(5, values[4]);
+}
+
+static void test_bls_u64_sort_dedup_single_element(void)
+{
+    uint64_t     values[] = { 42 };
+    const size_t result   = dsdl_u64_sort_dedup(values, 1);
+
+    TEST_ASSERT_EQUAL_size_t(1, result);
+    TEST_ASSERT_EQUAL_size_t(42, values[0]);
+}
+
+static void test_bls_u64_sort_dedup_empty(void)
+{
+    uint64_t     values[] = { 0 };
+    const size_t result   = dsdl_u64_sort_dedup(values, 0);
+
+    TEST_ASSERT_EQUAL_size_t(0, result);
+}
+
+static void test_bls_is_fixed_single(void)
+{
+    dsdl_bls_t* const bls = dsdl_bls_new_single(&test_dsdl, 42);
+    TEST_ASSERT_TRUE(dsdl_bls_is_fixed(bls));
+}
+
+static void test_bls_is_fixed_set_variable(void)
+{
+    const uint64_t    values[] = { 8, 16, 32 };
+    dsdl_bls_t* const bls      = dsdl_bls_new_set(&test_dsdl, 3, values);
+    TEST_ASSERT_FALSE(dsdl_bls_is_fixed(bls));
+}
+
+static void test_bls_is_fixed_concat_fixed(void)
+{
+    dsdl_bls_t* const child1      = dsdl_bls_new_single(&test_dsdl, 16);
+    dsdl_bls_t* const child2      = dsdl_bls_new_single(&test_dsdl, 8);
+    dsdl_bls_t*       children[2] = { child1, child2 };
+    dsdl_bls_t* const bls         = dsdl_bls_new_concat(&test_dsdl, 2, children);
+    TEST_ASSERT_TRUE(dsdl_bls_is_fixed(bls));
+}
+
+static void test_bls_is_aligned_aligned(void)
+{
+    dsdl_bls_t* const bls = dsdl_bls_new_single(&test_dsdl, 32);
+    TEST_ASSERT_TRUE(dsdl_bls_is_aligned(&test_dsdl, bls, 8));
+    TEST_ASSERT_TRUE(dsdl_bls_is_aligned(&test_dsdl, bls, 16));
+    TEST_ASSERT_TRUE(dsdl_bls_is_aligned(&test_dsdl, bls, 32));
+}
+
+static void test_bls_is_aligned_not_aligned(void)
+{
+    dsdl_bls_t* const bls = dsdl_bls_new_single(&test_dsdl, 10);
+    TEST_ASSERT_FALSE(dsdl_bls_is_aligned(&test_dsdl, bls, 8));
+    TEST_ASSERT_FALSE(dsdl_bls_is_aligned(&test_dsdl, bls, 16));
+}
+
+static void test_bls_is_aligned_variable_set(void)
+{
+    const uint64_t    values[] = { 8, 16, 24 };
+    dsdl_bls_t* const bls      = dsdl_bls_new_set(&test_dsdl, 3, values);
+    TEST_ASSERT_TRUE(dsdl_bls_is_aligned(&test_dsdl, bls, 8));
+    TEST_ASSERT_FALSE(dsdl_bls_is_aligned(&test_dsdl, bls, 16));
+}
+
+static void test_bls_new_unite_zero_count(void)
+{
+    dsdl_bls_t* const bls = dsdl_bls_new_unite(&test_dsdl, 0, NULL);
+    TEST_ASSERT_NOT_NULL(bls);
+    TEST_ASSERT_EQUAL_size_t(0, dsdl_bls_min(bls));
+    TEST_ASSERT_EQUAL_size_t(0, dsdl_bls_max(bls));
+}
+
+static void test_bls_new_unite_single_child(void)
+{
+    dsdl_bls_t* const child       = dsdl_bls_new_single(&test_dsdl, 42);
+    dsdl_bls_t*       children[1] = { child };
+    dsdl_bls_t* const bls         = dsdl_bls_new_unite(&test_dsdl, 1, children);
+    TEST_ASSERT_EQUAL_PTR(child, bls);
+}
+
+static void test_bls_new_unite_multiple_children(void)
+{
+    dsdl_bls_t* const child1      = dsdl_bls_new_single(&test_dsdl, 8);
+    dsdl_bls_t* const child2      = dsdl_bls_new_single(&test_dsdl, 16);
+    dsdl_bls_t* const child3      = dsdl_bls_new_single(&test_dsdl, 32);
+    dsdl_bls_t*       children[3] = { child1, child2, child3 };
+    dsdl_bls_t* const bls         = dsdl_bls_new_unite(&test_dsdl, 3, children);
+
+    TEST_ASSERT_NOT_NULL(bls);
+    TEST_ASSERT_EQUAL(dsdl_bls_union, bls->kind);
+    TEST_ASSERT_EQUAL_size_t(8, dsdl_bls_min(bls));
+    TEST_ASSERT_EQUAL_size_t(32, dsdl_bls_max(bls));
+}
+
 // ============================================================================
 // Main
 // ============================================================================
@@ -617,6 +820,25 @@ int main(void)
     RUN_TEST(test_bls_modulo_pad_large_divisor);
     RUN_TEST(test_bls_modulo_large_divisor_1000);
     RUN_TEST(test_bls_modulo_nullary_large_divisor_with_duplicates);
+
+    // BLS Expand and edge cases
+    RUN_TEST(test_bls_expand_union_simple);
+    RUN_TEST(test_bls_expand_union_with_duplicates);
+    RUN_TEST(test_bls_expand_nullary);
+    RUN_TEST(test_bls_u64_sort_dedup_with_duplicates);
+    RUN_TEST(test_bls_u64_sort_dedup_all_duplicates);
+    RUN_TEST(test_bls_u64_sort_dedup_already_sorted);
+    RUN_TEST(test_bls_u64_sort_dedup_single_element);
+    RUN_TEST(test_bls_u64_sort_dedup_empty);
+    RUN_TEST(test_bls_is_fixed_single);
+    RUN_TEST(test_bls_is_fixed_set_variable);
+    RUN_TEST(test_bls_is_fixed_concat_fixed);
+    RUN_TEST(test_bls_is_aligned_aligned);
+    RUN_TEST(test_bls_is_aligned_not_aligned);
+    RUN_TEST(test_bls_is_aligned_variable_set);
+    RUN_TEST(test_bls_new_unite_zero_count);
+    RUN_TEST(test_bls_new_unite_single_child);
+    RUN_TEST(test_bls_new_unite_multiple_children);
 
     // Complex cases
     RUN_TEST(test_bls_nested_variable_arrays);
