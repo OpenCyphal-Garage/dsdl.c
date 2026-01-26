@@ -240,7 +240,7 @@ void test_bitbuf_read_implicit_zero_extension(void)
     buf.offset_bits = 8;
     TEST_ASSERT_EQUAL_UINT32(0, (uint32_t)dsdl_bitbuf_read(&buf, 16));
     TEST_ASSERT_EQUAL(dsdl_error_none, buf.error);
-    TEST_ASSERT_EQUAL_UINT64(24, buf.offset_bits);
+    TEST_ASSERT_EQUAL_size_t(24, buf.offset_bits);
 }
 
 // ============================================================================
