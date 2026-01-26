@@ -45,50 +45,37 @@ The code must not make assumptions about the execution platform (pointer width, 
 
 ## Remaining tasks
 
-### Address Alignment Cast Warnings in dsdl.c
-**Impact**: Potential UB on strict-alignment platforms
+### ~~Address Alignment Cast Warnings in dsdl.c~~ ✅ DONE (2026-01-26)
+**Status**: FIXED
 
-clang-tidy reports multiple alignment warnings like:
-```
-Cast from 'char *' to 'wkv_str_t *' increases required alignment from 1 to 8
-```
-
-**Locations**: Lines 7688, 7692, 7696, 7698, 7700, 7823, 7825, 7827, 7829, 7831, 8558, 8715, 8731, 8747, 8786, 8819, 8916, 9583
-
-**Analysis (2026-01-26)**:
-- Pattern: `str_ptr` (char*) is used to carve out sections of a single allocation
-- Memory source: `dsdl_alloc()` (user-provided realloc wrapper) - base is properly aligned
-- Risk: After advancing str_ptr by struct sizes, alignment might be lost
-- Reality: Works on all tested platforms (x86/x64) because struct sizes are multiples of alignment
-- Technically UB per C standard, but safe in practice on common platforms
-
-**To fix properly** (if needed for strict platforms):
-1. Use `memcpy` to/from properly-aligned temporaries (verbose)
-2. Add explicit alignment padding when advancing str_ptr
-3. Use offsetof() calculations to ensure alignment
-4. Estimated effort: 2-4 hours of careful refactoring
+Added `dsdl_align_ptr()` helper function and alignment padding to ensure proper pointer alignment before casts. All x64 and x86 tests pass.
 
 ### Improve Code Coverage
-**Target**: 99+% line coverage minimum, 100% recommended
+**Target**: 99+% line coverage for dsdl.c only
 
-**To improve later**:
+**Current status (2026-01-26)**: 77% (4455/5741 lines in dsdl.c)
+
+Tests added:
+- `test_error_paths.c`: OOM, buffer, validation errors
+- `test_main.c`: Public API, footprint, error parameter tests  
+- `test_serialization.c`: Float NaN/Inf, exact buffer, array capacity
+- `test_parser.c`: Error recovery tests (12 new)
+
+**To check coverage**:
 ```bash
-cmake -S . -B build -DDSDL_ENABLE_COVERAGE=ON
-cmake --build build
-ctest --test-dir build
-cmake --build build --target coverage
-# Check build/coverage/index.html
+cmake -S . -B build-cov -DDSDL_ENABLE_COVERAGE=ON
+cmake --build build-cov && ctest --test-dir build-cov
+cmake --build build-cov --target coverage
 ```
 
-### Add Examples Directory
-Add `examples/` with one or two very simple executables showing how to read DSDL files such that files from one namespace depends on files in another namespace, how to convert serialized data into JSON, possibly something else. Build examples with `DSDL_CONFIG_TRACE` enabled with logging to stderr, for demo purposes.
+### ~~Add Examples Directory~~ ✅ DONE (2026-01-26)  
+**Status**: COMPLETE
 
-**Required**:
-1. Create `examples/CMakeLists.txt`
-2. Create `examples/load_multi_namespace.c` - Multi-namespace loading demo
-3. Create `examples/serialize_to_json.c` - Serialization + JSON conversion demo
-4. Enable `DSDL_CONFIG_TRACE` with stderr logging
-5. Ensure README examples are up to date with new API (`dsdl_error_t* err` parameter)
+Created `examples/` with:
+- `load_multi_namespace.c` - Multi-namespace loading demo
+- `serialize_to_json.c` - Serialization + JSON demo
+
+Usage: `./build/examples/load_multi_namespace <ns1> <ns2> [type]`
 
 ### Identify and fix memory leaks
 There probably are some memory leaks that need fixing.
