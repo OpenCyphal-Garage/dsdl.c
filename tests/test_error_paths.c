@@ -355,7 +355,7 @@ void test_error_deserialize_truncated(void)
 
     uint8_t             buffer[1] = { 0 };
     uint_least32_t      a         = 0;
-    uint_least16_t      b         = 0;
+    float               b         = 0.0F;
     uint_least8_t       c         = 0;
     void*               fields[]  = { &a, &b, &c };
     dsdl_value_struct_t value     = { .values = fields };
