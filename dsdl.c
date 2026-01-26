@@ -8985,7 +8985,7 @@ static void dsdl_bitbuf_write(dsdl_bitbuf_t* const buf, uint64_t value, uint64_t
         return;
     }
     if ((bits > 64) || ((buf->offset_bits + bits) > buf->capacity_bits)) {
-        buf->error = true;
+        buf->error = dsdl_error_buffer_too_small;
         return;
     }
 
@@ -9401,7 +9401,7 @@ static void dsdl_serialize_composite_content(dsdl_bitbuf_t* const               
         const size_t              tag  = uval->tag;
 
         if (tag >= composite->field_count) {
-            buf->error = true;
+            buf->error = dsdl_error_union_tag;
             return;
         }
 
@@ -9487,7 +9487,7 @@ static void dsdl_deserialize_composite_content(dsdl_bitbuf_t* const             
         }
 
         if (tag >= composite->field_count) {
-            buf->error = true;
+            buf->error = dsdl_error_union_tag;
             return;
         }
 
@@ -9558,7 +9558,7 @@ static void dsdl_serialize_type(dsdl_bitbuf_t* const buf, const dsdl_type_t* con
         return;
     }
     if (value == NULL) {
-        buf->error = true;
+        buf->error = dsdl_error_representation;
         return;
     }
 
@@ -9592,11 +9592,11 @@ static void dsdl_serialize_type(dsdl_bitbuf_t* const buf, const dsdl_type_t* con
             // Write length prefix
             const uint_least8_t prefix_bits = dsdl_array_length_prefix_bits(arr->capacity);
             if (var->count > arr->capacity) {
-                buf->error = true;
+                buf->error = dsdl_error_array_capacity;
                 return;
             }
             if ((var->count > 0) && (var->members == NULL)) {
-                buf->error = true;
+                buf->error = dsdl_error_representation;
                 return;
             }
             const uint64_t actual_count = var->count;
@@ -9638,7 +9638,7 @@ static void dsdl_serialize_type(dsdl_bitbuf_t* const buf, const dsdl_type_t* con
             // Remember position for delimiter
             const uint64_t delimiter_byte_pos64 = buf->offset_bits / 8U;
             if (delimiter_byte_pos64 > SIZE_MAX) {
-                buf->error = true;
+                buf->error = dsdl_error_representation;
                 return;
             }
             const size_t delimiter_byte_pos = (size_t)delimiter_byte_pos64;
@@ -9665,7 +9665,7 @@ static void dsdl_serialize_type(dsdl_bitbuf_t* const buf, const dsdl_type_t* con
             // Calculate content size and update delimiter
             const uint64_t content_bytes = (buf->offset_bits - content_start_bits + 7U) / 8U;
             if (content_bytes > UINT32_MAX) {
-                buf->error = true;
+                buf->error = dsdl_error_representation;
                 return;
             }
             // Write delimiter (little-endian 32-bit)
@@ -9688,7 +9688,7 @@ static void dsdl_deserialize_type(dsdl_bitbuf_t* const buf, const dsdl_type_t* c
         return;
     }
     if (value == NULL) {
-        buf->error = true;
+        buf->error = dsdl_error_representation;
         return;
     }
 
@@ -9728,23 +9728,23 @@ static void dsdl_deserialize_type(dsdl_bitbuf_t* const buf, const dsdl_type_t* c
 
             // Validate against type capacity (message can't exceed type definition)
             if (count_from_msg > arr->capacity) {
-                buf->error = true;
+                buf->error = dsdl_error_array_capacity;
                 return;
             }
 
             // Fail if user buffer is too small
             if (count_from_msg > var->count) {
-                buf->error = true;
+                buf->error = dsdl_error_array_capacity;
                 return;
             }
             if ((count_from_msg > 0) && (var->members == NULL)) {
-                buf->error = true;
+                buf->error = dsdl_error_representation;
                 return;
             }
 
             // Update count to actual deserialized elements
             if (count_from_msg > SIZE_MAX) {
-                buf->error = true;
+                buf->error = dsdl_error_representation;
                 return;
             }
             var->count = (size_t)count_from_msg;
@@ -9792,7 +9792,7 @@ static void dsdl_deserialize_type(dsdl_bitbuf_t* const buf, const dsdl_type_t* c
             const uint64_t content_start_bits = buf->offset_bits;
             const uint64_t content_end_bits   = content_start_bits + ((uint64_t)delimiter * 8U);
             if (content_end_bits > buf->capacity_bits) {
-                buf->error = true;
+                buf->error = dsdl_error_representation;
                 return;
             }
 
@@ -9803,7 +9803,7 @@ static void dsdl_deserialize_type(dsdl_bitbuf_t* const buf, const dsdl_type_t* c
             }
 
             if (buf->offset_bits > content_end_bits) {
-                buf->error = true;
+                buf->error = dsdl_error_representation;
                 return;
             }
 

@@ -43,19 +43,8 @@ The code must be strictly C99-compliant, possibly with optional features enabled
 
 The code must not make assumptions about the execution platform (pointer width, endianness, baremetal or not, etc.).
 
-## Status
+## Remaining tasks
 
-**All major implementation work is complete!**
+- Add `examples/` with one or two very simple executables showing how to read DSDL files such that files from one namespace depends on files in another namespace, how to convert serialized data into JSON, possibly something else.
 
-- ✅ PEG parser implemented and tested
-- ✅ Semantic analysis (type resolution, constants, assertions, extents)
-- ✅ Serialization/deserialization with validation
-- ✅ PyDSDL parity tests passing (no warnings)
-- ✅ Nunavut cross-validation implemented
-- ✅ Comprehensive error codes (`dsdl_error_t` enum with 9 error categories)
-- ✅ README with usage examples
-- ✅ GitHub Actions CI configured
-- ✅ Code coverage verified (77.6% lines, 98.4% functions)
-- ✅ All 19 tests passing (x86/x64 matrix)
-
-See [`README.md`](README.md) for usage examples and [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md) for detailed status.
+- Ensure the examples in the README are up to date.
