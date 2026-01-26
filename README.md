@@ -1,8 +1,14 @@
+<div align="center">
+
 # Cyphal DSDL Parser in C
 
-A compact, baremetal-friendly C99 implementation of a [Cyphal](https://opencyphal.org/) DSDL parser that allows loading DSDL definitions at runtime without compile-time code generation.
+</div>
 
-## Features
+-----
+
+A compact, self-contained, baremetal-friendly C99 implementation of a [Cyphal](https://opencyphal.org/) DSDL parser that allows loading DSDL definitions at runtime without compile-time code generation.
+
+Features:
 
 - **Runtime type loading**: Parse DSDL files at runtime without code generation
 - **Baremetal-friendly**: No stdio, no heap (user-provided `realloc` callback)
@@ -13,27 +19,9 @@ A compact, baremetal-friendly C99 implementation of a [Cyphal](https://opencypha
 - **Cross-validated**: Tested against PyDSDL and Nunavut reference implementations
 - **Comprehensive error reporting**: Detailed error codes for all failure modes
 
-## Building
-
-```bash
-# Configure
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-
-# Build
-cmake --build build -j$(nproc)
-
-# Test
-ctest --test-dir build --output-on-failure
-```
-
-### Build Options
-
-- `DSDL_BUILD_TESTS`: Build the test suite (default: ON)
-- `DSDL_ENABLE_COVERAGE`: Enable code coverage (default: OFF)
-- `DSDL_ENABLE_SANITIZERS`: Enable ASan/UBSan (default: OFF)
-- `DSDL_BUILD_TOOLS`: Build standalone tools (default: ON)
-
 ## Usage
+
+To use the library, simply add `dsdl.c` to your build and add `dsdl.h` to your include paths. That's it.
 
 ### Basic Example
 
@@ -184,76 +172,13 @@ void deserialize_heartbeat(const dsdl_type_composite_t* heartbeat_type,
 }
 ```
 
-### Error Handling
+## API Reference
 
-The library provides detailed error codes through the `dsdl_t.error` field:
-
-```c
-dsdl_t dsdl;
-dsdl_new(&dsdl, my_realloc);
-
-const dsdl_type_composite_t* type = dsdl_read(&dsdl, WKV_STR("nonexistent.Type.1.0"));
-if (!type) {
-    switch (dsdl.error) {
-        case dsdl_error_out_of_memory:
-            fprintf(stderr, "Out of memory\n");
-            break;
-        case dsdl_error_file_not_found:
-            fprintf(stderr, "Type definition not found\n");
-            break;
-        case dsdl_error_parse:
-            fprintf(stderr, "Syntax error in DSDL file\n");
-            break;
-        case dsdl_error_semantic:
-            fprintf(stderr, "Semantic error (type resolution failed)\n");
-            break;
-        default:
-            fprintf(stderr, "Unknown error: %d\n", dsdl.error);
-            break;
-    }
-}
-
-dsdl_destroy(&dsdl);
-```
-
-### Error Codes
-
-| Code | Description |
-|------|-------------|
-| `dsdl_error_none` | No error (success) |
-| `dsdl_error_out_of_memory` | Memory allocation failed |
-| `dsdl_error_file_not_found` | DSDL file or namespace not found |
-| `dsdl_error_parse` | Syntax error in DSDL file |
-| `dsdl_error_semantic` | Type resolution or expression evaluation failure |
-| `dsdl_error_serialization` | Buffer too small or invalid value during serialization |
-| `dsdl_error_deserialization` | Truncated input or invalid data during deserialization |
-| `dsdl_error_array_capacity` | Array length exceeds capacity |
-| `dsdl_error_union_tag` | Union tag exceeds available options |
+See [`dsdl.h`](dsdl.h) for the complete API documentation.
 
 ## Tools
 
-The project includes command-line tools for working with DSDL:
-
-### dsdl_to_json
-
-Convert DSDL types to JSON representation:
-
-```bash
-./build/tools/dsdl_to_json \
-  -r /path/to/public_regulated_data_types/uavcan \
-  -- uavcan.node.Heartbeat.1.0
-```
-
-### dsdl_to_dsdl
-
-Emit canonicalized DSDL:
-
-```bash
-./build/tools/dsdl_to_dsdl \
-  -r /path/to/public_regulated_data_types/uavcan \
-  -- uavcan.node.Heartbeat.1.0
-```
-
+The project includes command-line tools for working with DSDL.
 See [`tools/README.md`](tools/README.md) for more details.
 
 ## Testing
@@ -291,18 +216,6 @@ cmake --build build --target coverage
 
 Coverage reports are generated in `build/coverage/`.
 
-## API Reference
-
-See [`dsdl.h`](dsdl.h) for the complete API documentation. Key functions:
-
-- `dsdl_new()`: Initialize parser state
-- `dsdl_destroy()`: Free all allocated memory
-- `dsdl_add_namespace()`: Register namespace directory
-- `dsdl_read()`: Load and parse DSDL type definition
-- `dsdl_serialize()`: Serialize message to byte buffer
-- `dsdl_deserialize()`: Deserialize byte buffer to message
-- `dsdl_serialized_footprint()`: Get maximum serialized size
-
 ## Design Constraints
 
 - **C99 compliant**: No compiler extensions or platform-specific features
@@ -311,22 +224,8 @@ See [`dsdl.h`](dsdl.h) for the complete API documentation. Key functions:
 - **Single file**: Entire implementation in `dsdl.c`
 - **Minimal dependencies**: Only `lib/wkv.h` for name lookups
 
-## License
-
-MIT License. See LICENSE file for details.
-
-## Contributing
-
-Contributions are welcome! Please follow the [Zubax Style Guide](specs/CODING_CONVENTIONS.md) and run `clang-format` before submitting.
-
 ## References
 
 - [Cyphal Specification](https://opencyphal.org/specification/)
-- [PyDSDL](https://github.com/OpenCyphal/pydsdl) - Reference implementation
+- [PyDSDL](https://github.com/OpenCyphal/pydsdl) - DSDL parser reference implementation in Python
 - [Nunavut](https://github.com/OpenCyphal/nunavut) - DSDL code generator
-- [libcanard](https://github.com/OpenCyphal/libcanard) - Cyphal protocol stack in C
-
-## Support
-
-- [Cyphal Forum](https://forum.opencyphal.org/)
-- [GitHub Issues](https://github.com/OpenCyphal/dsdl.c/issues)
