@@ -1,9 +1,5 @@
 # Remaining tasks
 
-## dsdl_new() shall accept pointers to read() and list() callbacks
-
-The header file is already updated but the implementation and the tools/examples/tests are not yet. Don't forget to update the README examples.
-
 ## Provide invocation examples for the examples in the readme
 
 Something that the user could copy-paste to check out the examples.

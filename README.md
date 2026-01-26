@@ -1,6 +1,6 @@
 <div align="center">
 
-# Cyphal DSDL Parser in C
+# Cyphal DSDL Parser & Serializer in C
 
 [![CI](https://github.com/pavel-kirienko/dsdl.c/actions/workflows/ci.yml/badge.svg)](https://github.com/pavel-kirienko/dsdl.c/actions/workflows/ci.yml)
 
@@ -8,7 +8,7 @@
 
 -----
 
-A compact, self-contained, baremetal-friendly C99 implementation of a [Cyphal](https://opencyphal.org/) DSDL parser that allows loading DSDL definitions at runtime without compile-time code generation.
+A compact baremetal-friendly C99 implementation of a [Cyphal](https://opencyphal.org/) DSDL parser that allows loading DSDL definitions at runtime without compile-time code generation.
 
 Features:
 
@@ -23,7 +23,9 @@ Features:
 
 ## Usage
 
-To use the library, simply add `dsdl.c` to your build and add `dsdl.h` to your include paths. That's it.
+To use the library, simply add `dsdl.c` to your build and add `dsdl.h` to your include paths. Also, add [`wkv.h`](https://github.com/pavel-kirienko/wild_key_value) to your include paths -- a single-header key-value container with pattern matching.
+
+See the `examples/` directory for additional examples.
 
 ### Basic Example
 
@@ -79,9 +81,7 @@ int main(void)
 {
     // Initialize parser
     dsdl_t dsdl;
-    dsdl_new(&dsdl, my_realloc);
-    dsdl.read = my_read_file;
-    dsdl.list = my_list_dir;
+    dsdl_new(&dsdl, my_realloc, my_read_file, my_list_dir);
     
     // Register namespace directories
     if (!dsdl_add_namespace(&dsdl, WKV_STR("/path/to/public_regulated_data_types/uavcan"))) {
