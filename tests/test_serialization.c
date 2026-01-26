@@ -169,7 +169,7 @@ static bool add_test_roots(void)
 void test_bitbuf_write_read_byte_aligned(void)
 {
     uint8_t       buffer[8] = { 0 };
-    dsdl_bitbuf_t buf       = { buffer, 64, 0, false };
+    dsdl_bitbuf_t buf       = { buffer, 64, 0, dsdl_error_none };
 
     // Write 8 bits (byte-aligned)
     dsdl_bitbuf_write(&buf, 0xAB, 8);
@@ -190,7 +190,7 @@ void test_bitbuf_write_read_byte_aligned(void)
 void test_bitbuf_write_read_non_aligned(void)
 {
     uint8_t       buffer[8] = { 0 };
-    dsdl_bitbuf_t buf       = { buffer, 64, 0, false };
+    dsdl_bitbuf_t buf       = { buffer, 64, 0, dsdl_error_none };
 
     // Write 3 bits: 0b101 = 5
     dsdl_bitbuf_write(&buf, 5, 3);
@@ -214,7 +214,7 @@ void test_bitbuf_write_read_non_aligned(void)
 void test_bitbuf_write_cross_byte(void)
 {
     uint8_t       buffer[8] = { 0 };
-    dsdl_bitbuf_t buf       = { buffer, 64, 0, false };
+    dsdl_bitbuf_t buf       = { buffer, 64, 0, dsdl_error_none };
 
     // Write 4 bits
     dsdl_bitbuf_write(&buf, 0xF, 4);
@@ -230,16 +230,16 @@ void test_bitbuf_write_cross_byte(void)
     TEST_ASSERT_EQUAL_UINT32(0x1234, (uint32_t)dsdl_bitbuf_read(&buf, 16));
 }
 
-void test_bitbuf_read_overflow_fails(void)
+void test_bitbuf_read_implicit_zero_extension(void)
 {
     uint8_t       buffer[2] = { 0xAB, 0xCD };
-    dsdl_bitbuf_t buf       = { buffer, 16, 0, false };
+    dsdl_bitbuf_t buf       = { buffer, 16, 0, dsdl_error_none };
 
     // Read more bits than available - implicit zero extension per Cyphal spec
     // Should return 0 and advance offset, NOT set error
     buf.offset_bits = 8;
     TEST_ASSERT_EQUAL_UINT32(0, (uint32_t)dsdl_bitbuf_read(&buf, 16));
-    TEST_ASSERT_FALSE(buf.error);
+    TEST_ASSERT_EQUAL(dsdl_error_none, buf.error);
     TEST_ASSERT_EQUAL_UINT64(24, buf.offset_bits);
 }
 
@@ -250,7 +250,7 @@ void test_bitbuf_read_overflow_fails(void)
 void test_serialize_uint8(void)
 {
     uint8_t       buffer[8] = { 0 };
-    dsdl_bitbuf_t buf       = { buffer, 64, 0, false };
+    dsdl_bitbuf_t buf       = { buffer, 64, 0, dsdl_error_none };
 
     uint8_t value = 0x42;
     dsdl_serialize_primitive(&buf, DSDL_UINT(8), &value);
@@ -268,7 +268,7 @@ void test_serialize_uint8(void)
 void test_serialize_uint32(void)
 {
     uint8_t       buffer[8] = { 0 };
-    dsdl_bitbuf_t buf       = { buffer, 64, 0, false };
+    dsdl_bitbuf_t buf       = { buffer, 64, 0, dsdl_error_none };
 
     uint32_t value = 0x12345678;
     dsdl_serialize_primitive(&buf, DSDL_UINT(32), &value);
@@ -290,7 +290,7 @@ void test_serialize_uint32(void)
 void test_serialize_int16_negative(void)
 {
     uint8_t       buffer[8] = { 0 };
-    dsdl_bitbuf_t buf       = { buffer, 64, 0, false };
+    dsdl_bitbuf_t buf       = { buffer, 64, 0, dsdl_error_none };
 
     int16_t value = -1234; // 0xFB2E in two's complement
     dsdl_serialize_primitive(&buf, DSDL_INT(16), &value);
@@ -307,7 +307,7 @@ void test_serialize_int16_negative(void)
 void test_serialize_bool(void)
 {
     uint8_t       buffer[8] = { 0 };
-    dsdl_bitbuf_t buf       = { buffer, 64, 0, false };
+    dsdl_bitbuf_t buf       = { buffer, 64, 0, dsdl_error_none };
 
     bool value_true  = true;
     bool value_false = false;
@@ -334,7 +334,7 @@ void test_serialize_bool(void)
 void test_serialize_float32(void)
 {
     uint8_t       buffer[8] = { 0 };
-    dsdl_bitbuf_t buf       = { buffer, 64, 0, false };
+    dsdl_bitbuf_t buf       = { buffer, 64, 0, dsdl_error_none };
 
     float value = 3.14159f;
     dsdl_serialize_primitive(&buf, DSDL_FLOAT(32), &value);
@@ -351,7 +351,7 @@ void test_serialize_float32(void)
 void test_serialize_cast_mode_uint(void)
 {
     uint8_t       buffer[2] = { 0 };
-    dsdl_bitbuf_t buf       = { buffer, 16, 0, false };
+    dsdl_bitbuf_t buf       = { buffer, 16, 0, dsdl_error_none };
 
     uint_least8_t value = 0x11U;
     dsdl_serialize_primitive(&buf, DSDL_UINT_TRUNC(2), &value);
@@ -377,7 +377,7 @@ void test_serialize_cast_mode_uint(void)
 void test_serialize_cast_mode_int(void)
 {
     uint8_t       buffer[2] = { 0 };
-    dsdl_bitbuf_t buf       = { buffer, 16, 0, false };
+    dsdl_bitbuf_t buf       = { buffer, 16, 0, dsdl_error_none };
 
     int_least8_t value = 20;
     dsdl_serialize_primitive(&buf, DSDL_INT(5), &value);
@@ -404,7 +404,7 @@ void test_serialize_cast_mode_int(void)
 void test_serialize_cast_mode_float16(void)
 {
     uint8_t       buffer[4] = { 0 };
-    dsdl_bitbuf_t buf       = { buffer, 32, 0, false };
+    dsdl_bitbuf_t buf       = { buffer, 32, 0, dsdl_error_none };
 
     float value = 1e9f;
     dsdl_serialize_primitive(&buf, DSDL_FLOAT_TRUNC(16), &value);
@@ -1081,7 +1081,7 @@ static void test_serialize_float16(void)
 {
     // Test float16 serialization through the primitive serializer
     uint8_t       buffer[4] = { 0 };
-    dsdl_bitbuf_t buf       = { buffer, sizeof(buffer) * 8, 0, false }; // capacity_bits in bits!
+    dsdl_bitbuf_t buf       = { buffer, sizeof(buffer) * 8, 0, dsdl_error_none }; // capacity_bits in bits!
 
     const float value = 3.14f;
     dsdl_serialize_primitive(&buf, DSDL_FLOAT(16), &value);
@@ -1096,7 +1096,7 @@ static void test_deserialize_float16(void)
     // Test float16 deserialization through the primitive deserializer
     // 0x4248 in little-endian
     const uint8_t buffer[4] = { 0x48, 0x42, 0x00, 0x00 };
-    dsdl_bitbuf_t buf       = { (uint8_t*)buffer, sizeof(buffer) * 8, 0, false }; // capacity_bits in bits!
+    dsdl_bitbuf_t buf       = { (uint8_t*)buffer, sizeof(buffer) * 8, 0, dsdl_error_none }; // capacity_bits in bits!
 
     float value = 0.0f;
     dsdl_deserialize_primitive(&buf, DSDL_FLOAT(16), &value);
@@ -1119,7 +1119,7 @@ int main(void)
     RUN_TEST(test_bitbuf_write_read_byte_aligned);
     RUN_TEST(test_bitbuf_write_read_non_aligned);
     RUN_TEST(test_bitbuf_write_cross_byte);
-    RUN_TEST(test_bitbuf_read_overflow_fails);
+    RUN_TEST(test_bitbuf_read_implicit_zero_extension);
 
     // Primitive serialization tests
     RUN_TEST(test_serialize_uint8);
