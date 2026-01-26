@@ -1,0 +1,13 @@
+# File with empty lines and comments
+
+uint32 field1
+
+# Comment between fields
+
+uint16 field2
+
+
+# Multiple empty lines above
+uint8 field3
+
+@sealed

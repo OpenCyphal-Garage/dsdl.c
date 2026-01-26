@@ -1427,6 +1427,189 @@ static void test_parse_error_missing_type_dsdl(void)
 }
 
 // ============================================================================
+// Parser edge case tests
+// ============================================================================
+
+static void test_parse_edge_case_empty_lines_dsdl(void)
+{
+    dsdl_t dsdl;
+    dsdl_new(&dsdl, test_realloc_for_read, test_read_file_for_read, test_list_dir_for_read);
+
+    char      path[512];
+    const int ret = snprintf(path, sizeof(path), "%s/test_dsdl_root_namespaces/0", DSDL_TEST_ROOT);
+    TEST_ASSERT_TRUE((ret > 0) && (ret < (int)sizeof(path)));
+
+    (void)dsdl_add_namespace(&dsdl, wkv_key(path));
+
+    const dsdl_type_composite_t* result = dsdl_read(&dsdl, wkv_key("mymsgs.EdgeCaseEmptyLines.1.0"));
+    TEST_ASSERT_NOT_NULL(result);
+    TEST_ASSERT_EQUAL_size_t(3, result->field_count);
+    TEST_ASSERT_TRUE(result->sealed);
+
+    dsdl_destroy(&dsdl);
+}
+
+static void test_parse_edge_case_multiple_directives_dsdl(void)
+{
+    dsdl_t dsdl;
+    dsdl_new(&dsdl, test_realloc_for_read, test_read_file_for_read, test_list_dir_for_read);
+
+    char      path[512];
+    const int ret = snprintf(path, sizeof(path), "%s/test_dsdl_root_namespaces/0", DSDL_TEST_ROOT);
+    TEST_ASSERT_TRUE((ret > 0) && (ret < (int)sizeof(path)));
+
+    (void)dsdl_add_namespace(&dsdl, wkv_key(path));
+
+    const dsdl_type_composite_t* result = dsdl_read(&dsdl, wkv_key("mymsgs.EdgeCaseMultipleDirectives.1.0"));
+    TEST_ASSERT_NOT_NULL(result);
+    TEST_ASSERT_EQUAL_size_t(1, result->field_count);
+    TEST_ASSERT_TRUE(result->sealed);
+    TEST_ASSERT_TRUE(result->deprecated);
+
+    dsdl_destroy(&dsdl);
+}
+
+static void test_parse_edge_case_extent_dsdl(void)
+{
+    dsdl_t dsdl;
+    dsdl_new(&dsdl, test_realloc_for_read, test_read_file_for_read, test_list_dir_for_read);
+
+    char      path[512];
+    const int ret = snprintf(path, sizeof(path), "%s/test_dsdl_root_namespaces/0", DSDL_TEST_ROOT);
+    TEST_ASSERT_TRUE((ret > 0) && (ret < (int)sizeof(path)));
+
+    (void)dsdl_add_namespace(&dsdl, wkv_key(path));
+
+    const dsdl_type_composite_t* result = dsdl_read(&dsdl, wkv_key("mymsgs.EdgeCaseExtent.1.0"));
+    TEST_ASSERT_NOT_NULL(result);
+    TEST_ASSERT_EQUAL_size_t(1, result->field_count);
+    TEST_ASSERT_EQUAL_size_t(256, result->extent);
+
+    dsdl_destroy(&dsdl);
+}
+
+static void test_parse_edge_case_service_dsdl(void)
+{
+    dsdl_t dsdl;
+    dsdl_new(&dsdl, test_realloc_for_read, test_read_file_for_read, test_list_dir_for_read);
+
+    char      path[512];
+    const int ret = snprintf(path, sizeof(path), "%s/test_dsdl_root_namespaces/0", DSDL_TEST_ROOT);
+    TEST_ASSERT_TRUE((ret > 0) && (ret < (int)sizeof(path)));
+
+    (void)dsdl_add_namespace(&dsdl, wkv_key(path));
+
+    const dsdl_type_composite_t* result = dsdl_read(&dsdl, wkv_key("mymsgs.EdgeCaseService.1.0"));
+    TEST_ASSERT_NOT_NULL(result);
+    TEST_ASSERT_NOT_NULL(result->response);
+    TEST_ASSERT_EQUAL_size_t(2, result->field_count);
+    TEST_ASSERT_EQUAL_size_t(2, result->response->field_count);
+    TEST_ASSERT_TRUE(result->response->sealed);
+
+    dsdl_destroy(&dsdl);
+}
+
+static void test_parse_edge_case_union_dsdl(void)
+{
+    dsdl_t dsdl;
+    dsdl_new(&dsdl, test_realloc_for_read, test_read_file_for_read, test_list_dir_for_read);
+
+    char      path[512];
+    const int ret = snprintf(path, sizeof(path), "%s/test_dsdl_root_namespaces/0", DSDL_TEST_ROOT);
+    TEST_ASSERT_TRUE((ret > 0) && (ret < (int)sizeof(path)));
+
+    (void)dsdl_add_namespace(&dsdl, wkv_key(path));
+
+    const dsdl_type_composite_t* result = dsdl_read(&dsdl, wkv_key("mymsgs.EdgeCaseUnion.1.0"));
+    TEST_ASSERT_NOT_NULL(result);
+    TEST_ASSERT_EQUAL_size_t(3, result->field_count);
+    TEST_ASSERT_TRUE(result->sealed);
+
+    dsdl_destroy(&dsdl);
+}
+
+static void test_parse_expr_nested_operators(void)
+{
+    // Test nested operators: (2 + 3) * (4 - 1) = 5 * 3 = 15
+    init_parser("(2 + 3) * (4 - 1)");
+    dsdl_value_t val;
+    TEST_ASSERT_TRUE(dsdl_parse_expression(&g_parser, &val));
+    TEST_ASSERT_EQUAL(dsdl_value_rational, val.kind);
+    assert_bigint_eq_intmax(15, val.as.rational.num);
+}
+
+static void test_parse_expr_complex_precedence(void)
+{
+    // Test: 2 + 3 * 4 - 5 = 2 + 12 - 5 = 9
+    init_parser("2 + 3 * 4 - 5");
+    dsdl_value_t val;
+    TEST_ASSERT_TRUE(dsdl_parse_expression(&g_parser, &val));
+    TEST_ASSERT_EQUAL(dsdl_value_rational, val.kind);
+    assert_bigint_eq_intmax(9, val.as.rational.num);
+}
+
+static void test_parse_expr_bitwise_precedence(void)
+{
+    // Test: 0xFF & 0x0F | 0xF0 = (0xFF & 0x0F) | 0xF0 = 0x0F | 0xF0 = 0xFF
+    init_parser("0xFF & 0x0F | 0xF0");
+    dsdl_value_t val;
+    TEST_ASSERT_TRUE(dsdl_parse_expression(&g_parser, &val));
+    TEST_ASSERT_EQUAL(dsdl_value_rational, val.kind);
+    assert_bigint_eq_intmax(0xFF, val.as.rational.num);
+}
+
+static void test_parse_expr_logical_precedence(void)
+{
+    init_parser("true && true || false");
+    dsdl_value_t val;
+    TEST_ASSERT_TRUE(dsdl_parse_expression(&g_parser, &val));
+    TEST_ASSERT_EQUAL(dsdl_value_bool, val.kind);
+    TEST_ASSERT_TRUE(val.as.boolean);
+}
+
+static void test_parse_expr_mixed_comparison_logical(void)
+{
+    // Test: 5 > 3 && 2 < 4 = true && true = true
+    init_parser("5 > 3 && 2 < 4");
+    dsdl_value_t val;
+    TEST_ASSERT_TRUE(dsdl_parse_expression(&g_parser, &val));
+    TEST_ASSERT_EQUAL(dsdl_value_bool, val.kind);
+    TEST_ASSERT_TRUE(val.as.boolean);
+}
+
+static void test_parse_expr_deeply_nested_parens(void)
+{
+    // Test: ((((1 + 2)))) = 3
+    init_parser("((((1 + 2))))");
+    dsdl_value_t val;
+    TEST_ASSERT_TRUE(dsdl_parse_expression(&g_parser, &val));
+    TEST_ASSERT_EQUAL(dsdl_value_rational, val.kind);
+    assert_bigint_eq_intmax(3, val.as.rational.num);
+}
+
+static void test_parse_expr_division_by_zero_handling(void)
+{
+    // Test: 1 / 0 - should result in a rational with zero denominator (invalid)
+    init_parser("1 / 0");
+    dsdl_value_t val;
+    // This should parse but result in an invalid rational
+    TEST_ASSERT_TRUE(dsdl_parse_expression(&g_parser, &val));
+    TEST_ASSERT_EQUAL(dsdl_value_rational, val.kind);
+    // The denominator should be 0 (invalid state)
+    assert_bigint_eq_uintmax(0, val.as.rational.den);
+}
+
+static void test_parse_expr_modulo_with_negative(void)
+{
+    // Test: -17 % 5 = -2 (in C semantics)
+    init_parser("-17 % 5");
+    dsdl_value_t val;
+    TEST_ASSERT_TRUE(dsdl_parse_expression(&g_parser, &val));
+    TEST_ASSERT_EQUAL(dsdl_value_rational, val.kind);
+    assert_bigint_eq_intmax(-2, val.as.rational.num);
+}
+
+// ============================================================================
 // Main
 // ============================================================================
 
@@ -1565,6 +1748,20 @@ int main(void)
     RUN_TEST(test_parse_error_invalid_type_syntax_missing_type);
     RUN_TEST(test_parse_error_bad_array_syntax_dsdl);
     RUN_TEST(test_parse_error_missing_type_dsdl);
+
+    RUN_TEST(test_parse_edge_case_empty_lines_dsdl);
+    RUN_TEST(test_parse_edge_case_multiple_directives_dsdl);
+    RUN_TEST(test_parse_edge_case_extent_dsdl);
+    RUN_TEST(test_parse_edge_case_union_dsdl);
+
+    RUN_TEST(test_parse_expr_nested_operators);
+    RUN_TEST(test_parse_expr_complex_precedence);
+    RUN_TEST(test_parse_expr_bitwise_precedence);
+    RUN_TEST(test_parse_expr_logical_precedence);
+    RUN_TEST(test_parse_expr_mixed_comparison_logical);
+    RUN_TEST(test_parse_expr_deeply_nested_parens);
+    RUN_TEST(test_parse_expr_division_by_zero_handling);
+    RUN_TEST(test_parse_expr_modulo_with_negative);
 
     return UNITY_END();
 }

@@ -1,0 +1,5 @@
+@union
+uint8 option_a
+uint16 option_b
+uint32 option_c
+@sealed
