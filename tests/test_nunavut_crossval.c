@@ -3,6 +3,8 @@
  * This test compares byte-for-byte serialization output between dsdl.c and Nunavut-generated C code.
  */
 
+#include <unity.h>
+
 #include <assert.h>
 #include <math.h>
 #include <stdint.h>
@@ -10,7 +12,6 @@
 
 #define NUNAVUT_ASSERT(x) assert(x)
 
-#include <unity.h>
 #include <mymsgs/Simple_1_0.h>
 
 void setUp(void) {}

@@ -4,13 +4,14 @@
 /// This executable tests public API functions only.
 /// Internal function tests are in separate executables.
 
+#include "dsdl.h"
+
+#include "unity.h"
+
 #include <dirent.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-#include "dsdl.h"
-#include "unity.h"
 
 // ============================================================================
 // Test helpers
