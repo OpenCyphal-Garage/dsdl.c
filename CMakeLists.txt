@@ -23,6 +23,7 @@ option(DSDL_BUILD_TESTS     "Build the test suite"           ON)
 option(DSDL_ENABLE_COVERAGE "Enable code coverage (GCC/Clang)" OFF)
 option(DSDL_ENABLE_SANITIZERS "Enable ASan/UBSan"            OFF)
 option(DSDL_BUILD_TOOLS     "Build standalone tools"         ON)
+option(DSDL_BUILD_X32_TESTS "Build 32-bit test variants (requires gcc-multilib)" ON)
 
 # ------------------------------------------------------------------------------
 # Language standards
