@@ -2,6 +2,8 @@
 
 # Cyphal DSDL Parser in C
 
+[![CI](https://github.com/pavel-kirienko/dsdl.c/actions/workflows/ci.yml/badge.svg)](https://github.com/pavel-kirienko/dsdl.c/actions/workflows/ci.yml)
+
 </div>
 
 -----
