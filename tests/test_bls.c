@@ -401,6 +401,171 @@ static void test_bls_pydsdl_example(void)
 }
 
 // ============================================================================
+// Non-bitmap path tests (divisor > 512)
+// ============================================================================
+
+static void test_bls_modulo_nullary_large_divisor(void)
+{
+    // Test nullary case with divisor > 512 (triggers linear scan path)
+    // {100, 200, 300} % 600 = {100, 200, 300}
+    const uint64_t    values[] = { 100, 200, 300 };
+    dsdl_bls_t* const bls      = dsdl_bls_new_set(&test_dsdl, 3, values);
+    uint64_t          mods[1024];
+    const uint64_t    count = dsdl_bls_modulo(&test_dsdl, bls, 600, mods);
+    TEST_ASSERT_EQUAL_size_t(3, count);
+    // Check all values are present
+    bool has_100 = false, has_200 = false, has_300 = false;
+    for (uint64_t i = 0; i < count; i++) {
+        if (mods[i] == 100)
+            has_100 = true;
+        if (mods[i] == 200)
+            has_200 = true;
+        if (mods[i] == 300)
+            has_300 = true;
+    }
+    TEST_ASSERT_TRUE(has_100);
+    TEST_ASSERT_TRUE(has_200);
+    TEST_ASSERT_TRUE(has_300);
+}
+
+static void test_bls_modulo_concat_large_divisor(void)
+{
+    // Test concat case with divisor > 512
+    // concat({100}, {200}) % 600 = {(100+200)%600} = {300}
+    dsdl_bls_t* const child1      = dsdl_bls_new_single(&test_dsdl, 100);
+    dsdl_bls_t* const child2      = dsdl_bls_new_single(&test_dsdl, 200);
+    dsdl_bls_t*       children[2] = { child1, child2 };
+    dsdl_bls_t* const bls         = dsdl_bls_new_concat(&test_dsdl, 2, children);
+    uint64_t          mods[1024];
+    const uint64_t    count = dsdl_bls_modulo(&test_dsdl, bls, 600, mods);
+    TEST_ASSERT_EQUAL_size_t(1, count);
+    TEST_ASSERT_EQUAL_size_t(300, mods[0]);
+}
+
+static void test_bls_modulo_repeat_large_divisor(void)
+{
+    // Test repeat case with divisor > 512
+    // repeat({100}, 3) = {300}, {300} % 600 = {300}
+    dsdl_bls_t* const elem = dsdl_bls_new_single(&test_dsdl, 100);
+    dsdl_bls_t* const bls  = dsdl_bls_new_repeat(&test_dsdl, elem, 3);
+    uint64_t          mods[1024];
+    const uint64_t    count = dsdl_bls_modulo(&test_dsdl, bls, 600, mods);
+    TEST_ASSERT_EQUAL_size_t(1, count);
+    TEST_ASSERT_EQUAL_size_t(300, mods[0]);
+}
+
+static void test_bls_modulo_repeat_range_large_divisor(void)
+{
+    // Test repeat_range case with divisor > 512
+    // repeat_range({100}, 3) = {0, 100, 200, 300}, all % 600 = {0, 100, 200, 300}
+    dsdl_bls_t* const elem = dsdl_bls_new_single(&test_dsdl, 100);
+    dsdl_bls_t* const bls  = dsdl_bls_new_repeat_range(&test_dsdl, elem, 3);
+    uint64_t          mods[1024];
+    const uint64_t    count = dsdl_bls_modulo(&test_dsdl, bls, 600, mods);
+    TEST_ASSERT_EQUAL_size_t(4, count);
+    // Check all values are present
+    bool has_0 = false, has_100 = false, has_200 = false, has_300 = false;
+    for (uint64_t i = 0; i < count; i++) {
+        if (mods[i] == 0)
+            has_0 = true;
+        if (mods[i] == 100)
+            has_100 = true;
+        if (mods[i] == 200)
+            has_200 = true;
+        if (mods[i] == 300)
+            has_300 = true;
+    }
+    TEST_ASSERT_TRUE(has_0);
+    TEST_ASSERT_TRUE(has_100);
+    TEST_ASSERT_TRUE(has_200);
+    TEST_ASSERT_TRUE(has_300);
+}
+
+static void test_bls_modulo_union_large_divisor(void)
+{
+    // Test union case with divisor > 512
+    // union({100}, {200}) % 600 = {100, 200}
+    dsdl_bls_t* const child1      = dsdl_bls_new_single(&test_dsdl, 100);
+    dsdl_bls_t* const child2      = dsdl_bls_new_single(&test_dsdl, 200);
+    dsdl_bls_t*       children[2] = { child1, child2 };
+    dsdl_bls_t* const bls         = dsdl_bls_new_unite(&test_dsdl, 2, children);
+    uint64_t          mods[1024];
+    const uint64_t    count = dsdl_bls_modulo(&test_dsdl, bls, 600, mods);
+    TEST_ASSERT_EQUAL_size_t(2, count);
+    // Check both values are present
+    bool has_100 = false, has_200 = false;
+    for (uint64_t i = 0; i < count; i++) {
+        if (mods[i] == 100)
+            has_100 = true;
+        if (mods[i] == 200)
+            has_200 = true;
+    }
+    TEST_ASSERT_TRUE(has_100);
+    TEST_ASSERT_TRUE(has_200);
+}
+
+static void test_bls_modulo_pad_large_divisor(void)
+{
+    // Test pad case with divisor > 512
+    // pad({100}, 8) = {104} (rounded up to 8-byte alignment)
+    // {104} % 600 = {104}
+    dsdl_bls_t* const inner = dsdl_bls_new_single(&test_dsdl, 100);
+    dsdl_bls_t* const bls   = dsdl_bls_new_pad(&test_dsdl, inner, 8);
+    uint64_t          mods[1024];
+    const uint64_t    count = dsdl_bls_modulo(&test_dsdl, bls, 600, mods);
+    TEST_ASSERT_EQUAL_size_t(1, count);
+    TEST_ASSERT_EQUAL_size_t(104, mods[0]);
+}
+
+static void test_bls_modulo_large_divisor_1000(void)
+{
+    // Test with even larger divisor (1000) to ensure linear scan works
+    // {250, 500, 750} % 1000 = {250, 500, 750}
+    const uint64_t    values[] = { 250, 500, 750 };
+    dsdl_bls_t* const bls      = dsdl_bls_new_set(&test_dsdl, 3, values);
+    uint64_t          mods[1024];
+    const uint64_t    count = dsdl_bls_modulo(&test_dsdl, bls, 1000, mods);
+    TEST_ASSERT_EQUAL_size_t(3, count);
+    // Check all values are present
+    bool has_250 = false, has_500 = false, has_750 = false;
+    for (uint64_t i = 0; i < count; i++) {
+        if (mods[i] == 250)
+            has_250 = true;
+        if (mods[i] == 500)
+            has_500 = true;
+        if (mods[i] == 750)
+            has_750 = true;
+    }
+    TEST_ASSERT_TRUE(has_250);
+    TEST_ASSERT_TRUE(has_500);
+    TEST_ASSERT_TRUE(has_750);
+}
+
+static void test_bls_modulo_nullary_large_divisor_with_duplicates(void)
+{
+    // Test nullary case with duplicates to trigger "found" path in linear scan
+    // {100, 200, 100, 300} % 600 = {100, 200, 300} (deduplicated)
+    const uint64_t    values[] = { 100, 200, 100, 300 };
+    dsdl_bls_t* const bls      = dsdl_bls_new_set(&test_dsdl, 4, values);
+    uint64_t          mods[1024];
+    const uint64_t    count = dsdl_bls_modulo(&test_dsdl, bls, 600, mods);
+    TEST_ASSERT_EQUAL_size_t(3, count);
+    // Check all unique values are present
+    bool has_100 = false, has_200 = false, has_300 = false;
+    for (uint64_t i = 0; i < count; i++) {
+        if (mods[i] == 100)
+            has_100 = true;
+        if (mods[i] == 200)
+            has_200 = true;
+        if (mods[i] == 300)
+            has_300 = true;
+    }
+    TEST_ASSERT_TRUE(has_100);
+    TEST_ASSERT_TRUE(has_200);
+    TEST_ASSERT_TRUE(has_300);
+}
+
+// ============================================================================
 // Main
 // ============================================================================
 
@@ -442,6 +607,16 @@ int main(void)
     RUN_TEST(test_bls_modulo_variable_set);
     RUN_TEST(test_bls_modulo_repeat);
     RUN_TEST(test_bls_modulo_repeat_range);
+
+    // Non-bitmap path (large divisor)
+    RUN_TEST(test_bls_modulo_nullary_large_divisor);
+    RUN_TEST(test_bls_modulo_concat_large_divisor);
+    RUN_TEST(test_bls_modulo_repeat_large_divisor);
+    RUN_TEST(test_bls_modulo_repeat_range_large_divisor);
+    RUN_TEST(test_bls_modulo_union_large_divisor);
+    RUN_TEST(test_bls_modulo_pad_large_divisor);
+    RUN_TEST(test_bls_modulo_large_divisor_1000);
+    RUN_TEST(test_bls_modulo_nullary_large_divisor_with_duplicates);
 
     // Complex cases
     RUN_TEST(test_bls_nested_variable_arrays);
