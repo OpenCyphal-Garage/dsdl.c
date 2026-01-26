@@ -29,6 +29,7 @@
 *.mod*
 *.cmd
 .tmp*/
+__pycache__/
 modules.order
 Module.symvers
 *.old
