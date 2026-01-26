@@ -88,14 +88,15 @@ if(Python3_Interpreter_FOUND)
     set(nunavut_out_dir "${CMAKE_BINARY_DIR}/nunavut_out")
     
     add_custom_command(
-        OUTPUT "${nunavut_out_dir}/.generated"
-        COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/generate_nunavut_code.py
-            --output-dir ${nunavut_out_dir}
-            --test-root ${CMAKE_SOURCE_DIR}
-        COMMAND ${CMAKE_COMMAND} -E touch "${nunavut_out_dir}/.generated"
-        DEPENDS ${CMAKE_SOURCE_DIR}/tools/generate_nunavut_code.py
-        COMMENT "Generating Nunavut C code for cross-validation"
-    )
+         OUTPUT "${nunavut_out_dir}/.generated"
+         COMMAND ${CMAKE_COMMAND} -E env --unset=CYPHAL_PATH --unset=DSDL_INCLUDE_PATH
+             ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/generate_nunavut_code.py
+             --output-dir ${nunavut_out_dir}
+             --test-root ${CMAKE_SOURCE_DIR}
+         COMMAND ${CMAKE_COMMAND} -E touch "${nunavut_out_dir}/.generated"
+         DEPENDS ${CMAKE_SOURCE_DIR}/tools/generate_nunavut_code.py
+         COMMENT "Generating Nunavut C code for cross-validation"
+     )
     
     add_custom_target(generate_nunavut_code
         DEPENDS "${nunavut_out_dir}/.generated"
@@ -147,12 +148,13 @@ if(DSDL_BUILD_TOOLS)
     find_package(Python3 COMPONENTS Interpreter)
     if(Python3_Interpreter_FOUND)
         add_test(NAME run_dsdl_pydsdl_parity
-            COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/dsdl_compare_pydsdl.py
-                --dsdl-to-json $<TARGET_FILE:dsdl_to_json>
-                --dsdl-to-dsdl $<TARGET_FILE:dsdl_to_dsdl>
-                -r ${CMAKE_SOURCE_DIR}/test_dsdl_root_namespaces/0
-                -r ${CMAKE_SOURCE_DIR}/test_dsdl_root_namespaces/1
-        )
+             COMMAND ${CMAKE_COMMAND} -E env --unset=CYPHAL_PATH --unset=DSDL_INCLUDE_PATH
+                 ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/dsdl_compare_pydsdl.py
+                 --dsdl-to-json $<TARGET_FILE:dsdl_to_json>
+                 --dsdl-to-dsdl $<TARGET_FILE:dsdl_to_dsdl>
+                 -r ${CMAKE_SOURCE_DIR}/test_dsdl_root_namespaces/0
+                 -r ${CMAKE_SOURCE_DIR}/test_dsdl_root_namespaces/1
+         )
     else()
         message(STATUS "Python3 not found; PyDSDL parity test disabled")
     endif()

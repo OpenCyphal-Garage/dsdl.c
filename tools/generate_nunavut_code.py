@@ -14,6 +14,9 @@ from pathlib import Path
 
 
 def main():
+    # Isolate from external DSDL namespace pollution
+    os.environ.pop('CYPHAL_PATH', None)
+    os.environ.pop('DSDL_INCLUDE_PATH', None)
     parser = argparse.ArgumentParser(description='Generate Nunavut C code for test namespaces')
     parser.add_argument('--output-dir', type=Path, required=True,
                         help='Output directory for generated code')

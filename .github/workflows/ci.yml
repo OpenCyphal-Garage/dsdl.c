@@ -55,6 +55,9 @@ jobs:
       run: cmake --build build -j$(nproc)
       
     - name: Run tests
+      env:
+        CYPHAL_PATH: ""
+        DSDL_INCLUDE_PATH: ""
       run: ctest --test-dir build --output-on-failure
       
     - name: Check clang-format
@@ -102,6 +105,9 @@ jobs:
       run: cmake --build build -j$(nproc)
       
     - name: Run tests
+      env:
+        CYPHAL_PATH: ""
+        DSDL_INCLUDE_PATH: ""
       run: ctest --test-dir build --output-on-failure
       
     - name: Generate coverage report

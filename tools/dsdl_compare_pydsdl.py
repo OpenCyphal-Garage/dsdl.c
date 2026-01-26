@@ -2,6 +2,7 @@
 import argparse
 import difflib
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -410,6 +411,9 @@ def derive_pydsdl_roots(items: list[tuple[Path, Path, tuple[str, ...], str]]) ->
 
 
 def main() -> int:
+    # Isolate from external DSDL namespace pollution
+    os.environ.pop('CYPHAL_PATH', None)
+    os.environ.pop('DSDL_INCLUDE_PATH', None)
     args = parse_args()
     roots = normalize_roots(args.root)
     invalid_roots = set(args.invalid_root)
