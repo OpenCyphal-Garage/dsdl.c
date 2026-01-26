@@ -45,6 +45,6 @@ The code must not make assumptions about the execution platform (pointer width, 
 
 ## Remaining tasks
 
-- Add `examples/` with one or two very simple executables showing how to read DSDL files such that files from one namespace depends on files in another namespace, how to convert serialized data into JSON, possibly something else.
+- Add `examples/` with one or two very simple executables showing how to read DSDL files such that files from one namespace depends on files in another namespace, how to convert serialized data into JSON, possibly something else. Build examples with `DSDL_CONFIG_TRACE` enabled with logging to stderr, for demo purposes.
 
 - Ensure the examples in the README are up to date.
