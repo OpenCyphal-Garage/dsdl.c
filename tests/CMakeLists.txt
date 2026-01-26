@@ -82,6 +82,9 @@ gen_test_matrix(test_dsdl_type_resolution "${trace_source};${CMAKE_CURRENT_SOURC
 # Bit Length Set tests (include dsdl.c directly)
 gen_test_matrix(test_dsdl_bls "${trace_source};${CMAKE_CURRENT_SOURCE_DIR}/test_bls.c" FALSE)
 
+# Error path tests (include dsdl.c directly)
+gen_test_matrix(test_dsdl_error_paths "${trace_source};${CMAKE_CURRENT_SOURCE_DIR}/test_error_paths.c" FALSE)
+
 # Nunavut cross-validation tests
 find_package(Python3 COMPONENTS Interpreter)
 if(Python3_Interpreter_FOUND)
