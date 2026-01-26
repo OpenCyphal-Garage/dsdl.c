@@ -47,6 +47,16 @@ typedef struct
 
 /// If the value is deferred, invokes it until it obtains a concrete value.
 /// False if any evaluation fails.
+/// Align pointer up to the nearest multiple of alignment (C99-compatible).
+/// This ensures that pointers carved from a single allocation maintain proper alignment
+/// for types with stricter alignment requirements (e.g., 8-byte for pointers on 64-bit).
+static inline char* dsdl_align_ptr(char* ptr, size_t alignment)
+{
+    const uintptr_t addr    = (uintptr_t)ptr;
+    const uintptr_t aligned = (addr + alignment - 1U) & ~(alignment - 1U);
+    return (char*)aligned;
+}
+
 static bool dsdl_resolve_value(dsdl_value_t* value)
 {
     assert(value != NULL);
@@ -7630,10 +7640,15 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_
     size_t       total_size         = sizeof(dsdl_type_composite_t);
     total_size += name_len;                               // Space for unversioned name string
     total_size += name_versioned_len;                     // Space for versioned name string
+    total_size += 7U;                                     // Alignment padding for field_names
     total_size += def.field_count * sizeof(wkv_str_t);    // field_names array
+    total_size += 7U;                                     // Alignment padding for field_types
     total_size += def.field_count * sizeof(dsdl_type_t*); // field_types array (pointers)
+    total_size += 7U;                                     // Alignment padding for constant_names
     total_size += def.const_count * sizeof(wkv_str_t);    // constant_names array
+    total_size += 7U;                                     // Alignment padding for constant_types
     total_size += def.const_count * sizeof(dsdl_type_t*); // constant_types array
+    total_size += 7U;                                     // Alignment padding for constant_values
     total_size += def.const_count * sizeof(dsdl_value_t); // constant_values array
 
     // Sum up field name string lengths
@@ -7684,19 +7699,21 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_
     str_ptr += composite->name_versioned.len;
     composite->short_name = dsdl_short_name_from_full(composite->name);
 
-    // Set up field_names array
+    str_ptr                = dsdl_align_ptr(str_ptr, sizeof(void*));
     composite->field_names = (wkv_str_t*)str_ptr;
     str_ptr += def.field_count * sizeof(wkv_str_t);
 
-    // Set up field_types array (array of pointers)
+    str_ptr                = dsdl_align_ptr(str_ptr, sizeof(void*));
     composite->field_types = (dsdl_type_t**)str_ptr;
     str_ptr += def.field_count * sizeof(dsdl_type_t*);
 
-    // Set up constant names/types/values arrays
+    str_ptr                   = dsdl_align_ptr(str_ptr, sizeof(void*));
     composite->constant_names = (wkv_str_t*)str_ptr;
     str_ptr += def.const_count * sizeof(wkv_str_t);
+    str_ptr                   = dsdl_align_ptr(str_ptr, sizeof(void*));
     composite->constant_types = (dsdl_type_t**)str_ptr;
     str_ptr += def.const_count * sizeof(dsdl_type_t*);
+    str_ptr                    = dsdl_align_ptr(str_ptr, sizeof(void*));
     composite->constant_values = (dsdl_value_t*)str_ptr;
     str_ptr += def.const_count * sizeof(dsdl_value_t);
 
@@ -7764,10 +7781,15 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_
         size_t response_total_size = sizeof(dsdl_type_composite_t);
         response_total_size += response_name_len;
         response_total_size += response_name_versioned_len;
+        response_total_size += 7U;
         response_total_size += def.response_field_count * sizeof(wkv_str_t);
+        response_total_size += 7U;
         response_total_size += def.response_field_count * sizeof(dsdl_type_t*);
+        response_total_size += 7U;
         response_total_size += def.response_const_count * sizeof(wkv_str_t);
+        response_total_size += 7U;
         response_total_size += def.response_const_count * sizeof(dsdl_type_t*);
+        response_total_size += 7U;
         response_total_size += def.response_const_count * sizeof(dsdl_value_t);
 
         size_t response_field_name_len = 0;
@@ -7820,14 +7842,19 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_
         resp_str_ptr += response->name_versioned.len;
         response->short_name = dsdl_short_name_from_full(response->name);
 
+        resp_str_ptr          = dsdl_align_ptr(resp_str_ptr, sizeof(void*));
         response->field_names = (wkv_str_t*)resp_str_ptr;
         resp_str_ptr += def.response_field_count * sizeof(wkv_str_t);
+        resp_str_ptr          = dsdl_align_ptr(resp_str_ptr, sizeof(void*));
         response->field_types = (dsdl_type_t**)resp_str_ptr;
         resp_str_ptr += def.response_field_count * sizeof(dsdl_type_t*);
+        resp_str_ptr             = dsdl_align_ptr(resp_str_ptr, sizeof(void*));
         response->constant_names = (wkv_str_t*)resp_str_ptr;
         resp_str_ptr += def.response_const_count * sizeof(wkv_str_t);
+        resp_str_ptr             = dsdl_align_ptr(resp_str_ptr, sizeof(void*));
         response->constant_types = (dsdl_type_t**)resp_str_ptr;
         resp_str_ptr += def.response_const_count * sizeof(dsdl_type_t*);
+        resp_str_ptr              = dsdl_align_ptr(resp_str_ptr, sizeof(void*));
         response->constant_values = (dsdl_value_t*)resp_str_ptr;
         resp_str_ptr += def.response_const_count * sizeof(dsdl_value_t);
 
