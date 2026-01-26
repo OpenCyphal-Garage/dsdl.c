@@ -296,8 +296,6 @@ static void test_parse_type_name_single_namespace(void)
 static void test_parse_type_name_large_version(void)
 {
     dsdl_type_ref_t ref;
-
-    // "TypeName.255.255"
     TEST_ASSERT_TRUE(dsdl_parse_typename(wkv_key("TypeName.255.255"), &ref));
     TEST_ASSERT_EQUAL_size_t(8, ref.type_name.len);
     TEST_ASSERT_EQUAL_STRING_LEN("TypeName", ref.type_name.str, 8);
@@ -307,6 +305,96 @@ static void test_parse_type_name_large_version(void)
     TEST_ASSERT_EQUAL_UINT8(255, ref.minor);
 }
 
+// ============================================================================
+// Bigint overflow tests
+// ============================================================================
+
+static void test_bigint_overflow_from_uintmax(void)
+{
+    dsdl_bigint_t v;
+    TEST_ASSERT_TRUE(dsdl_bigint_from_uintmax(&v, UINTMAX_MAX));
+    TEST_ASSERT_TRUE(v.limb_count <= DSDL_BIGINT_LIMB_COUNT);
+}
+
+static void test_bigint_overflow_add_abs(void)
+{
+    dsdl_bigint_t a;
+    dsdl_bigint_t b;
+    dsdl_bigint_t result;
+    dsdl_bigint_zero(&a);
+    dsdl_bigint_zero(&b);
+
+    for (uint_least8_t i = 0; i < DSDL_BIGINT_LIMB_COUNT; i++) {
+        a.limbs[i] = DSDL_BIGINT_BASE - 1;
+        b.limbs[i] = DSDL_BIGINT_BASE - 1;
+    }
+    a.limb_count = DSDL_BIGINT_LIMB_COUNT;
+    b.limb_count = DSDL_BIGINT_LIMB_COUNT;
+
+    TEST_ASSERT_FALSE(dsdl_bigint_add_abs(&a, &b, &result));
+    TEST_ASSERT_EQUAL_UINT8(0, result.limb_count);
+}
+
+static void test_bigint_overflow_mul_abs(void)
+{
+    dsdl_bigint_t a;
+    dsdl_bigint_t b;
+    dsdl_bigint_t result;
+    dsdl_bigint_zero(&a);
+    dsdl_bigint_zero(&b);
+
+    for (uint_least8_t i = 0; i < 5; i++) {
+        a.limbs[i] = DSDL_BIGINT_BASE - 1;
+        b.limbs[i] = DSDL_BIGINT_BASE - 1;
+    }
+    a.limb_count = 5;
+    b.limb_count = 5;
+
+    TEST_ASSERT_FALSE(dsdl_bigint_mul_abs(&a, &b, &result));
+    TEST_ASSERT_EQUAL_UINT8(0, result.limb_count);
+}
+
+static void test_bigint_overflow_mul_small_inplace(void)
+{
+    dsdl_bigint_t v;
+    dsdl_bigint_zero(&v);
+
+    for (uint_least8_t i = 0; i < DSDL_BIGINT_LIMB_COUNT; i++) {
+        v.limbs[i] = DSDL_BIGINT_BASE - 1;
+    }
+    v.limb_count = DSDL_BIGINT_LIMB_COUNT;
+
+    TEST_ASSERT_FALSE(dsdl_bigint_mul_small_inplace(&v, 2U));
+}
+
+static void test_bigint_overflow_add_small_inplace(void)
+{
+    dsdl_bigint_t v;
+    dsdl_bigint_zero(&v);
+
+    for (uint_least8_t i = 0; i < DSDL_BIGINT_LIMB_COUNT; i++) {
+        v.limbs[i] = DSDL_BIGINT_BASE - 1;
+    }
+    v.limb_count = DSDL_BIGINT_LIMB_COUNT;
+
+    TEST_ASSERT_FALSE(dsdl_bigint_add_small_inplace(&v, 1U));
+}
+
+static void test_bigint_overflow_shift_base_add(void)
+{
+    dsdl_bigint_t v;
+    dsdl_bigint_zero(&v);
+
+    for (uint_least8_t i = 0; i < DSDL_BIGINT_LIMB_COUNT; i++) {
+        v.limbs[i] = DSDL_BIGINT_BASE - 1;
+    }
+    v.limb_count = DSDL_BIGINT_LIMB_COUNT;
+
+    TEST_ASSERT_FALSE(dsdl_bigint_shift_base_add(&v, 1U));
+}
+
+// ============================================================================
+// Main
 // ============================================================================
 // Main
 // ============================================================================
@@ -338,6 +426,14 @@ int main(void)
     RUN_TEST(test_parse_type_name_no_namespace_with_version);
     RUN_TEST(test_parse_type_name_single_namespace);
     RUN_TEST(test_parse_type_name_large_version);
+
+    // Bigint overflow tests
+    RUN_TEST(test_bigint_overflow_from_uintmax);
+    RUN_TEST(test_bigint_overflow_add_abs);
+    RUN_TEST(test_bigint_overflow_mul_abs);
+    RUN_TEST(test_bigint_overflow_mul_small_inplace);
+    RUN_TEST(test_bigint_overflow_add_small_inplace);
+    RUN_TEST(test_bigint_overflow_shift_base_add);
 
     return UNITY_END();
 }
