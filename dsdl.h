@@ -9,11 +9,11 @@
 #ifndef DSDL_H_INCLUDED
 #define DSDL_H_INCLUDED
 
-#include <wkv.h>
-
-#include <stdint.h>
-#include <stddef.h>
 #include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
+
+#include <wkv.h>
 
 // ============================================================================
 // Configuration macros (can be overridden before including this header)
