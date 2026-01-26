@@ -50,6 +50,13 @@ typedef struct
 /// Align pointer up to the nearest multiple of alignment (C99-compatible).
 /// This ensures that pointers carved from a single allocation maintain proper alignment
 /// for types with stricter alignment requirements (e.g., 8-byte for pointers on 64-bit).
+// Aligns a pointer to the specified alignment boundary.
+// This function is used to ensure proper alignment for struct fields within a single allocated block.
+// The cast from uintptr_t back to char* is safe because:
+// 1. The alignment is always a power of 2 (guaranteed by callers)
+// 2. The aligned address is always >= the original address
+// 3. The aligned address is always within the allocated block
+// 4. The result is cast back to char* for pointer arithmetic, which is valid in C99
 static inline char* dsdl_align_ptr(char* ptr, size_t alignment)
 {
     const uintptr_t addr    = (uintptr_t)ptr;
@@ -7675,7 +7682,24 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_
     }
     DSDL_TRACE(self, "allocated %zu bytes", total_size);
 
-    // Layout the block
+    // Layout the block: composite type allocation pattern
+    // The entire composite type structure and all its data are allocated in a single contiguous block.
+    // Memory layout (in order):
+    // 1. dsdl_type_composite_t header
+    // 2. Unversioned name string
+    // 3. Versioned name string
+    // 4. Aligned field_names array (wkv_str_t[])
+    // 5. Aligned field_types array (dsdl_type_t*[])
+    // 6. Aligned constant_names array (wkv_str_t[])
+    // 7. Aligned constant_types array (dsdl_type_t*[])
+    // 8. Aligned constant_values array (dsdl_value_t[])
+    // 9. All field and constant name strings
+    //
+    // Each array is aligned to sizeof(void*) using dsdl_align_ptr() to ensure proper alignment
+    // for pointer and struct types. The casts from char* to typed pointers are safe because:
+    // - dsdl_align_ptr() guarantees the returned pointer is properly aligned
+    // - The aligned pointer is always within the allocated block
+    // - C99 allows casting char* to any type after proper alignment
     dsdl_type_composite_t* composite = (dsdl_type_composite_t*)block;
     char*                  str_ptr   = (char*)(composite + 1);
 
@@ -7702,20 +7726,25 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_
     str_ptr += composite->name_versioned.len;
     composite->short_name = dsdl_short_name_from_full(composite->name);
 
+    // Align and assign field_names array. Cast is safe: dsdl_align_ptr() ensures proper alignment.
     str_ptr                = dsdl_align_ptr(str_ptr, sizeof(void*));
     composite->field_names = (wkv_str_t*)str_ptr;
     str_ptr += def.field_count * sizeof(wkv_str_t);
 
+    // Align and assign field_types array. Cast is safe: dsdl_align_ptr() ensures proper alignment.
     str_ptr                = dsdl_align_ptr(str_ptr, sizeof(void*));
     composite->field_types = (dsdl_type_t**)str_ptr;
     str_ptr += def.field_count * sizeof(dsdl_type_t*);
 
+    // Align and assign constant_names array. Cast is safe: dsdl_align_ptr() ensures proper alignment.
     str_ptr                   = dsdl_align_ptr(str_ptr, sizeof(void*));
     composite->constant_names = (wkv_str_t*)str_ptr;
     str_ptr += def.const_count * sizeof(wkv_str_t);
+    // Align and assign constant_types array. Cast is safe: dsdl_align_ptr() ensures proper alignment.
     str_ptr                   = dsdl_align_ptr(str_ptr, sizeof(void*));
     composite->constant_types = (dsdl_type_t**)str_ptr;
     str_ptr += def.const_count * sizeof(dsdl_type_t*);
+    // Align and assign constant_values array. Cast is safe: dsdl_align_ptr() ensures proper alignment.
     str_ptr                    = dsdl_align_ptr(str_ptr, sizeof(void*));
     composite->constant_values = (dsdl_value_t*)str_ptr;
     str_ptr += def.const_count * sizeof(dsdl_value_t);
@@ -7845,18 +7874,23 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_
         resp_str_ptr += response->name_versioned.len;
         response->short_name = dsdl_short_name_from_full(response->name);
 
+        // Align and assign field_names array. Cast is safe: dsdl_align_ptr() ensures proper alignment.
         resp_str_ptr          = dsdl_align_ptr(resp_str_ptr, sizeof(void*));
         response->field_names = (wkv_str_t*)resp_str_ptr;
         resp_str_ptr += def.response_field_count * sizeof(wkv_str_t);
+        // Align and assign field_types array. Cast is safe: dsdl_align_ptr() ensures proper alignment.
         resp_str_ptr          = dsdl_align_ptr(resp_str_ptr, sizeof(void*));
         response->field_types = (dsdl_type_t**)resp_str_ptr;
         resp_str_ptr += def.response_field_count * sizeof(dsdl_type_t*);
+        // Align and assign constant_names array. Cast is safe: dsdl_align_ptr() ensures proper alignment.
         resp_str_ptr             = dsdl_align_ptr(resp_str_ptr, sizeof(void*));
         response->constant_names = (wkv_str_t*)resp_str_ptr;
         resp_str_ptr += def.response_const_count * sizeof(wkv_str_t);
+        // Align and assign constant_types array. Cast is safe: dsdl_align_ptr() ensures proper alignment.
         resp_str_ptr             = dsdl_align_ptr(resp_str_ptr, sizeof(void*));
         response->constant_types = (dsdl_type_t**)resp_str_ptr;
         resp_str_ptr += def.response_const_count * sizeof(dsdl_type_t*);
+        // Align and assign constant_values array. Cast is safe: dsdl_align_ptr() ensures proper alignment.
         resp_str_ptr              = dsdl_align_ptr(resp_str_ptr, sizeof(void*));
         response->constant_values = (dsdl_value_t*)resp_str_ptr;
         resp_str_ptr += def.response_const_count * sizeof(dsdl_value_t);
