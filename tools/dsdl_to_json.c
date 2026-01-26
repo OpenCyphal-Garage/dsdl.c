@@ -41,14 +41,32 @@ static void json_write_wkv(FILE* const out, const wkv_str_t str)
     json_write_string(out, str.str != NULL ? str.str : "", str.str != NULL ? str.len : 0U);
 }
 
+static void json_write_bigint(FILE* const out, const dsdl_bigint_t* const value)
+{
+    if ((value == NULL) || (value->limb_count == 0U)) {
+        (void)fputc('0', out);
+        return;
+    }
+    if (value->negative) {
+        (void)fputc('-', out);
+    }
+    uint_least8_t i = value->limb_count;
+    i--;
+    (void)fprintf(out, "%u", value->limbs[i]);
+    while (i-- > 0U) {
+        (void)fprintf(out, "%0*u", (int)DSDL_BIGINT_BASE_DIGITS, value->limbs[i]);
+    }
+}
+
 static void json_write_value(FILE* const out, const dsdl_value_t* const value)
 {
     switch (value->kind) {
         case dsdl_value_rational:
-            (void)fprintf(out,
-                          "{\"kind\":\"rational\",\"num\":\"%" PRIdMAX "\",\"den\":\"%" PRIuMAX "\"}",
-                          value->as.rational.num,
-                          value->as.rational.den);
+            (void)fputs("{\"kind\":\"rational\",\"num\":\"", out);
+            json_write_bigint(out, &value->as.rational.num);
+            (void)fputs("\",\"den\":\"", out);
+            json_write_bigint(out, &value->as.rational.den);
+            (void)fputs("\"}", out);
             break;
         case dsdl_value_bool:
             (void)fprintf(out, "{\"kind\":\"bool\",\"value\":%s}", value->as.boolean ? "true" : "false");

@@ -59,10 +59,31 @@ static void assert_uintmax_eq(const uintmax_t expected, const uintmax_t actual)
 #endif
 }
 
+static void assert_bigint_eq_intmax(const intmax_t expected, const dsdl_bigint_t actual)
+{
+    intmax_t got = 0;
+    TEST_ASSERT_TRUE(dsdl_bigint_to_intmax(&actual, &got));
+    assert_intmax_eq(expected, got);
+}
+
+static void assert_bigint_eq_uintmax(const uintmax_t expected, const dsdl_bigint_t actual)
+{
+    uintmax_t got = 0;
+    TEST_ASSERT_TRUE(dsdl_bigint_to_uintmax(&actual, &got));
+    assert_uintmax_eq(expected, got);
+}
+
+static intmax_t require_bigint_intmax(const dsdl_bigint_t actual)
+{
+    intmax_t got = 0;
+    TEST_ASSERT_TRUE(dsdl_bigint_to_intmax(&actual, &got));
+    return got;
+}
+
 static void assert_rational_eq(const dsdl_rational_t r, const intmax_t num, const uintmax_t den)
 {
-    assert_intmax_eq(num, r.num);
-    assert_uintmax_eq(den, r.den);
+    assert_bigint_eq_intmax(num, r.num);
+    assert_bigint_eq_uintmax(den, r.den);
 }
 
 // ============================================================================
@@ -280,7 +301,7 @@ static void test_parse_expr_simple_integer(void)
     dsdl_value_t val;
     TEST_ASSERT_TRUE(dsdl_parse_expression(&g_parser, &val));
     TEST_ASSERT_EQUAL(dsdl_value_rational, val.kind);
-    assert_intmax_eq(42, val.as.rational.num);
+    assert_bigint_eq_intmax(42, val.as.rational.num);
 }
 
 static void test_parse_expr_addition(void)
@@ -289,7 +310,7 @@ static void test_parse_expr_addition(void)
     dsdl_value_t val;
     TEST_ASSERT_TRUE(dsdl_parse_expression(&g_parser, &val));
     TEST_ASSERT_EQUAL(dsdl_value_rational, val.kind);
-    assert_intmax_eq(5, val.as.rational.num);
+    assert_bigint_eq_intmax(5, val.as.rational.num);
 }
 
 static void test_parse_expr_subtraction(void)
@@ -298,7 +319,7 @@ static void test_parse_expr_subtraction(void)
     dsdl_value_t val;
     TEST_ASSERT_TRUE(dsdl_parse_expression(&g_parser, &val));
     TEST_ASSERT_EQUAL(dsdl_value_rational, val.kind);
-    assert_intmax_eq(6, val.as.rational.num);
+    assert_bigint_eq_intmax(6, val.as.rational.num);
 }
 
 static void test_parse_expr_multiplication(void)
@@ -307,7 +328,7 @@ static void test_parse_expr_multiplication(void)
     dsdl_value_t val;
     TEST_ASSERT_TRUE(dsdl_parse_expression(&g_parser, &val));
     TEST_ASSERT_EQUAL(dsdl_value_rational, val.kind);
-    assert_intmax_eq(42, val.as.rational.num);
+    assert_bigint_eq_intmax(42, val.as.rational.num);
 }
 
 static void test_parse_expr_division(void)
@@ -316,8 +337,8 @@ static void test_parse_expr_division(void)
     dsdl_value_t val;
     TEST_ASSERT_TRUE(dsdl_parse_expression(&g_parser, &val));
     TEST_ASSERT_EQUAL(dsdl_value_rational, val.kind);
-    assert_intmax_eq(5, val.as.rational.num);
-    assert_uintmax_eq(1, val.as.rational.den);
+    assert_bigint_eq_intmax(5, val.as.rational.num);
+    assert_bigint_eq_uintmax(1, val.as.rational.den);
 }
 
 static void test_parse_expr_division_fraction(void)
@@ -326,8 +347,8 @@ static void test_parse_expr_division_fraction(void)
     dsdl_value_t val;
     TEST_ASSERT_TRUE(dsdl_parse_expression(&g_parser, &val));
     TEST_ASSERT_EQUAL(dsdl_value_rational, val.kind);
-    assert_intmax_eq(1, val.as.rational.num);
-    assert_uintmax_eq(3, val.as.rational.den);
+    assert_bigint_eq_intmax(1, val.as.rational.num);
+    assert_bigint_eq_uintmax(3, val.as.rational.den);
 }
 
 static void test_parse_expr_modulo(void)
@@ -336,7 +357,7 @@ static void test_parse_expr_modulo(void)
     dsdl_value_t val;
     TEST_ASSERT_TRUE(dsdl_parse_expression(&g_parser, &val));
     TEST_ASSERT_EQUAL(dsdl_value_rational, val.kind);
-    assert_intmax_eq(2, val.as.rational.num);
+    assert_bigint_eq_intmax(2, val.as.rational.num);
 }
 
 static void test_parse_expr_power(void)
@@ -345,7 +366,7 @@ static void test_parse_expr_power(void)
     dsdl_value_t val;
     TEST_ASSERT_TRUE(dsdl_parse_expression(&g_parser, &val));
     TEST_ASSERT_EQUAL(dsdl_value_rational, val.kind);
-    assert_intmax_eq(1024, val.as.rational.num);
+    assert_bigint_eq_intmax(1024, val.as.rational.num);
 }
 
 static void test_parse_expr_precedence(void)
@@ -355,7 +376,7 @@ static void test_parse_expr_precedence(void)
     dsdl_value_t val;
     TEST_ASSERT_TRUE(dsdl_parse_expression(&g_parser, &val));
     TEST_ASSERT_EQUAL(dsdl_value_rational, val.kind);
-    assert_intmax_eq(14, val.as.rational.num);
+    assert_bigint_eq_intmax(14, val.as.rational.num);
 }
 
 static void test_parse_expr_parentheses(void)
@@ -365,7 +386,7 @@ static void test_parse_expr_parentheses(void)
     dsdl_value_t val;
     TEST_ASSERT_TRUE(dsdl_parse_expression(&g_parser, &val));
     TEST_ASSERT_EQUAL(dsdl_value_rational, val.kind);
-    assert_intmax_eq(20, val.as.rational.num);
+    assert_bigint_eq_intmax(20, val.as.rational.num);
 }
 
 static void test_parse_expr_unary_minus(void)
@@ -374,7 +395,7 @@ static void test_parse_expr_unary_minus(void)
     dsdl_value_t val;
     TEST_ASSERT_TRUE(dsdl_parse_expression(&g_parser, &val));
     TEST_ASSERT_EQUAL(dsdl_value_rational, val.kind);
-    assert_intmax_eq(-5, val.as.rational.num);
+    assert_bigint_eq_intmax(-5, val.as.rational.num);
 }
 
 static void test_parse_expr_unary_plus(void)
@@ -383,7 +404,7 @@ static void test_parse_expr_unary_plus(void)
     dsdl_value_t val;
     TEST_ASSERT_TRUE(dsdl_parse_expression(&g_parser, &val));
     TEST_ASSERT_EQUAL(dsdl_value_rational, val.kind);
-    assert_intmax_eq(42, val.as.rational.num);
+    assert_bigint_eq_intmax(42, val.as.rational.num);
 }
 
 static void test_parse_expr_bitwise_or(void)
@@ -392,7 +413,7 @@ static void test_parse_expr_bitwise_or(void)
     dsdl_value_t val;
     TEST_ASSERT_TRUE(dsdl_parse_expression(&g_parser, &val));
     TEST_ASSERT_EQUAL(dsdl_value_rational, val.kind);
-    assert_intmax_eq(0xF, val.as.rational.num);
+    assert_bigint_eq_intmax(0xF, val.as.rational.num);
 }
 
 static void test_parse_expr_bitwise_and(void)
@@ -401,7 +422,7 @@ static void test_parse_expr_bitwise_and(void)
     dsdl_value_t val;
     TEST_ASSERT_TRUE(dsdl_parse_expression(&g_parser, &val));
     TEST_ASSERT_EQUAL(dsdl_value_rational, val.kind);
-    assert_intmax_eq(0x0F, val.as.rational.num);
+    assert_bigint_eq_intmax(0x0F, val.as.rational.num);
 }
 
 static void test_parse_expr_bitwise_xor(void)
@@ -410,7 +431,7 @@ static void test_parse_expr_bitwise_xor(void)
     dsdl_value_t val;
     TEST_ASSERT_TRUE(dsdl_parse_expression(&g_parser, &val));
     TEST_ASSERT_EQUAL(dsdl_value_rational, val.kind);
-    assert_intmax_eq(5, val.as.rational.num); // 0b0101 = 5
+    assert_bigint_eq_intmax(5, val.as.rational.num); // 0b0101 = 5
 }
 
 static void test_parse_expr_comparison_eq(void)
@@ -508,7 +529,7 @@ static void test_parse_expr_offset_closure(void)
 {
     g_dsdl.realloc               = test_realloc;
     dsdl_bls_t*         offset   = dsdl_bls_new_single(&g_dsdl, 16);
-    dsdl_eval_context_t eval_ctx = { .dsdl = &g_dsdl, .offset = offset };
+    dsdl_eval_context_t eval_ctx = { .dsdl = &g_dsdl, .offset = offset, .offset_is_defined = true };
 
     init_parser_with_eval("_offset_ + 8", &eval_ctx);
     dsdl_value_t val;
@@ -518,7 +539,7 @@ static void test_parse_expr_offset_closure(void)
     TEST_ASSERT_TRUE(dsdl_resolve_value(&val));
     TEST_ASSERT_EQUAL(dsdl_value_set, val.kind);
     TEST_ASSERT_EQUAL_size_t(1, val.as.set.count);
-    assert_intmax_eq(24, val.as.set.elements[0].as.rational.num);
+    assert_bigint_eq_intmax(24, val.as.set.elements[0].as.rational.num);
 
     dsdl_value_dispose(&g_dsdl, &val);
     dsdl_free(&g_dsdl, offset);
@@ -528,7 +549,7 @@ static void test_parse_expr_offset_attribute_min(void)
 {
     g_dsdl.realloc               = test_realloc;
     dsdl_bls_t*         offset   = dsdl_bls_new_single(&g_dsdl, 32);
-    dsdl_eval_context_t eval_ctx = { .dsdl = &g_dsdl, .offset = offset };
+    dsdl_eval_context_t eval_ctx = { .dsdl = &g_dsdl, .offset = offset, .offset_is_defined = true };
 
     init_parser_with_eval("_offset_.min", &eval_ctx);
     dsdl_value_t val;
@@ -537,7 +558,7 @@ static void test_parse_expr_offset_attribute_min(void)
 
     TEST_ASSERT_TRUE(dsdl_resolve_value(&val));
     TEST_ASSERT_EQUAL(dsdl_value_rational, val.kind);
-    assert_intmax_eq(32, val.as.rational.num);
+    assert_bigint_eq_intmax(32, val.as.rational.num);
 
     dsdl_free(&g_dsdl, offset);
 }
@@ -548,7 +569,7 @@ static void test_parse_expr_offset_set_addition(void)
     const uint64_t values[] = { 8U, 16U };
     dsdl_bls_t*    offset   = dsdl_bls_new_set(&g_dsdl, 2, values);
     TEST_ASSERT_NOT_NULL(offset);
-    dsdl_eval_context_t eval_ctx = { .dsdl = &g_dsdl, .offset = offset };
+    dsdl_eval_context_t eval_ctx = { .dsdl = &g_dsdl, .offset = offset, .offset_is_defined = true };
 
     init_parser_with_eval("_offset_ + 4", &eval_ctx);
     dsdl_value_t val;
@@ -562,9 +583,10 @@ static void test_parse_expr_offset_set_addition(void)
     bool has_12 = false;
     bool has_20 = false;
     for (size_t i = 0; i < val.as.set.count; i++) {
-        if (val.as.set.elements[i].as.rational.num == 12) {
+        const intmax_t element = require_bigint_intmax(val.as.set.elements[i].as.rational.num);
+        if (element == 12) {
             has_12 = true;
-        } else if (val.as.set.elements[i].as.rational.num == 20) {
+        } else if (element == 20) {
             has_20 = true;
         }
     }
@@ -581,7 +603,7 @@ static void test_parse_expr_offset_set_modulo(void)
     const uint64_t values[] = { 8U, 16U, 20U };
     dsdl_bls_t*    offset   = dsdl_bls_new_set(&g_dsdl, 3, values);
     TEST_ASSERT_NOT_NULL(offset);
-    dsdl_eval_context_t eval_ctx = { .dsdl = &g_dsdl, .offset = offset };
+    dsdl_eval_context_t eval_ctx = { .dsdl = &g_dsdl, .offset = offset, .offset_is_defined = true };
 
     init_parser_with_eval("_offset_ % 8", &eval_ctx);
     dsdl_value_t val;
@@ -595,9 +617,10 @@ static void test_parse_expr_offset_set_modulo(void)
     bool has_0 = false;
     bool has_4 = false;
     for (size_t i = 0; i < val.as.set.count; i++) {
-        if (val.as.set.elements[i].as.rational.num == 0) {
+        const intmax_t element = require_bigint_intmax(val.as.set.elements[i].as.rational.num);
+        if (element == 0) {
             has_0 = true;
-        } else if (val.as.set.elements[i].as.rational.num == 4) {
+        } else if (element == 4) {
             has_4 = true;
         }
     }
@@ -614,7 +637,7 @@ static void test_parse_expr_offset_set_equality(void)
     const uint64_t values[] = { 16U, 8U };
     dsdl_bls_t*    offset   = dsdl_bls_new_set(&g_dsdl, 2, values);
     TEST_ASSERT_NOT_NULL(offset);
-    dsdl_eval_context_t eval_ctx = { .dsdl = &g_dsdl, .offset = offset };
+    dsdl_eval_context_t eval_ctx = { .dsdl = &g_dsdl, .offset = offset, .offset_is_defined = true };
 
     init_parser_with_eval("_offset_ == {16, 8}", &eval_ctx);
     dsdl_value_t val;
@@ -635,7 +658,7 @@ static void test_parse_expr_type_bit_length(void)
     TEST_ASSERT_TRUE(dsdl_parse_expression(&g_parser, &val));
     TEST_ASSERT_EQUAL(dsdl_value_set, val.kind);
     TEST_ASSERT_EQUAL_size_t(1, val.as.set.count);
-    assert_intmax_eq(16, val.as.set.elements[0].as.rational.num);
+    assert_bigint_eq_intmax(16, val.as.set.elements[0].as.rational.num);
     dsdl_value_dispose(&g_dsdl, &val);
 }
 
@@ -645,7 +668,7 @@ static void test_parse_expr_type_extent(void)
     dsdl_value_t val;
     TEST_ASSERT_TRUE(dsdl_parse_expression(&g_parser, &val));
     TEST_ASSERT_EQUAL(dsdl_value_rational, val.kind);
-    assert_intmax_eq(16, val.as.rational.num);
+    assert_bigint_eq_intmax(16, val.as.rational.num);
 }
 
 static void test_parse_expr_power_associativity(void)
@@ -655,7 +678,7 @@ static void test_parse_expr_power_associativity(void)
     dsdl_value_t val;
     TEST_ASSERT_TRUE(dsdl_parse_expression(&g_parser, &val));
     TEST_ASSERT_EQUAL(dsdl_value_rational, val.kind);
-    assert_intmax_eq(512, val.as.rational.num);
+    assert_bigint_eq_intmax(512, val.as.rational.num);
 }
 
 static void test_parse_expr_power_fractional_exponent(void)
@@ -667,8 +690,10 @@ static void test_parse_expr_power_fractional_exponent(void)
     TEST_ASSERT_EQUAL(dsdl_value_rational, val.kind);
     // Result should be approximately 2 (rational approximation)
     // Check that num/den is close to 2: num should be approximately 2*den
-    TEST_ASSERT_TRUE(val.as.rational.den > 0);
-    const intmax_t diff = val.as.rational.num - (intmax_t)(2 * val.as.rational.den);
+    const intmax_t den = require_bigint_intmax(val.as.rational.den);
+    const intmax_t num = require_bigint_intmax(val.as.rational.num);
+    TEST_ASSERT_TRUE(den > 0);
+    const intmax_t diff = num - (2 * den);
     TEST_ASSERT_TRUE(diff >= -1 && diff <= 1); // Within 1 unit of 2*den
 }
 
@@ -680,8 +705,10 @@ static void test_parse_expr_power_fractional_base_and_exp(void)
     TEST_ASSERT_TRUE(dsdl_parse_expression(&g_parser, &val));
     TEST_ASSERT_EQUAL(dsdl_value_rational, val.kind);
     // Result should be approximately 3
-    TEST_ASSERT_TRUE(val.as.rational.den > 0);
-    const intmax_t diff = val.as.rational.num - (intmax_t)(3 * val.as.rational.den);
+    const intmax_t den = require_bigint_intmax(val.as.rational.den);
+    const intmax_t num = require_bigint_intmax(val.as.rational.num);
+    TEST_ASSERT_TRUE(den > 0);
+    const intmax_t diff = num - (3 * den);
     TEST_ASSERT_TRUE(diff >= -1 && diff <= 1);
 }
 
@@ -694,10 +721,11 @@ static void test_parse_expr_power_negative_fractional(void)
     TEST_ASSERT_EQUAL(dsdl_value_rational, val.kind);
     // Result should be approximately 0.5 = 1/2
     // Check that 2*num is approximately equal to den
-    TEST_ASSERT_TRUE(val.as.rational.den > 0);
-    TEST_ASSERT_TRUE(val.as.rational.num > 0);
-    const intmax_t twice_num = 2 * val.as.rational.num;
-    const intmax_t diff      = twice_num - (intmax_t)val.as.rational.den;
+    const intmax_t den = require_bigint_intmax(val.as.rational.den);
+    const intmax_t num = require_bigint_intmax(val.as.rational.num);
+    TEST_ASSERT_TRUE(den > 0);
+    TEST_ASSERT_TRUE(num > 0);
+    const intmax_t diff = (2 * num) - den;
     TEST_ASSERT_TRUE(diff >= -1 && diff <= 1);
 }
 
@@ -709,9 +737,7 @@ static void test_parse_set_empty(void)
 {
     init_parser("{}");
     dsdl_value_t val;
-    TEST_ASSERT_TRUE(dsdl_parse_literal(&g_parser, &val));
-    TEST_ASSERT_EQUAL(dsdl_value_set, val.kind);
-    TEST_ASSERT_EQUAL_size_t(0, val.as.set.count);
+    TEST_ASSERT_FALSE(dsdl_parse_literal(&g_parser, &val));
 }
 
 static void test_parse_set_single(void)
@@ -722,7 +748,7 @@ static void test_parse_set_single(void)
     TEST_ASSERT_EQUAL(dsdl_value_set, val.kind);
     TEST_ASSERT_EQUAL_size_t(1, val.as.set.count);
     TEST_ASSERT_EQUAL(dsdl_value_rational, val.as.set.elements[0].kind);
-    assert_intmax_eq(42, val.as.set.elements[0].as.rational.num);
+    assert_bigint_eq_intmax(42, val.as.set.elements[0].as.rational.num);
     dsdl_value_dispose(&g_dsdl, &val);
 }
 
@@ -733,9 +759,9 @@ static void test_parse_set_multiple(void)
     TEST_ASSERT_TRUE(dsdl_parse_literal(&g_parser, &val));
     TEST_ASSERT_EQUAL(dsdl_value_set, val.kind);
     TEST_ASSERT_EQUAL_size_t(3, val.as.set.count);
-    assert_intmax_eq(1, val.as.set.elements[0].as.rational.num);
-    assert_intmax_eq(2, val.as.set.elements[1].as.rational.num);
-    assert_intmax_eq(3, val.as.set.elements[2].as.rational.num);
+    assert_bigint_eq_intmax(1, val.as.set.elements[0].as.rational.num);
+    assert_bigint_eq_intmax(2, val.as.set.elements[1].as.rational.num);
+    assert_bigint_eq_intmax(3, val.as.set.elements[2].as.rational.num);
     dsdl_value_dispose(&g_dsdl, &val);
 }
 
@@ -765,7 +791,7 @@ static void test_parse_set_large(void)
     // Verify all elements
     for (int i = 0; i < 100; i++) {
         TEST_ASSERT_EQUAL(dsdl_value_rational, val.as.set.elements[i].kind);
-        assert_intmax_eq(i, val.as.set.elements[i].as.rational.num);
+        assert_bigint_eq_intmax(i, val.as.set.elements[i].as.rational.num);
     }
 
     dsdl_value_dispose(&g_dsdl, &val);
@@ -947,7 +973,7 @@ static void test_parse_stmt_constant(void)
     TEST_ASSERT_EQUAL(dsdl_stmt_constant, stmt.kind);
     TEST_ASSERT_TRUE(stmt.has_value);
     TEST_ASSERT_EQUAL(dsdl_value_rational, stmt.value.kind);
-    assert_intmax_eq(255, stmt.value.as.rational.num);
+    assert_bigint_eq_intmax(255, stmt.value.as.rational.num);
 }
 
 static void test_parse_stmt_padding(void)
@@ -977,7 +1003,7 @@ static void test_parse_stmt_directive_with_expr(void)
     TEST_ASSERT_TRUE(dsdl_parse_statement(&g_parser, &stmt));
     TEST_ASSERT_EQUAL(dsdl_stmt_directive, stmt.kind);
     TEST_ASSERT_TRUE(stmt.has_value);
-    assert_intmax_eq(512, stmt.value.as.rational.num);
+    assert_bigint_eq_intmax(512, stmt.value.as.rational.num);
 }
 
 static void test_parse_stmt_service_marker(void)
@@ -1065,20 +1091,20 @@ static void test_parse_def_with_constants(void)
     TEST_ASSERT_EQUAL_size_t(2, def.const_count);
 
     // Check first constant
-    assert_intmax_eq(0, def.const_values[0].as.rational.num);
+    assert_bigint_eq_intmax(0, def.const_values[0].as.rational.num);
     TEST_ASSERT_EQUAL_size_t(11, def.const_names[0].len);
     TEST_ASSERT_EQUAL_MEMORY("STATUS_GOOD", def.const_names[0].str, 11);
 
     // Check second constant
-    assert_intmax_eq(1, def.const_values[1].as.rational.num);
+    assert_bigint_eq_intmax(1, def.const_values[1].as.rational.num);
 
     dsdl_parsed_def_deinit(&def);
 }
 
 static void test_parse_def_with_extent(void)
 {
-    const char* dsdl = "@extent 64\n"
-                       "uint8[<=8] data\n";
+    const char* dsdl = "uint8[<=8] data\n"
+                       "@extent 64\n";
 
     init_parser(dsdl);
     dsdl_parsed_def_t def;

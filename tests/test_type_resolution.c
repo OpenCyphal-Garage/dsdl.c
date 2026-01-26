@@ -17,6 +17,7 @@
 // ============================================================================
 
 static dsdl_t g_dsdl;
+static size_t g_alloc_count = 0U;
 
 #ifndef DSDL_TEST_ROOT
 #define DSDL_TEST_ROOT "."
@@ -31,6 +32,23 @@ static void* test_realloc(dsdl_t* self, void* ptr, size_t new_size)
         return NULL;
     }
     return realloc(ptr, new_size);
+}
+
+static void* test_realloc_counting(dsdl_t* self, void* ptr, size_t new_size)
+{
+    (void)self;
+    if (new_size == 0U) {
+        if (ptr != NULL) {
+            g_alloc_count--;
+            free(ptr);
+        }
+        return NULL;
+    }
+    void* const out = realloc(ptr, new_size);
+    if ((ptr == NULL) && (out != NULL)) {
+        g_alloc_count++;
+    }
+    return out;
 }
 
 /// Standard file reader for tests - returns wkv_str_t
@@ -170,6 +188,25 @@ static bool add_namespace_rel(const char* const rel_path)
     return dsdl_add_namespace(&g_dsdl, wkv_key(path_buf));
 }
 
+static bool add_namespace_rel_for(dsdl_t* const dsdl, const char* const rel_path)
+{
+    if ((dsdl == NULL) || (rel_path == NULL)) {
+        return false;
+    }
+    char      path_buf[512];
+    const int len = snprintf(path_buf, sizeof(path_buf), "%s/%s", DSDL_TEST_ROOT, rel_path);
+    if ((len < 0) || ((size_t)len >= sizeof(path_buf))) {
+        return false;
+    }
+    return dsdl_add_namespace(dsdl, wkv_key(path_buf));
+}
+
+static bool add_test_roots_for(dsdl_t* const dsdl)
+{
+    return add_namespace_rel_for(dsdl, "test_dsdl_root_namespaces/0") &&
+           add_namespace_rel_for(dsdl, "test_dsdl_root_namespaces/1");
+}
+
 static bool add_test_roots(void)
 {
     return add_namespace_rel("test_dsdl_root_namespaces/0") && add_namespace_rel("test_dsdl_root_namespaces/1");
@@ -191,6 +228,13 @@ static void assert_uintmax_eq(const uintmax_t expected, const uintmax_t actual)
 #else
     TEST_ASSERT_EQUAL_UINT32((uint32_t)expected, (uint32_t)actual);
 #endif
+}
+
+static void assert_bigint_eq_intmax(const intmax_t expected, const dsdl_bigint_t actual)
+{
+    intmax_t got = 0;
+    TEST_ASSERT_TRUE(dsdl_bigint_to_intmax(&actual, &got));
+    assert_intmax_eq(expected, got);
 }
 
 static const dsdl_value_t* find_constant(const dsdl_type_composite_t* const type, const char* const name)
@@ -325,7 +369,7 @@ static void test_serialized_footprint_simple(void)
     TEST_ASSERT_TRUE(add_test_roots());
 
     // Simple.1.0: int32 a, float16 b, bool c
-    // = 32 + 16 + 1 = 49 bits = 7 bytes (byte-aligned)
+    // = 32 + 16 + 1 = 49 bits, padded to 56 bits = 7 bytes
     const dsdl_type_composite_t* simple = dsdl_read(&g_dsdl, wkv_key("mymsgs.Simple.1.0"));
     TEST_ASSERT_NOT_NULL(simple);
     TEST_ASSERT_EQUAL_size_t(7, dsdl_serialized_footprint(simple));
@@ -340,9 +384,9 @@ static void test_serialized_footprint_array(void)
     TEST_ASSERT_TRUE(add_test_roots());
 
     // Inner.1.0: uint32[<=5] inner_items
-    // Length prefix: ceil(log2(5+1)) = ceil(log2(6)) = 3 bits
+    // Length prefix: 8 bits (byte-aligned)
     // Elements: 5 * 32 = 160 bits
-    // Total: 3 + 160 = 163 bits = 21 bytes
+    // Total: 8 + 160 = 168 bits = 21 bytes
     const dsdl_type_composite_t* inner = dsdl_read(&g_dsdl, wkv_key("mymsgs.Inner.1.0"));
     TEST_ASSERT_NOT_NULL(inner);
     TEST_ASSERT_EQUAL_size_t(21, dsdl_serialized_footprint(inner));
@@ -357,12 +401,12 @@ static void test_serialized_footprint_nested(void)
     TEST_ASSERT_TRUE(add_test_roots());
 
     // Outer.1.0: float32[<=8] outer_items, Inner.1.0 inner
-    // float32[<=8]: ceil(log2(9))=4 prefix bits + 8*32=256 element bits = 260 bits
-    // Inner.1.0: 163 bits (from above)
-    // Total: 260 + 163 = 423 bits = 53 bytes
+    // float32[<=8]: 8 prefix bits + 8*32=256 element bits = 264 bits
+    // Inner.1.0: 168 bits (from above)
+    // Total: 264 + 168 = 432 bits = 54 bytes
     const dsdl_type_composite_t* outer = dsdl_read(&g_dsdl, wkv_key("mymsgs.Outer.1.0"));
     TEST_ASSERT_NOT_NULL(outer);
-    TEST_ASSERT_EQUAL_size_t(53, dsdl_serialized_footprint(outer));
+    TEST_ASSERT_EQUAL_size_t(54, dsdl_serialized_footprint(outer));
 
     teardown_dsdl();
 }
@@ -374,7 +418,7 @@ static void test_bit_length_set_simple(void)
     TEST_ASSERT_TRUE(add_test_roots());
 
     // Simple.1.0: int32 a, float16 b, bool c
-    // = 32 + 16 + 1 = 49 bits (fixed)
+    // = 32 + 16 + 1 = 49 bits, padded to 56 bits (fixed)
     dsdl_type_composite_t* simple = (dsdl_type_composite_t*)dsdl_read(&g_dsdl, wkv_key("mymsgs.Simple.1.0"));
     TEST_ASSERT_NOT_NULL(simple);
 
@@ -382,9 +426,9 @@ static void test_bit_length_set_simple(void)
     dsdl_bls_t* bls = dsdl_type_bls(&g_dsdl, &simple->type);
     TEST_ASSERT_NOT_NULL(bls);
 
-    // Simple has fixed size, so min == max == 49
-    TEST_ASSERT_EQUAL_size_t(49, dsdl_bls_min(bls));
-    TEST_ASSERT_EQUAL_size_t(49, dsdl_bls_max(bls));
+    // Simple has fixed size, so min == max == 56
+    TEST_ASSERT_EQUAL_size_t(56, dsdl_bls_min(bls));
+    TEST_ASSERT_EQUAL_size_t(56, dsdl_bls_max(bls));
     TEST_ASSERT_TRUE(dsdl_bls_is_fixed(bls));
 
     // Should be stored in composite
@@ -400,9 +444,9 @@ static void test_bit_length_set_variable_array(void)
     TEST_ASSERT_TRUE(add_test_roots());
 
     // Inner.1.0: uint32[<=5] inner_items
-    // Length prefix: ceil(log2(5+1)) = ceil(log2(6)) = 3 bits
+    // Length prefix: 8 bits (byte-aligned)
     // Elements: 0..5 * 32 = 0..160 bits
-    // Total: min = 3 + 0 = 3 bits, max = 3 + 160 = 163 bits
+    // Total: min = 8 + 0 = 8 bits, max = 8 + 160 = 168 bits
     dsdl_type_composite_t* inner = (dsdl_type_composite_t*)dsdl_read(&g_dsdl, wkv_key("mymsgs.Inner.1.0"));
     TEST_ASSERT_NOT_NULL(inner);
 
@@ -411,8 +455,8 @@ static void test_bit_length_set_variable_array(void)
     TEST_ASSERT_NOT_NULL(bls);
 
     // Inner has variable size due to variable array
-    TEST_ASSERT_EQUAL_size_t(3, dsdl_bls_min(bls));
-    TEST_ASSERT_EQUAL_size_t(163, dsdl_bls_max(bls));
+    TEST_ASSERT_EQUAL_size_t(8, dsdl_bls_min(bls));
+    TEST_ASSERT_EQUAL_size_t(168, dsdl_bls_max(bls));
     TEST_ASSERT_FALSE(dsdl_bls_is_fixed(bls));
 
     teardown_dsdl();
@@ -458,6 +502,9 @@ static void test_load_service_with_fixed_port_id(void)
     // Check version
     TEST_ASSERT_EQUAL_UINT8(0, svc->version[0]);
     TEST_ASSERT_EQUAL_UINT8(1, svc->version[1]);
+    TEST_ASSERT_EQUAL_STRING_LEN("FixedPortService", svc->short_name.str, svc->short_name.len);
+    TEST_ASSERT_NOT_NULL(svc->response);
+    TEST_ASSERT_EQUAL_STRING_LEN("Response", svc->response->short_name.str, svc->response->short_name.len);
 
     // Note: Service type handling (RPC vs UNION) is tested separately
     // This test focuses on fixed port-ID extraction from filename
@@ -481,6 +528,19 @@ static void test_load_type_without_fixed_port_id(void)
     teardown_dsdl();
 }
 
+static void test_short_name_exposed(void)
+{
+    setup_dsdl();
+
+    TEST_ASSERT_TRUE(add_test_roots());
+
+    const dsdl_type_composite_t* simple = dsdl_read(&g_dsdl, wkv_key("mymsgs.Simple.1.0"));
+    TEST_ASSERT_NOT_NULL(simple);
+    TEST_ASSERT_EQUAL_STRING_LEN("Simple", simple->short_name.str, simple->short_name.len);
+
+    teardown_dsdl();
+}
+
 static void test_constants_evaluated(void)
 {
     setup_dsdl();
@@ -493,17 +553,17 @@ static void test_constants_evaluated(void)
     const dsdl_value_t* val = find_constant(expr, "ADD");
     TEST_ASSERT_NOT_NULL(val);
     TEST_ASSERT_EQUAL(dsdl_value_rational, val->kind);
-    assert_intmax_eq(300, val->as.rational.num);
+    assert_bigint_eq_intmax(300, val->as.rational.num);
 
     val = find_constant(expr, "POW");
     TEST_ASSERT_NOT_NULL(val);
     TEST_ASSERT_EQUAL(dsdl_value_rational, val->kind);
-    assert_intmax_eq(1024, val->as.rational.num);
+    assert_bigint_eq_intmax(1024, val->as.rational.num);
 
     val = find_constant(expr, "BIT_OR");
     TEST_ASSERT_NOT_NULL(val);
     TEST_ASSERT_EQUAL(dsdl_value_rational, val->kind);
-    assert_intmax_eq(255, val->as.rational.num);
+    assert_bigint_eq_intmax(255, val->as.rational.num);
 
     const dsdl_type_composite_t* str = dsdl_read(&g_dsdl, wkv_key("validation.StringOps.0.1"));
     TEST_ASSERT_NOT_NULL(str);
@@ -511,7 +571,7 @@ static void test_constants_evaluated(void)
     val = find_constant(str, "CHAR_A");
     TEST_ASSERT_NOT_NULL(val);
     TEST_ASSERT_EQUAL(dsdl_value_rational, val->kind);
-    assert_intmax_eq(65, val->as.rational.num);
+    assert_bigint_eq_intmax(65, val->as.rational.num);
 
     teardown_dsdl();
 }
@@ -775,6 +835,24 @@ static void test_version_resolution_versioned_v2(void)
     teardown_dsdl();
 }
 
+static void test_destroy_frees_allocations(void)
+{
+    g_alloc_count = 0U;
+
+    dsdl_t dsdl;
+    dsdl_new(&dsdl, test_realloc_counting);
+    dsdl.read = test_read_file;
+    dsdl.list = test_list_dir;
+
+    TEST_ASSERT_TRUE(add_test_roots_for(&dsdl));
+
+    const dsdl_type_composite_t* type = dsdl_read(&dsdl, wkv_key("mymsgs.Simple.1.0"));
+    TEST_ASSERT_NOT_NULL(type);
+
+    dsdl_destroy(&dsdl);
+    TEST_ASSERT_EQUAL_size_t(0U, g_alloc_count);
+}
+
 // ============================================================================
 // Filename parsing tests (internal function)
 // ============================================================================
@@ -816,8 +894,8 @@ static void test_parse_filename_invalid(void)
     p = dsdl_parse_filename(wkv_key("T.0.0.dsd"));
     TEST_ASSERT_FALSE(p.valid);
 
-    // Type name doesn't start with uppercase
-    p = dsdl_parse_filename(wkv_key("heartbeat.1.0.dsdl"));
+    // Type name doesn't start with a valid identifier character
+    p = dsdl_parse_filename(wkv_key("1Type.1.0.dsdl"));
     TEST_ASSERT_FALSE(p.valid);
 
     // Non-numeric version
@@ -850,6 +928,7 @@ int main(void)
     RUN_TEST(test_load_message_with_fixed_port_id);
     RUN_TEST(test_load_service_with_fixed_port_id);
     RUN_TEST(test_load_type_without_fixed_port_id);
+    RUN_TEST(test_short_name_exposed);
     RUN_TEST(test_constants_evaluated);
     RUN_TEST(test_constant_types_exposed);
     RUN_TEST(test_type_constant_and_attribute_access);
@@ -865,6 +944,7 @@ int main(void)
     RUN_TEST(test_version_resolution_major_only);
     RUN_TEST(test_version_resolution_no_version);
     RUN_TEST(test_version_resolution_versioned_v2);
+    RUN_TEST(test_destroy_frees_allocations);
 
     // Filename parsing tests
     RUN_TEST(test_parse_filename_basic);

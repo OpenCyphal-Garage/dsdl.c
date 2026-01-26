@@ -79,7 +79,7 @@ typedef uint16_t dsdl_type_t;
 // Type category masks and flags
 #define DSDL_TYPE_CATEGORY_MASK  ((dsdl_type_t)0x0F00U)
 #define DSDL_TYPE_BITWIDTH_MASK  ((dsdl_type_t)0x00FFU)
-#define DSDL_TYPE_ALIAS_MASK     ((dsdl_type_t)0xF000U)
+#define DSDL_TYPE_ALIAS_MASK     ((dsdl_type_t)0xE000U)
 #define DSDL_TYPE_TRUNCATED_FLAG ((dsdl_type_t)0x1000U)
 
 static inline bool          dsdl_type_is_void(dsdl_type_t t) { return (t & DSDL_TYPE_CATEGORY_MASK) == 0x0000U; }
@@ -113,6 +113,7 @@ typedef struct dsdl_type_composite_t
     dsdl_type_t   type;           ///< Always the first field; here DSDL_COMPOSITE_*
     wkv_str_t     name;           ///< Fully qualified type name without version
     wkv_str_t     name_versioned; ///< Fully qualified type name with version
+    wkv_str_t     short_name;     ///< Last component of name (points into name)
     uint_least8_t version[2];     ///< [major, minor]
 
     uint64_t extent;     ///< Maximum serialized size in bytes.
@@ -139,13 +140,26 @@ typedef struct dsdl_type_composite_t
 // Values
 // ============================================================================
 
+/// Big integer storage for exact arithmetic.
+/// Limbs are base-10^9, little-endian (limb 0 is least significant).
+#define DSDL_BIGINT_LIMB_COUNT  8U
+#define DSDL_BIGINT_BASE        1000000000U
+#define DSDL_BIGINT_BASE_DIGITS 9U
+
+typedef struct
+{
+    uint32_t      limbs[DSDL_BIGINT_LIMB_COUNT];
+    uint_least8_t limb_count; ///< Number of limbs used (0 means zero)
+    bool          negative;   ///< True if value is negative
+} dsdl_bigint_t;
+
 /// Rational number for exact arithmetic during expression evaluation.
 /// Per DSDL spec section 3.1: rationals must be stored normalized with
 /// positive denominator and GCD(num, den) == 1.
 typedef struct
 {
-    intmax_t  num; ///< Numerator (signed)
-    uintmax_t den; ///< Denominator (always positive, 0 means NaN, 1 for integers)
+    dsdl_bigint_t num; ///< Numerator (signed)
+    dsdl_bigint_t den; ///< Denominator (always positive, zero means NaN)
 } dsdl_rational_t;
 
 /// Forward declaration for recursive type.
@@ -262,6 +276,8 @@ typedef struct dsdl_value_union_t
 
 /// Forward declaration.
 typedef struct dsdl_t dsdl_t;
+struct dsdl_bls_t;
+struct dsdl_type_alloc_t;
 
 /// Main parser/runtime state.
 ///
@@ -299,6 +315,12 @@ struct dsdl_t
     /// The last entry in the array has {.str=NULL, .len=0}.
     /// The library will free each item's .str and the array itself.
     wkv_str_t* (*list)(dsdl_t* self, wkv_str_t path);
+
+    /// Internal: tracked BLS allocations for cleanup.
+    struct dsdl_bls_t* bls_allocations;
+
+    /// Internal: tracked type descriptor allocations for cleanup.
+    struct dsdl_type_alloc_t* type_allocations;
 };
 
 // ============================================================================

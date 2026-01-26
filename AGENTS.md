@@ -22,7 +22,7 @@ The implementation will be carried out in multiple steps roughly as follows (to 
 
 The plan will need to be refined into finer-grained steps.
 
-**See [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md) for the detailed implementation plan.**
+**See [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md) for the detailed implementation plan.**
 
 Feel free to add git submodules or install whatever software is needed to accomplish the task.
 
@@ -45,10 +45,6 @@ The code must not make assumptions about the execution platform (pointer width, 
 
 ## Known issues (incomplete list)
 
-- Fix memory leaks.
-
-- `dsdl_compare_pydsdl.py`: remove `load_pydsdl()`, just `import pydsdl` globally -- assume the correct version is installed in the global Python environment. Also remove `pydsdl: object,` from all functions.
-
-- `dsdl_type_composite_t` should also have `short_name` for convenience; e.g., `Heartbeat` for `uavcan.node.Heartbeat.1.0`. Since it is the last part of the full name without version, it can be simply a pointer to the appropriate character of `name` (right after the last separator dot) -- no need to allocate another string.
-
-- Add a readme to the tools directory describing the purpose of each tool, with usage examples.
+- `tools/dsdl_compare_pydsdl.py` batch parse still warns about fixed port-ID collisions; it falls back to per-file parsing.
+- Nunavut cross-validation for serialization/deserialization is not implemented.
+- CI is not set up; needs full test suite (incl. cross-validation, m32/m64 builds, and everything else) plus clang-format checks.

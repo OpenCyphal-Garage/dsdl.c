@@ -7,6 +7,8 @@ import sys
 import tempfile
 from pathlib import Path
 
+import pydsdl  # type: ignore
+
 sys.setrecursionlimit(max(sys.getrecursionlimit(), 10000))
 
 
@@ -114,7 +116,7 @@ def type_name_key(full_name: str, major: int, minor: int) -> str:
     return f"{full_name}.{major}.{minor}"
 
 
-def type_name_to_path(type_name: str) -> Path:
+def type_name_to_path(type_name: str, fixed_port_id: int | None = None) -> Path:
     parts = type_name.split(".")
     if len(parts) < 3:
         raise ValueError(f"Type name does not include version: {type_name}")
@@ -123,6 +125,8 @@ def type_name_to_path(type_name: str) -> Path:
     minor = parts[-1]
     namespace_parts = parts[:-3]
     filename = f"{short_name}.{major}.{minor}.dsdl"
+    if fixed_port_id is not None:
+        filename = f"{fixed_port_id}.{filename}"
     return Path(*namespace_parts, filename)
 
 
@@ -139,17 +143,7 @@ def run_tool_single(exe: str, roots: list[Path], type_name: str) -> subprocess.C
     return run_tool(exe, roots, [type_name])
 
 
-def load_pydsdl() -> object:
-    script_dir = Path(__file__).resolve().parent
-    repo_root = script_dir.parent
-    pydsdl_root = repo_root / "reference_implementations" / "pydsdl"
-    sys.path.insert(0, str(pydsdl_root))
-    import pydsdl  # type: ignore
-
-    return pydsdl
-
-
-def value_to_json(pydsdl: object, value: object) -> dict:
+def value_to_json(value: object) -> dict:
     if isinstance(value, pydsdl.Boolean):
         return {"kind": "bool", "value": bool(value.native_value)}
     if isinstance(value, pydsdl.Rational):
@@ -159,7 +153,7 @@ def value_to_json(pydsdl: object, value: object) -> dict:
     if isinstance(value, pydsdl.String):
         return {"kind": "string", "value": value.native_value}
     if isinstance(value, pydsdl.Set):
-        elements = [value_to_json(pydsdl, elem) for elem in value]
+        elements = [value_to_json(elem) for elem in value]
         elements.sort(key=stable_json_key)
         return {"kind": "set", "elements": elements}
     if isinstance(value, pydsdl.SerializableType):
@@ -168,13 +162,13 @@ def value_to_json(pydsdl: object, value: object) -> dict:
     raise TypeError(f"Unsupported value type: {type(value)}")
 
 
-def type_to_json(pydsdl: object, data_type: object) -> dict:
+def type_to_json(data_type: object) -> dict:
     if isinstance(data_type, pydsdl.ArrayType):
         return {
             "kind": "array",
             "variable": isinstance(data_type, pydsdl.VariableLengthArrayType),
             "capacity": int(data_type.capacity),
-            "element": type_to_json(pydsdl, data_type.element_type),
+            "element": type_to_json(data_type.element_type),
         }
     if isinstance(data_type, pydsdl.CompositeType):
         return {"kind": "composite", "name": data_type.full_name}
@@ -197,12 +191,12 @@ def type_to_json(pydsdl: object, data_type: object) -> dict:
     return {"kind": "unknown"}
 
 
-def fields_to_json(pydsdl: object, comp: object) -> list[dict]:
+def fields_to_json(comp: object) -> list[dict]:
     fields = []
     for field in comp.fields:
         entry = {
             "name": field.name,
-            "type": type_to_json(pydsdl, field.data_type),
+            "type": type_to_json(field.data_type),
         }
         if entry["name"] == "" and entry["type"].get("kind") == "void":
             entry["padding"] = True
@@ -210,45 +204,45 @@ def fields_to_json(pydsdl: object, comp: object) -> list[dict]:
     return fields
 
 
-def constants_to_json(pydsdl: object, comp: object) -> list[dict]:
+def constants_to_json(comp: object) -> list[dict]:
     constants = []
     for const in comp.constants:
         constants.append(
             {
                 "name": const.name,
-                "type": type_to_json(pydsdl, const.data_type),
-                "value": value_to_json(pydsdl, const.value),
+                "type": type_to_json(const.data_type),
+                "value": value_to_json(const.value),
             }
         )
     return constants
 
 
-def composite_kind(pydsdl: object, comp: object) -> str:
+def composite_kind(comp: object) -> str:
     inner = comp.inner_type if hasattr(comp, "inner_type") else comp
     return "union" if isinstance(inner, pydsdl.UnionType) else "struct"
 
 
-def composite_sealed(pydsdl: object, comp: object) -> bool:
+def composite_sealed(comp: object) -> bool:
     return not isinstance(comp, pydsdl.DelimitedType)
 
 
-def section_to_json(pydsdl: object, comp: object, include_constants: bool) -> dict:
-    sealed = composite_sealed(pydsdl, comp)
+def section_to_json(comp: object, include_constants: bool) -> dict:
+    sealed = composite_sealed(comp)
     extent_bits = int(comp.extent)
     extent_bytes = int(extent_bits // 8) if not sealed else 0
     section = {
-        "kind": composite_kind(pydsdl, comp),
+        "kind": composite_kind(comp),
         "sealed": sealed,
         "extent_bytes": extent_bytes,
         "extent_bits": extent_bits,
-        "fields": fields_to_json(pydsdl, comp),
+        "fields": fields_to_json(comp),
     }
     if include_constants:
-        section["constants"] = constants_to_json(pydsdl, comp)
+        section["constants"] = constants_to_json(comp)
     return section
 
 
-def composite_to_json(pydsdl: object, comp: object) -> dict:
+def composite_to_json(comp: object) -> dict:
     out = {
         "name": comp.full_name,
         "version": [int(comp.version.major), int(comp.version.minor)],
@@ -259,22 +253,22 @@ def composite_to_json(pydsdl: object, comp: object) -> dict:
     if isinstance(comp, pydsdl.ServiceType):
         out["kind"] = "service"
         out["fixed_port_id"] = fixed_port_id
-        out["request"] = section_to_json(pydsdl, comp.request_type, True)
-        out["response"] = section_to_json(pydsdl, comp.response_type, False)
+        out["request"] = section_to_json(comp.request_type, True)
+        out["response"] = section_to_json(comp.response_type, False)
         return out
 
-    sealed = composite_sealed(pydsdl, comp)
+    sealed = composite_sealed(comp)
     extent_bits = int(comp.extent)
     extent_bytes = int(extent_bits // 8) if not sealed else 0
     out.update(
         {
-            "kind": composite_kind(pydsdl, comp),
+            "kind": composite_kind(comp),
             "fixed_port_id": fixed_port_id,
             "sealed": sealed,
             "extent_bytes": extent_bytes,
             "extent_bits": extent_bits,
-            "fields": fields_to_json(pydsdl, comp),
-            "constants": constants_to_json(pydsdl, comp),
+            "fields": fields_to_json(comp),
+            "constants": constants_to_json(comp),
         }
     )
     return out
@@ -315,7 +309,6 @@ def diff_json(expected: object, actual: object, label: str) -> str:
 
 
 def read_pydsdl_batch(
-    pydsdl: object,
     files: list[Path],
     roots: list[Path],
     lookup_dirs: list[Path],
@@ -338,7 +331,6 @@ def read_pydsdl_batch(
 
 
 def read_pydsdl_single(
-    pydsdl: object,
     path: Path,
     roots: list[Path],
     lookup_dirs: list[Path],
@@ -366,7 +358,7 @@ def read_pydsdl_single(
     return None
 
 
-def parse_dsdl_to_dsdl_output(output: str) -> dict[str, str]:
+def parse_dsdl_to_dsdl_output(output: str) -> dict[str, tuple[str, int | None]]:
     blocks: list[list[str]] = []
     current: list[str] | None = None
     for line in output.splitlines():
@@ -383,17 +375,22 @@ def parse_dsdl_to_dsdl_output(output: str) -> dict[str, str]:
     if current:
         blocks.append(current)
 
-    result: dict[str, str] = {}
+    result: dict[str, tuple[str, int | None]] = {}
     for block in blocks:
         name = None
+        fixed_port_id = None
         for line in block:
             if line.startswith("# name: "):
                 name = line[len("# name: ") :].strip()
-                break
+                continue
+            if line.startswith("#@fixed_port_id "):
+                raw = line[len("#@fixed_port_id ") :].strip()
+                if raw.isdigit():
+                    fixed_port_id = int(raw)
         if not name:
             raise RuntimeError("Failed to extract type name from dsdl_to_dsdl output")
         text = "\n".join(block) + "\n"
-        result[name] = text
+        result[name] = (text, fixed_port_id)
     return result
 
 
@@ -417,8 +414,6 @@ def main() -> int:
     roots = normalize_roots(args.root)
     invalid_roots = set(args.invalid_root)
 
-    pydsdl = load_pydsdl()
-
     items = collect_dsdl_files(roots)
     if not items:
         print("No DSDL files found under provided roots", file=sys.stderr)
@@ -440,12 +435,12 @@ def main() -> int:
     valid_paths = [p for p, _ in valid_items]
     if valid_paths:
         try:
-            pydsdl_map = read_pydsdl_batch(pydsdl, valid_paths, pydsdl_roots, pydsdl_roots, args.strict)
+            pydsdl_map = read_pydsdl_batch(valid_paths, pydsdl_roots, pydsdl_roots, args.strict)
         except Exception as exc:
             print(f"PyDSDL batch parse failed ({exc}); falling back to per-file parsing", file=sys.stderr)
             pydsdl_map = {}
             for path, type_name in valid_items:
-                comp = read_pydsdl_single(pydsdl, path, pydsdl_roots, pydsdl_roots, args.strict)
+                comp = read_pydsdl_single(path, pydsdl_roots, pydsdl_roots, args.strict)
                 if comp is None:
                     errors.append(f"PyDSDL failed to parse expected-valid type: {type_name}")
                     if args.fail_fast or len(errors) >= args.max_errors:
@@ -457,7 +452,7 @@ def main() -> int:
     # Validate invalid items using PyDSDL; promote to valid if PyDSDL accepts them.
     promoted: list[tuple[Path, str]] = []
     for path, type_name in invalid_items:
-        comp = read_pydsdl_single(pydsdl, path, pydsdl_roots, pydsdl_roots, args.strict)
+        comp = read_pydsdl_single(path, pydsdl_roots, pydsdl_roots, args.strict)
         if comp is None:
             continue
         promoted.append((path, type_name))
@@ -478,7 +473,7 @@ def main() -> int:
             if args.fail_fast or len(errors) >= args.max_errors:
                 break
             continue
-        pydsdl_json_map[type_name] = normalize_sets(composite_to_json(pydsdl, comp))
+        pydsdl_json_map[type_name] = normalize_sets(composite_to_json(comp))
 
     # Run dsdl_to_json for valid types (batch, with fallback).
     dsdl_json_map: dict[str, object] = {}
@@ -531,7 +526,7 @@ def main() -> int:
                 break
 
     # dsdl_to_dsdl roundtrip via PyDSDL.
-    dsdl_to_dsdl_output: dict[str, str] = {}
+    dsdl_to_dsdl_output: dict[str, tuple[str, int | None]] = {}
     if valid_type_names and (not args.fail_fast or len(errors) < args.max_errors):
         result = run_tool(args.dsdl_to_dsdl, roots, valid_type_names)
         if result.returncode == 0:
@@ -564,10 +559,11 @@ def main() -> int:
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp_root = Path(tmp_dir)
             dsdl_files = []
+            root_groups: dict[Path, list[Path]] = {}
             tmp_roots: list[Path] = []
             tmp_seen: set[str] = set()
-            for name, text in dsdl_to_dsdl_output.items():
-                rel_path = type_name_to_path(name)
+            for name, (text, fixed_port_id) in dsdl_to_dsdl_output.items():
+                rel_path = type_name_to_path(name, fixed_port_id)
                 out_path = tmp_root / rel_path
                 out_path.parent.mkdir(parents=True, exist_ok=True)
                 out_path.write_text(text, encoding="utf-8")
@@ -575,16 +571,30 @@ def main() -> int:
                 root_ns = name.split(".")[0]
                 root_dir = (tmp_root / root_ns).resolve()
                 key = str(root_dir)
+                root_groups.setdefault(root_dir, []).append(out_path)
                 if key not in tmp_seen:
                     tmp_seen.add(key)
                     tmp_roots.append(root_dir)
 
-            try:
-                lookup_dirs = tmp_roots + pydsdl_roots
-                roundtrip_map = read_pydsdl_batch(pydsdl, dsdl_files, tmp_roots, lookup_dirs, args.strict)
-            except Exception as exc:
-                errors.append(f"PyDSDL failed to parse dsdl_to_dsdl output: {exc}")
-                roundtrip_map = {}
+            lookup_dirs = tmp_roots
+            roundtrip_map: dict[str, object] = {}
+            for root_dir, files in root_groups.items():
+                try:
+                    group_map = read_pydsdl_batch(files, [root_dir], lookup_dirs, args.strict)
+                    roundtrip_map.update(group_map)
+                except Exception as exc:
+                    print(f"PyDSDL failed to parse dsdl_to_dsdl output in {root_dir}: {exc}", file=sys.stderr)
+                    for path in files:
+                        comp = read_pydsdl_single(path, [root_dir], lookup_dirs, args.strict)
+                        if comp is None:
+                            errors.append(f"PyDSDL failed to parse dsdl_to_dsdl file: {path}")
+                            if args.fail_fast or len(errors) >= args.max_errors:
+                                break
+                            continue
+                        key = type_name_key(comp.full_name, comp.version.major, comp.version.minor)
+                        roundtrip_map[key] = comp
+                if args.fail_fast or len(errors) >= args.max_errors:
+                    break
 
             for name in valid_type_names:
                 comp = roundtrip_map.get(name)
@@ -596,7 +606,7 @@ def main() -> int:
                 expected = pydsdl_json_map.get(name)
                 if expected is None:
                     continue
-                actual = normalize_sets(composite_to_json(pydsdl, comp))
+                actual = normalize_sets(composite_to_json(comp))
                 if expected != actual:
                     diff = diff_json(expected, actual, name)
                     errors.append(f"dsdl_to_dsdl mismatch for {name}\n{diff}")

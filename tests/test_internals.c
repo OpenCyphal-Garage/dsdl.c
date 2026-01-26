@@ -42,25 +42,58 @@ static void assert_uintmax_eq(const uintmax_t expected, const uintmax_t actual)
 #endif
 }
 
+static void assert_bigint_eq_intmax(const intmax_t expected, const dsdl_bigint_t actual)
+{
+    intmax_t got = 0;
+    TEST_ASSERT_TRUE(dsdl_bigint_to_intmax(&actual, &got));
+    assert_intmax_eq(expected, got);
+}
+
+static void assert_bigint_eq_uintmax(const uintmax_t expected, const dsdl_bigint_t actual)
+{
+    uintmax_t got = 0;
+    TEST_ASSERT_TRUE(dsdl_bigint_to_uintmax(&actual, &got));
+    assert_uintmax_eq(expected, got);
+}
+
+static dsdl_rational_t make_rational(const intmax_t num, const uintmax_t den)
+{
+    dsdl_rational_t r;
+    TEST_ASSERT_TRUE(dsdl_bigint_from_intmax(&r.num, num));
+    TEST_ASSERT_TRUE(dsdl_bigint_from_uintmax(&r.den, den));
+    return r;
+}
+
+static void assert_bigint_gcd(const uintmax_t a_val, const uintmax_t b_val, const uintmax_t expected)
+{
+    dsdl_bigint_t a;
+    dsdl_bigint_t b;
+    dsdl_bigint_t g;
+    TEST_ASSERT_TRUE(dsdl_bigint_from_uintmax(&a, a_val));
+    TEST_ASSERT_TRUE(dsdl_bigint_from_uintmax(&b, b_val));
+    TEST_ASSERT_TRUE(dsdl_bigint_gcd(a, b, &g));
+    assert_bigint_eq_uintmax(expected, g);
+}
+
 // ============================================================================
 // GCD tests
 // ============================================================================
 
 static void test_gcd_basic(void)
 {
-    assert_uintmax_eq(1, dsdl_gcd(1, 1));
-    assert_uintmax_eq(1, dsdl_gcd(3, 5));
-    assert_uintmax_eq(6, dsdl_gcd(12, 18));
-    assert_uintmax_eq(4, dsdl_gcd(12, 8));
-    assert_uintmax_eq(5, dsdl_gcd(0, 5));
-    assert_uintmax_eq(7, dsdl_gcd(7, 0));
+    assert_bigint_gcd(1U, 1U, 1U);
+    assert_bigint_gcd(3U, 5U, 1U);
+    assert_bigint_gcd(12U, 18U, 6U);
+    assert_bigint_gcd(12U, 8U, 4U);
+    assert_bigint_gcd(0U, 5U, 5U);
+    assert_bigint_gcd(7U, 0U, 7U);
 }
 
 static void test_gcd_large(void)
 {
     // Test with larger numbers
-    assert_uintmax_eq(1, dsdl_gcd(1000000007ULL, 1000000009ULL)); // Two primes
-    assert_uintmax_eq(1000000000ULL, dsdl_gcd(1000000000ULL, 2000000000ULL));
+    assert_bigint_gcd(1000000007ULL, 1000000009ULL, 1ULL); // Two primes
+    assert_bigint_gcd(1000000000ULL, 2000000000ULL, 1000000000ULL);
 }
 
 // ============================================================================
@@ -69,17 +102,32 @@ static void test_gcd_large(void)
 
 static void test_abs_basic(void)
 {
-    assert_uintmax_eq(0, dsdl_abs(0));
-    assert_uintmax_eq(42, dsdl_abs(42));
-    assert_uintmax_eq(42, dsdl_abs(-42));
-    assert_uintmax_eq(1, dsdl_abs(-1));
+    dsdl_bigint_t v;
+
+    TEST_ASSERT_TRUE(dsdl_bigint_from_intmax(&v, 0));
+    assert_bigint_eq_intmax(0, v);
+    TEST_ASSERT_FALSE(v.negative);
+
+    TEST_ASSERT_TRUE(dsdl_bigint_from_intmax(&v, 42));
+    assert_bigint_eq_intmax(42, v);
+    TEST_ASSERT_FALSE(v.negative);
+
+    TEST_ASSERT_TRUE(dsdl_bigint_from_intmax(&v, -42));
+    assert_bigint_eq_intmax(-42, v);
+    TEST_ASSERT_TRUE(v.negative);
+
+    TEST_ASSERT_TRUE(dsdl_bigint_from_intmax(&v, -1));
+    assert_bigint_eq_intmax(-1, v);
+    TEST_ASSERT_TRUE(v.negative);
 }
 
 static void test_abs_intmax_min(void)
 {
-    // Special case: INTMAX_MIN
-    const uintmax_t expected = (uintmax_t)INTMAX_MAX + 1U;
-    assert_uintmax_eq(expected, dsdl_abs(INTMAX_MIN));
+    // Special case: INTMAX_MIN should round-trip.
+    dsdl_bigint_t v;
+    TEST_ASSERT_TRUE(dsdl_bigint_from_intmax(&v, INTMAX_MIN));
+    assert_bigint_eq_intmax(INTMAX_MIN, v);
+    TEST_ASSERT_TRUE(v.negative);
 }
 
 // ============================================================================
@@ -93,10 +141,10 @@ static void test_rational_is_int(void)
     r = dsdl_rational_from_int(42);
     TEST_ASSERT_TRUE(dsdl_rational_is_int(r));
 
-    r = (dsdl_rational_t){ 1, 2 };
+    r = make_rational(1, 2);
     TEST_ASSERT_FALSE(dsdl_rational_is_int(r));
 
-    r = (dsdl_rational_t){ 4, 2 };
+    r = make_rational(4, 2);
     r = dsdl_rational_normalize(r);
     TEST_ASSERT_TRUE(dsdl_rational_is_int(r));
 }
@@ -111,12 +159,12 @@ static void test_rational_neg(void)
 
     r = dsdl_rational_from_int(5);
     r = dsdl_rational_neg(r);
-    assert_intmax_eq(-5, r.num);
+    assert_bigint_eq_intmax(-5, r.num);
 
-    r = (dsdl_rational_t){ 3, 7 };
+    r = make_rational(3, 7);
     r = dsdl_rational_neg(r);
-    assert_intmax_eq(-3, r.num);
-    assert_uintmax_eq(7, r.den);
+    assert_bigint_eq_intmax(-3, r.num);
+    assert_bigint_eq_uintmax(7, r.den);
 }
 
 // ============================================================================

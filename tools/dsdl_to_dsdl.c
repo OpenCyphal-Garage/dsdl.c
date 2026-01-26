@@ -11,6 +11,28 @@ static void emit_wkv(FILE* const out, const wkv_str_t str)
     }
 }
 
+static bool bigint_is_one(const dsdl_bigint_t* const value)
+{
+    return (value != NULL) && (!value->negative) && (value->limb_count == 1U) && (value->limbs[0] == 1U);
+}
+
+static void emit_bigint(FILE* const out, const dsdl_bigint_t* const value)
+{
+    if ((value == NULL) || (value->limb_count == 0U)) {
+        (void)fputc('0', out);
+        return;
+    }
+    if (value->negative) {
+        (void)fputc('-', out);
+    }
+    uint_least8_t i = value->limb_count;
+    i--;
+    (void)fprintf(out, "%u", value->limbs[i]);
+    while (i-- > 0U) {
+        (void)fprintf(out, "%0*u", (int)DSDL_BIGINT_BASE_DIGITS, value->limbs[i]);
+    }
+}
+
 static void emit_type_expr(FILE* const out, const dsdl_type_t* const type_ptr)
 {
     const dsdl_type_t kind = *type_ptr;
@@ -75,10 +97,12 @@ static void emit_value_expr(FILE* const out, const dsdl_value_t* const value)
             (void)fputs(value->as.boolean ? "true" : "false", out);
             break;
         case dsdl_value_rational:
-            if (value->as.rational.den == 1U) {
-                (void)fprintf(out, "%" PRIdMAX, value->as.rational.num);
+            if (bigint_is_one(&value->as.rational.den)) {
+                emit_bigint(out, &value->as.rational.num);
             } else {
-                (void)fprintf(out, "%" PRIdMAX "/%" PRIuMAX, value->as.rational.num, value->as.rational.den);
+                emit_bigint(out, &value->as.rational.num);
+                (void)fputc('/', out);
+                emit_bigint(out, &value->as.rational.den);
             }
             break;
         case dsdl_value_string:
@@ -168,7 +192,11 @@ static void emit_section_directives(FILE* const out, const dsdl_type_composite_t
     if (type->sealed) {
         (void)fputs("@sealed\n", out);
     }
-    if (type->extent > 0U) {
+}
+
+static void emit_extent(FILE* const out, const dsdl_type_composite_t* const type)
+{
+    if ((type != NULL) && !type->sealed) {
         (void)fprintf(out, "@extent %" PRIu64 "\n", type->extent * 8U);
     }
 }
@@ -180,22 +208,24 @@ static void emit_type(FILE* const out, const dsdl_type_composite_t* const type)
                   "# name: ");
     emit_wkv(out, type->name_versioned);
     (void)fputc('\n', out);
+    if (type->fixed_port_id != DSDL_FIXED_PORT_ID_NONE) {
+        (void)fprintf(out, "#@fixed_port_id %" PRIu16 "\n", type->fixed_port_id);
+    }
 
     if (type->deprecated) {
         (void)fputs("@deprecated\n", out);
-    }
-    if (type->fixed_port_id != DSDL_FIXED_PORT_ID_NONE) {
-        (void)fprintf(out, "@fixed-port-id %" PRIu16 "\n", type->fixed_port_id);
     }
 
     emit_section_directives(out, type);
     emit_fields(out, type);
     emit_constants(out, type);
+    emit_extent(out, type);
 
     if (type->response != NULL) {
         (void)fputs("---\n", out);
         emit_section_directives(out, type->response);
         emit_fields(out, type->response);
+        emit_extent(out, type->response);
     }
 }
 

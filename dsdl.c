@@ -38,6 +38,7 @@ typedef struct
 {
     dsdl_t*             dsdl;
     dsdl_bls_t*         offset;
+    bool                offset_is_defined;
     wkv_str_t           current_namespace;
     const wkv_str_t*    constant_names;
     const dsdl_value_t* constant_values;
@@ -61,6 +62,13 @@ static bool dsdl_resolve_value(dsdl_value_t* value)
         }
         *value = out;
     }
+    if (value->kind == dsdl_value_set) {
+        for (size_t i = 0; i < value->as.set.count; i++) {
+            if (!dsdl_resolve_value(&value->as.set.elements[i])) {
+                return false;
+            }
+        }
+    }
     return true;
 }
 
@@ -68,332 +76,886 @@ static bool dsdl_resolve_value(dsdl_value_t* value)
 // Rational arithmetic
 // ============================================================================
 
-/// Compute GCD using Euclidean algorithm.
-static uintmax_t dsdl_gcd(uintmax_t a, uintmax_t b)
+static void dsdl_bigint_zero(dsdl_bigint_t* const out)
 {
-    while (b != 0) {
-        const uintmax_t t = b;
-        b                 = a % b;
-        a                 = t;
+    if (out == NULL) {
+        return;
     }
-    return a;
+    (void)memset(out->limbs, 0, sizeof(out->limbs));
+    out->limb_count = 0U;
+    out->negative   = false;
 }
 
-/// Absolute value for signed integers.
-static uintmax_t dsdl_abs(intmax_t x)
+static bool dsdl_bigint_is_zero(const dsdl_bigint_t* const value)
 {
-    // Handle INTMAX_MIN carefully to avoid UB
-    if (x >= 0) {
-        return (uintmax_t)x;
-    }
-    // For negative values, negate. Special case for INTMAX_MIN.
-    if (x == INTMAX_MIN) {
-        return (uintmax_t)INTMAX_MAX + 1U;
-    }
-    return (uintmax_t)(-x);
+    return (value == NULL) || (value->limb_count == 0U);
 }
 
-/// Check if signed multiplication would overflow.
-/// Returns true if a * b would overflow intmax_t.
-static bool dsdl_would_overflow_mul_signed(intmax_t a, intmax_t b)
+static bool dsdl_bigint_is_one(const dsdl_bigint_t* const value)
 {
-    if (a == 0 || b == 0) {
-        return false;
-    }
-    const uintmax_t abs_a = dsdl_abs(a);
-    const uintmax_t abs_b = dsdl_abs(b);
-    // Check if abs_a * abs_b > INTMAX_MAX (or INTMAX_MAX+1 for negative result)
-    // Since both are unsigned, we can check: abs_a > INTMAX_MAX / abs_b
-    // But we need to be careful: result can be INTMAX_MAX+1 if signs differ
-    const uintmax_t limit = ((a < 0) != (b < 0)) ? ((uintmax_t)INTMAX_MAX + 1U) : (uintmax_t)INTMAX_MAX;
-    return abs_a > limit / abs_b;
+    return (value != NULL) && (!value->negative) && (value->limb_count == 1U) && (value->limbs[0] == 1U);
 }
 
-/// Check if unsigned multiplication would overflow.
-/// Returns true if a * b would overflow uintmax_t.
-static bool dsdl_would_overflow_mul_unsigned(uintmax_t a, uintmax_t b)
+static bool      dsdl_bigint_to_uintmax(const dsdl_bigint_t* const value, uintmax_t* const out);
+static uintmax_t dsdl_gcd_uintmax(uintmax_t a, uintmax_t b);
+
+static void dsdl_bigint_trim(dsdl_bigint_t* const value)
 {
-    if (a == 0 || b == 0) {
-        return false;
+    while ((value->limb_count > 0U) && (value->limbs[value->limb_count - 1U] == 0U)) {
+        value->limb_count--;
     }
-    return a > UINTMAX_MAX / b;
+    if (value->limb_count == 0U) {
+        value->negative = false;
+    }
 }
 
-/// Check if signed addition would overflow.
-/// Returns true if a + b would overflow intmax_t.
-static bool dsdl_would_overflow_add_signed(intmax_t a, intmax_t b)
+static bool dsdl_bigint_from_uintmax(dsdl_bigint_t* const out, uintmax_t value)
 {
-    if (b > 0 && a > INTMAX_MAX - b) {
+    dsdl_bigint_zero(out);
+    if (value == 0U) {
         return true;
     }
-    if (b < 0 && a < INTMAX_MIN - b) {
-        return true;
+    while (value > 0U) {
+        if (out->limb_count >= DSDL_BIGINT_LIMB_COUNT) {
+            dsdl_bigint_zero(out);
+            return false;
+        }
+        out->limbs[out->limb_count++] = (uint32_t)(value % (uintmax_t)DSDL_BIGINT_BASE);
+        value /= (uintmax_t)DSDL_BIGINT_BASE;
     }
-    return false;
+    return true;
 }
 
-/// Reduce a rational by halving both numerator and denominator.
-/// This loses precision but ensures the value stays approximately correct.
-/// Rounds toward zero.
-static dsdl_rational_t dsdl_rational_halve(dsdl_rational_t r)
+static bool dsdl_bigint_from_intmax(dsdl_bigint_t* const out, const intmax_t value)
 {
-    // Halve both, rounding toward zero
-    r.num = r.num / 2;
-    r.den = r.den / 2;
-    // Don't let denominator become 0
-    if (r.den == 0) {
-        r.den = 1;
+    const uintmax_t abs_value = (value < 0) ? (uintmax_t)(-(value + 1)) + 1U : (uintmax_t)value;
+    if (!dsdl_bigint_from_uintmax(out, abs_value)) {
+        return false;
+    }
+    out->negative = (value < 0);
+    return true;
+}
+
+static int dsdl_bigint_cmp_abs(const dsdl_bigint_t* const a, const dsdl_bigint_t* const b)
+{
+    if (a->limb_count < b->limb_count) {
+        return -1;
+    }
+    if (a->limb_count > b->limb_count) {
+        return 1;
+    }
+    for (uint_least8_t i = a->limb_count; i-- > 0U;) {
+        if (a->limbs[i] < b->limbs[i]) {
+            return -1;
+        }
+        if (a->limbs[i] > b->limbs[i]) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static int dsdl_bigint_cmp(const dsdl_bigint_t* const a, const dsdl_bigint_t* const b)
+{
+    if (a->negative != b->negative) {
+        if (dsdl_bigint_is_zero(a) && dsdl_bigint_is_zero(b)) {
+            return 0;
+        }
+        return a->negative ? -1 : 1;
+    }
+    const int cmp = dsdl_bigint_cmp_abs(a, b);
+    return a->negative ? -cmp : cmp;
+}
+
+static bool dsdl_bigint_add_abs(const dsdl_bigint_t* const a, const dsdl_bigint_t* const b, dsdl_bigint_t* const out)
+{
+    dsdl_bigint_zero(out);
+    uint64_t            carry     = 0U;
+    const uint_least8_t max_count = (a->limb_count > b->limb_count) ? a->limb_count : b->limb_count;
+    if (max_count > DSDL_BIGINT_LIMB_COUNT) {
+        return false;
+    }
+    for (uint_least8_t i = 0U; i < max_count; i++) {
+        uint64_t sum = carry;
+        if (i < a->limb_count) {
+            sum += a->limbs[i];
+        }
+        if (i < b->limb_count) {
+            sum += b->limbs[i];
+        }
+        out->limbs[i] = (uint32_t)(sum % DSDL_BIGINT_BASE);
+        carry         = sum / DSDL_BIGINT_BASE;
+    }
+    uint_least8_t count = max_count;
+    if (carry > 0U) {
+        if (count >= DSDL_BIGINT_LIMB_COUNT) {
+            return false;
+        }
+        out->limbs[count++] = (uint32_t)carry;
+    }
+    out->limb_count = count;
+    out->negative   = false;
+    return true;
+}
+
+static bool dsdl_bigint_sub_abs(const dsdl_bigint_t* const a, const dsdl_bigint_t* const b, dsdl_bigint_t* const out)
+{
+    dsdl_bigint_zero(out);
+    if (dsdl_bigint_cmp_abs(a, b) < 0) {
+        return false;
+    }
+    int64_t borrow = 0;
+    for (uint_least8_t i = 0U; i < a->limb_count; i++) {
+        int64_t diff = (int64_t)a->limbs[i] - borrow;
+        if (i < b->limb_count) {
+            diff -= (int64_t)b->limbs[i];
+        }
+        if (diff < 0) {
+            diff += (int64_t)DSDL_BIGINT_BASE;
+            borrow = 1;
+        } else {
+            borrow = 0;
+        }
+        out->limbs[i] = (uint32_t)diff;
+    }
+    out->limb_count = a->limb_count;
+    out->negative   = false;
+    dsdl_bigint_trim(out);
+    return true;
+}
+
+static bool dsdl_bigint_sub_abs_inplace(dsdl_bigint_t* const a, const dsdl_bigint_t* const b)
+{
+    dsdl_bigint_t tmp;
+    if (!dsdl_bigint_sub_abs(a, b, &tmp)) {
+        return false;
+    }
+    *a = tmp;
+    return true;
+}
+
+static bool dsdl_bigint_add_signed(const dsdl_bigint_t* const a, const dsdl_bigint_t* const b, dsdl_bigint_t* const out)
+{
+    if (a->negative == b->negative) {
+        if (!dsdl_bigint_add_abs(a, b, out)) {
+            return false;
+        }
+        out->negative = a->negative;
+        return true;
+    }
+    const int cmp = dsdl_bigint_cmp_abs(a, b);
+    if (cmp == 0) {
+        dsdl_bigint_zero(out);
+        return true;
+    }
+    if (cmp > 0) {
+        if (!dsdl_bigint_sub_abs(a, b, out)) {
+            return false;
+        }
+        out->negative = a->negative;
+        return true;
+    }
+    if (!dsdl_bigint_sub_abs(b, a, out)) {
+        return false;
+    }
+    out->negative = b->negative;
+    return true;
+}
+
+static bool dsdl_bigint_mul_abs(const dsdl_bigint_t* const a, const dsdl_bigint_t* const b, dsdl_bigint_t* const out)
+{
+    dsdl_bigint_zero(out);
+    if (dsdl_bigint_is_zero(a) || dsdl_bigint_is_zero(b)) {
+        return true;
+    }
+    for (uint_least8_t i = 0U; i < a->limb_count; i++) {
+        uint64_t carry = 0U;
+        for (uint_least8_t j = 0U; j < b->limb_count; j++) {
+            const uint_least8_t idx = (uint_least8_t)(i + j);
+            if (idx >= DSDL_BIGINT_LIMB_COUNT) {
+                return false;
+            }
+            uint64_t cur = out->limbs[idx];
+            cur += (uint64_t)a->limbs[i] * (uint64_t)b->limbs[j];
+            cur += carry;
+            out->limbs[idx] = (uint32_t)(cur % DSDL_BIGINT_BASE);
+            carry           = cur / DSDL_BIGINT_BASE;
+        }
+        uint_least8_t idx = (uint_least8_t)(i + b->limb_count);
+        while (carry > 0U) {
+            if (idx >= DSDL_BIGINT_LIMB_COUNT) {
+                return false;
+            }
+            uint64_t cur    = out->limbs[idx] + carry;
+            out->limbs[idx] = (uint32_t)(cur % DSDL_BIGINT_BASE);
+            carry           = cur / DSDL_BIGINT_BASE;
+            idx++;
+        }
+    }
+    out->limb_count = 0U;
+    for (uint_least8_t i = DSDL_BIGINT_LIMB_COUNT; i-- > 0U;) {
+        if (out->limbs[i] != 0U) {
+            out->limb_count = (uint_least8_t)(i + 1U);
+            break;
+        }
+    }
+    out->negative = false;
+    return true;
+}
+
+static bool dsdl_bigint_mul_small_inplace(dsdl_bigint_t* const value, const uint32_t mul)
+{
+    if (dsdl_bigint_is_zero(value)) {
+        return true;
+    }
+    if (mul == 0U) {
+        dsdl_bigint_zero(value);
+        return true;
+    }
+    uint64_t carry = 0U;
+    for (uint_least8_t i = 0U; i < value->limb_count; i++) {
+        uint64_t cur    = (uint64_t)value->limbs[i] * (uint64_t)mul + carry;
+        value->limbs[i] = (uint32_t)(cur % DSDL_BIGINT_BASE);
+        carry           = cur / DSDL_BIGINT_BASE;
+    }
+    while (carry > 0U) {
+        if (value->limb_count >= DSDL_BIGINT_LIMB_COUNT) {
+            return false;
+        }
+        value->limbs[value->limb_count++] = (uint32_t)(carry % DSDL_BIGINT_BASE);
+        carry /= DSDL_BIGINT_BASE;
+    }
+    return true;
+}
+
+static bool dsdl_bigint_add_small_inplace(dsdl_bigint_t* const value, const uint32_t add)
+{
+    uint64_t      carry = add;
+    uint_least8_t i     = 0U;
+    while (carry > 0U) {
+        if (i >= DSDL_BIGINT_LIMB_COUNT) {
+            return false;
+        }
+        if (i >= value->limb_count) {
+            value->limbs[i]   = 0U;
+            value->limb_count = (uint_least8_t)(i + 1U);
+        }
+        uint64_t cur    = (uint64_t)value->limbs[i] + carry;
+        value->limbs[i] = (uint32_t)(cur % DSDL_BIGINT_BASE);
+        carry           = cur / DSDL_BIGINT_BASE;
+        i++;
+    }
+    return true;
+}
+
+static bool dsdl_bigint_mul_add_small_inplace(dsdl_bigint_t* const value, const uint32_t mul, const uint32_t add)
+{
+    if (!dsdl_bigint_mul_small_inplace(value, mul)) {
+        return false;
+    }
+    return dsdl_bigint_add_small_inplace(value, add);
+}
+
+static bool dsdl_bigint_div_small_inplace(dsdl_bigint_t* const value, const uint32_t div, uint32_t* const rem)
+{
+    if (div == 0U) {
+        return false;
+    }
+    if (dsdl_bigint_is_zero(value)) {
+        if (rem != NULL) {
+            *rem = 0U;
+        }
+        return true;
+    }
+    uint64_t r = 0U;
+    for (uint_least8_t i = value->limb_count; i-- > 0U;) {
+        const uint64_t cur = value->limbs[i] + (r * (uint64_t)DSDL_BIGINT_BASE);
+        value->limbs[i]    = (uint32_t)(cur / div);
+        r                  = cur % div;
+    }
+    dsdl_bigint_trim(value);
+    if (rem != NULL) {
+        *rem = (uint32_t)r;
+    }
+    return true;
+}
+
+static bool dsdl_bigint_shift_base_add(dsdl_bigint_t* const value, const uint32_t digit)
+{
+    if (dsdl_bigint_is_zero(value)) {
+        if (digit == 0U) {
+            return true;
+        }
+        value->limbs[0]   = digit;
+        value->limb_count = 1U;
+        value->negative   = false;
+        return true;
+    }
+    if (value->limb_count >= DSDL_BIGINT_LIMB_COUNT) {
+        return false;
+    }
+    for (uint_least8_t i = value->limb_count; i > 0U; i--) {
+        value->limbs[i] = value->limbs[i - 1U];
+    }
+    value->limbs[0] = digit;
+    value->limb_count++;
+    return true;
+}
+
+static bool dsdl_bigint_mul_small(const dsdl_bigint_t* const value, const uint32_t mul, dsdl_bigint_t* const out)
+{
+    *out          = *value;
+    out->negative = false;
+    return dsdl_bigint_mul_small_inplace(out, mul);
+}
+
+static uint32_t dsdl_bigint_estimate_quotient(const dsdl_bigint_t* const rem, const dsdl_bigint_t* const den)
+{
+    if ((rem->limb_count == 0U) || (den->limb_count == 0U)) {
+        return 0U;
+    }
+    const uint64_t rem_hi   = rem->limbs[rem->limb_count - 1U];
+    const uint64_t rem_next = (rem->limb_count > 1U) ? rem->limbs[rem->limb_count - 2U] : 0U;
+    const uint64_t den_hi   = den->limbs[den->limb_count - 1U];
+    if (den_hi == 0U) {
+        return 0U;
+    }
+    uint64_t num = rem_hi * (uint64_t)DSDL_BIGINT_BASE + rem_next;
+    uint64_t q   = num / den_hi;
+    if (q >= DSDL_BIGINT_BASE) {
+        q = DSDL_BIGINT_BASE - 1U;
+    }
+    return (uint32_t)q;
+}
+
+static bool dsdl_bigint_div_mod_abs(const dsdl_bigint_t* const num,
+                                    const dsdl_bigint_t* const den,
+                                    dsdl_bigint_t* const       quot,
+                                    dsdl_bigint_t* const       rem)
+{
+    if ((num == NULL) || (den == NULL) || (quot == NULL) || (rem == NULL)) {
+        return false;
+    }
+    if (dsdl_bigint_is_zero(den)) {
+        return false;
+    }
+    if (dsdl_bigint_is_zero(num)) {
+        dsdl_bigint_zero(quot);
+        dsdl_bigint_zero(rem);
+        return true;
+    }
+    if (dsdl_bigint_cmp_abs(num, den) < 0) {
+        dsdl_bigint_zero(quot);
+        *rem          = *num;
+        rem->negative = false;
+        return true;
+    }
+    uintmax_t num_u = 0U;
+    uintmax_t den_u = 0U;
+    if (dsdl_bigint_to_uintmax(num, &num_u) && dsdl_bigint_to_uintmax(den, &den_u)) {
+        if (den_u == 0U) {
+            return false;
+        }
+        const uintmax_t q = num_u / den_u;
+        const uintmax_t r = num_u % den_u;
+        if (!dsdl_bigint_from_uintmax(quot, q) || !dsdl_bigint_from_uintmax(rem, r)) {
+            return false;
+        }
+        return true;
+    }
+    if (den->limb_count == 1U) {
+        dsdl_bigint_t tmp  = *num;
+        tmp.negative       = false;
+        uint32_t rem_small = 0U;
+        if (!dsdl_bigint_div_small_inplace(&tmp, den->limbs[0], &rem_small)) {
+            return false;
+        }
+        *quot          = tmp;
+        quot->negative = false;
+        dsdl_bigint_zero(rem);
+        if (rem_small > 0U) {
+            rem->limbs[0]   = rem_small;
+            rem->limb_count = 1U;
+        }
+        rem->negative = false;
+        return true;
+    }
+
+    dsdl_bigint_t        num_scaled = *num;
+    dsdl_bigint_t        den_scaled = *den;
+    const dsdl_bigint_t* num_div    = num;
+    const dsdl_bigint_t* den_div    = den;
+    uint32_t             norm       = 1U;
+    if (den->limb_count > 1U) {
+        const uint32_t den_hi = den->limbs[den->limb_count - 1U];
+        if (den_hi < (DSDL_BIGINT_BASE / 2U)) {
+            norm       = (uint32_t)(DSDL_BIGINT_BASE / (den_hi + 1U));
+            num_scaled = *num;
+            den_scaled = *den;
+            if (!dsdl_bigint_mul_small_inplace(&num_scaled, norm) ||
+                !dsdl_bigint_mul_small_inplace(&den_scaled, norm)) {
+                return false;
+            }
+            num_div = &num_scaled;
+            den_div = &den_scaled;
+        }
+    }
+
+    dsdl_bigint_zero(quot);
+    dsdl_bigint_zero(rem);
+    quot->limb_count = num_div->limb_count;
+
+    for (uint_least8_t i = num_div->limb_count; i-- > 0U;) {
+        if (!dsdl_bigint_shift_base_add(rem, num_div->limbs[i])) {
+            return false;
+        }
+        uint32_t qdigit = 0U;
+        if (!dsdl_bigint_is_zero(rem)) {
+            qdigit = dsdl_bigint_estimate_quotient(rem, den_div);
+            if (qdigit > 0U) {
+                dsdl_bigint_t tmp;
+                if (!dsdl_bigint_mul_small(den_div, qdigit, &tmp)) {
+                    return false;
+                }
+                while (dsdl_bigint_cmp_abs(&tmp, rem) > 0) {
+                    if (qdigit == 0U) {
+                        break;
+                    }
+                    qdigit--;
+                    if (!dsdl_bigint_sub_abs_inplace(&tmp, den_div)) {
+                        return false;
+                    }
+                }
+                if (!dsdl_bigint_sub_abs_inplace(rem, &tmp)) {
+                    return false;
+                }
+            }
+        }
+        quot->limbs[i] = qdigit;
+    }
+
+    dsdl_bigint_trim(quot);
+    dsdl_bigint_trim(rem);
+    if (norm > 1U) {
+        uint32_t rem_small = 0U;
+        if (!dsdl_bigint_div_small_inplace(rem, norm, &rem_small) || (rem_small != 0U)) {
+            return false;
+        }
+    }
+    rem->negative = false;
+    return true;
+}
+
+static bool dsdl_bigint_div_exact(dsdl_bigint_t* const value, const dsdl_bigint_t* const divisor)
+{
+    dsdl_bigint_t quot;
+    dsdl_bigint_t rem;
+    if (!dsdl_bigint_div_mod_abs(value, divisor, &quot, &rem)) {
+        return false;
+    }
+    if (!dsdl_bigint_is_zero(&rem)) {
+        return false;
+    }
+    quot.negative = value->negative;
+    *value        = quot;
+    return true;
+}
+
+static bool dsdl_bigint_gcd(dsdl_bigint_t a, dsdl_bigint_t b, dsdl_bigint_t* const out)
+{
+    a.negative = false;
+    b.negative = false;
+    if (dsdl_bigint_is_zero(&a)) {
+        *out = b;
+        return true;
+    }
+    if (dsdl_bigint_is_zero(&b)) {
+        *out = a;
+        return true;
+    }
+    uintmax_t au = 0U;
+    uintmax_t bu = 0U;
+    if (dsdl_bigint_to_uintmax(&a, &au) && dsdl_bigint_to_uintmax(&b, &bu)) {
+        const uintmax_t g = dsdl_gcd_uintmax(au, bu);
+        return dsdl_bigint_from_uintmax(out, g);
+    }
+    while (!dsdl_bigint_is_zero(&b)) {
+        dsdl_bigint_t q;
+        dsdl_bigint_t r;
+        if (!dsdl_bigint_div_mod_abs(&a, &b, &q, &r)) {
+            return false;
+        }
+        a = b;
+        b = r;
+    }
+    *out = a;
+    return true;
+}
+
+static bool dsdl_bigint_to_uintmax(const dsdl_bigint_t* const value, uintmax_t* const out)
+{
+    if ((value == NULL) || (out == NULL) || value->negative) {
+        return false;
+    }
+    uintmax_t result = 0U;
+    for (uint_least8_t i = value->limb_count; i-- > 0U;) {
+        if (result > (UINTMAX_MAX - value->limbs[i]) / (uintmax_t)DSDL_BIGINT_BASE) {
+            return false;
+        }
+        result = result * (uintmax_t)DSDL_BIGINT_BASE + value->limbs[i];
+    }
+    *out = result;
+    return true;
+}
+
+static bool dsdl_bigint_to_intmax(const dsdl_bigint_t* const value, intmax_t* const out)
+{
+    if ((value == NULL) || (out == NULL)) {
+        return false;
+    }
+    dsdl_bigint_t abs_value = *value;
+    abs_value.negative      = false;
+    uintmax_t abs_u         = 0U;
+    if (!dsdl_bigint_to_uintmax(&abs_value, &abs_u)) {
+        return false;
+    }
+    if (value->negative) {
+        if (abs_u > ((uintmax_t)INTMAX_MAX + 1U)) {
+            return false;
+        }
+        if (abs_u == ((uintmax_t)INTMAX_MAX + 1U)) {
+            *out = INTMAX_MIN;
+        } else {
+            *out = -(intmax_t)abs_u;
+        }
+        return true;
+    }
+    if (abs_u > (uintmax_t)INTMAX_MAX) {
+        return false;
+    }
+    *out = (intmax_t)abs_u;
+    return true;
+}
+
+static bool dsdl_bigint_mul_pow2_inplace(dsdl_bigint_t* const value, const uint32_t exp)
+{
+    for (uint32_t i = 0U; i < exp; i++) {
+        if (!dsdl_bigint_mul_small_inplace(value, 2U)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool dsdl_bigint_mul_pow10_inplace(dsdl_bigint_t* const value, const uint32_t exp)
+{
+    for (uint32_t i = 0U; i < exp; i++) {
+        if (!dsdl_bigint_mul_small_inplace(value, 10U)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool dsdl_bigint_pow10(const uint32_t exp, dsdl_bigint_t* const out)
+{
+    if (!dsdl_bigint_from_uintmax(out, 1U)) {
+        return false;
+    }
+    return dsdl_bigint_mul_pow10_inplace(out, exp);
+}
+
+static bool dsdl_bigint_to_double(const dsdl_bigint_t* const value, double* const out)
+{
+    if ((value == NULL) || (out == NULL)) {
+        return false;
+    }
+    double result = 0.0;
+    for (uint_least8_t i = value->limb_count; i-- > 0U;) {
+        result = (result * (double)DSDL_BIGINT_BASE) + (double)value->limbs[i];
+    }
+    if (value->negative) {
+        result = -result;
+    }
+    *out = result;
+    return isfinite(result);
+}
+
+static dsdl_rational_t dsdl_rational_nan(void)
+{
+    dsdl_rational_t r;
+    dsdl_bigint_zero(&r.num);
+    dsdl_bigint_zero(&r.den);
+    return r;
+}
+
+static bool dsdl_rational_is_nan(const dsdl_rational_t r) { return dsdl_bigint_is_zero(&r.den); }
+
+/// Create a rational from an integer.
+static dsdl_rational_t dsdl_rational_from_int(const intmax_t value)
+{
+    dsdl_rational_t r;
+    if (!dsdl_bigint_from_intmax(&r.num, value) || !dsdl_bigint_from_uintmax(&r.den, 1U)) {
+        return dsdl_rational_nan();
     }
     return r;
 }
 
-/// Create a rational from an integer.
-static dsdl_rational_t dsdl_rational_from_int(intmax_t value)
+static dsdl_rational_t dsdl_rational_from_uintmax(const uintmax_t value)
 {
     dsdl_rational_t r;
-    r.num = value;
-    r.den = 1;
+    if (!dsdl_bigint_from_uintmax(&r.num, value) || !dsdl_bigint_from_uintmax(&r.den, 1U)) {
+        return dsdl_rational_nan();
+    }
+    r.num.negative = false;
     return r;
 }
 
 /// Normalize a rational: ensure den > 0 and GCD(|num|, den) == 1.
 static dsdl_rational_t dsdl_rational_normalize(dsdl_rational_t r)
 {
-    if (r.den == 0) {
-        // NaN - return as-is
+    if (dsdl_rational_is_nan(r)) {
         return r;
     }
-    // Reduce by GCD
-    const uintmax_t g = dsdl_gcd(dsdl_abs(r.num), r.den);
-    if (g > 1) {
-        r.num = r.num / (intmax_t)g;
-        r.den = r.den / g;
+    if (dsdl_bigint_is_zero(&r.num)) {
+        (void)dsdl_bigint_from_uintmax(&r.den, 1U);
+        r.num.negative = false;
+        return r;
     }
+    const bool    negative = r.num.negative;
+    dsdl_bigint_t abs_num  = r.num;
+    abs_num.negative       = false;
+
+    dsdl_bigint_t g;
+    if (!dsdl_bigint_gcd(abs_num, r.den, &g)) {
+        return dsdl_rational_nan();
+    }
+    if (!dsdl_bigint_is_one(&g)) {
+        if (!dsdl_bigint_div_exact(&abs_num, &g) || !dsdl_bigint_div_exact(&r.den, &g)) {
+            return dsdl_rational_nan();
+        }
+    }
+    abs_num.negative = negative;
+    r.num            = abs_num;
     return r;
 }
 
+/// Check if rational is an integer (denominator == 1).
+static bool dsdl_rational_is_int(const dsdl_rational_t r)
+{
+    return !dsdl_rational_is_nan(r) && dsdl_bigint_is_one(&r.den);
+}
+
+static bool dsdl_rational_to_intmax(const dsdl_rational_t r, intmax_t* const out)
+{
+    if (!dsdl_rational_is_int(r)) {
+        return false;
+    }
+    return dsdl_bigint_to_intmax(&r.num, out);
+}
+
+static bool dsdl_rational_to_uintmax(const dsdl_rational_t r, uintmax_t* const out)
+{
+    if (!dsdl_rational_is_int(r)) {
+        return false;
+    }
+    if (r.num.negative) {
+        return false;
+    }
+    return dsdl_bigint_to_uintmax(&r.num, out);
+}
+
+static bool dsdl_rational_to_double(const dsdl_rational_t r, double* const out)
+{
+    if (dsdl_rational_is_nan(r) || (out == NULL)) {
+        return false;
+    }
+    double num = 0.0;
+    double den = 0.0;
+    if (!dsdl_bigint_to_double(&r.num, &num) || !dsdl_bigint_to_double(&r.den, &den)) {
+        return false;
+    }
+    if (!(den > 0.0)) {
+        return false;
+    }
+    *out = num / den;
+    return isfinite(*out);
+}
+
 /// Add two rationals: a/b + c/d = (ad + bc) / bd
-/// Uses overflow-safe arithmetic with halving approximation.
 static dsdl_rational_t dsdl_rational_add(dsdl_rational_t a, dsdl_rational_t b)
 {
-    // First ensure denominators fit in intmax_t (required for signed multiplication)
-    while (a.den > (uintmax_t)INTMAX_MAX || b.den > (uintmax_t)INTMAX_MAX) {
-        a = dsdl_rational_halve(a);
-        b = dsdl_rational_halve(b);
+    if (dsdl_rational_is_nan(a) || dsdl_rational_is_nan(b)) {
+        return dsdl_rational_nan();
     }
 
-    // Now denominators are safe to cast. Reduce until multiplication won't overflow.
-    // We need: a.num * b.den, b.num * a.den, and a.den * b.den to not overflow
-    while (dsdl_would_overflow_mul_signed(a.num, (intmax_t)b.den) ||
-           dsdl_would_overflow_mul_signed(b.num, (intmax_t)a.den) || dsdl_would_overflow_mul_unsigned(a.den, b.den)) {
-        a = dsdl_rational_halve(a);
-        b = dsdl_rational_halve(b);
+    dsdl_bigint_t a_num = a.num;
+    dsdl_bigint_t b_num = b.num;
+    a_num.negative      = false;
+    b_num.negative      = false;
+
+    dsdl_bigint_t left;
+    dsdl_bigint_t right;
+    dsdl_bigint_t den;
+    if (!dsdl_bigint_mul_abs(&a_num, &b.den, &left) || !dsdl_bigint_mul_abs(&b_num, &a.den, &right) ||
+        !dsdl_bigint_mul_abs(&a.den, &b.den, &den)) {
+        return dsdl_rational_nan();
     }
+    left.negative  = a.num.negative;
+    right.negative = b.num.negative;
 
-    const intmax_t ad = a.num * (intmax_t)b.den;
-    const intmax_t bc = b.num * (intmax_t)a.den;
-
-    // Check if addition would overflow
-    if (dsdl_would_overflow_add_signed(ad, bc)) {
-        // Halve and restart
-        return dsdl_rational_add(dsdl_rational_halve(a), dsdl_rational_halve(b));
+    dsdl_bigint_t num;
+    if (!dsdl_bigint_add_signed(&left, &right, &num)) {
+        return dsdl_rational_nan();
     }
-
-    dsdl_rational_t r;
-    r.num = ad + bc;
-    r.den = a.den * b.den;
+    dsdl_rational_t r = { num, den };
     return dsdl_rational_normalize(r);
 }
 
 /// Subtract two rationals: a/b - c/d = (ad - bc) / bd
-/// Uses overflow-safe arithmetic with halving approximation.
 static dsdl_rational_t dsdl_rational_sub(dsdl_rational_t a, dsdl_rational_t b)
 {
-    b.num = -b.num;
+    b.num.negative = !b.num.negative;
     return dsdl_rational_add(a, b);
 }
 
 /// Multiply two rationals: a/b * c/d = ac / bd
-/// Uses overflow-safe arithmetic with halving approximation.
 static dsdl_rational_t dsdl_rational_mul(dsdl_rational_t a, dsdl_rational_t b)
 {
-    // First normalize to reduce magnitude
-    a = dsdl_rational_normalize(a);
-    b = dsdl_rational_normalize(b);
-
-    // Cross-reduce to minimize overflow risk: GCD(a.num, b.den) and GCD(b.num, a.den)
-    const uintmax_t g1 = dsdl_gcd(dsdl_abs(a.num), b.den);
-    const uintmax_t g2 = dsdl_gcd(dsdl_abs(b.num), a.den);
-    if (g1 > 1) {
-        a.num = a.num / (intmax_t)g1;
-        b.den = b.den / g1;
-    }
-    if (g2 > 1) {
-        b.num = b.num / (intmax_t)g2;
-        a.den = a.den / g2;
+    if (dsdl_rational_is_nan(a) || dsdl_rational_is_nan(b)) {
+        return dsdl_rational_nan();
     }
 
-    // Reduce operands until multiplication won't overflow
-    while (dsdl_would_overflow_mul_signed(a.num, b.num) || dsdl_would_overflow_mul_unsigned(a.den, b.den)) {
-        a = dsdl_rational_halve(a);
-        b = dsdl_rational_halve(b);
-    }
+    dsdl_bigint_t a_num = a.num;
+    dsdl_bigint_t b_num = b.num;
+    a_num.negative      = false;
+    b_num.negative      = false;
 
-    dsdl_rational_t r;
-    r.num = a.num * b.num;
-    r.den = a.den * b.den;
+    dsdl_bigint_t num;
+    dsdl_bigint_t den;
+    if (!dsdl_bigint_mul_abs(&a_num, &b_num, &num) || !dsdl_bigint_mul_abs(&a.den, &b.den, &den)) {
+        return dsdl_rational_nan();
+    }
+    num.negative      = (a.num.negative != b.num.negative);
+    dsdl_rational_t r = { num, den };
     return dsdl_rational_normalize(r);
 }
 
 /// Divide two rationals: (a/b) / (c/d) = ad / bc
-/// Uses overflow-safe arithmetic with halving approximation.
 static dsdl_rational_t dsdl_rational_div(dsdl_rational_t a, dsdl_rational_t b)
 {
-    if (b.num == 0) {
-        dsdl_rational_t r = { 0, 0 }; // NaN
-        return r;
+    if (dsdl_rational_is_nan(a) || dsdl_rational_is_nan(b) || dsdl_bigint_is_zero(&b.num)) {
+        return dsdl_rational_nan();
     }
 
-    // Create inverse of b: (c/d)^-1 = d/c
-    // Handle the case where b.den > INTMAX_MAX by capping at INTMAX_MAX
-    dsdl_rational_t b_inv;
-    if (b.num < 0) {
-        // b.den becomes numerator (with sign flip)
-        if (b.den > (uintmax_t)INTMAX_MAX) {
-            // Cap at INTMAX_MAX (approximation)
-            b_inv.num = -INTMAX_MAX;
-            // Scale denominator proportionally: den * (INTMAX_MAX / b.den)
-            const uintmax_t abs_num = dsdl_abs(b.num);
-            b_inv.den               = (abs_num * (uintmax_t)INTMAX_MAX) / b.den;
-            if (b_inv.den == 0) {
-                b_inv.den = 1;
-            }
-        } else {
-            b_inv.num = -(intmax_t)b.den;
-            b_inv.den = dsdl_abs(b.num);
-        }
-    } else {
-        if (b.den > (uintmax_t)INTMAX_MAX) {
-            // Cap at INTMAX_MAX (approximation)
-            b_inv.num = INTMAX_MAX;
-            // Scale denominator proportionally
-            b_inv.den = ((uintmax_t)b.num * (uintmax_t)INTMAX_MAX) / b.den;
-            if (b_inv.den == 0) {
-                b_inv.den = 1;
-            }
-        } else {
-            b_inv.num = (intmax_t)b.den;
-            b_inv.den = (uintmax_t)b.num;
-        }
+    dsdl_bigint_t a_num = a.num;
+    dsdl_bigint_t b_num = b.num;
+    a_num.negative      = false;
+    b_num.negative      = false;
+
+    dsdl_bigint_t num;
+    dsdl_bigint_t den;
+    if (!dsdl_bigint_mul_abs(&a_num, &b.den, &num) || !dsdl_bigint_mul_abs(&a.den, &b_num, &den)) {
+        return dsdl_rational_nan();
     }
-    return dsdl_rational_mul(a, b_inv);
+    num.negative      = (a.num.negative != b.num.negative);
+    dsdl_rational_t r = { num, den };
+    return dsdl_rational_normalize(r);
 }
 
 /// Negate a rational.
 static dsdl_rational_t dsdl_rational_neg(dsdl_rational_t a)
 {
-    // Handle INTMAX_MIN edge case
-    if (a.num == INTMAX_MIN) {
-        // Can't negate directly; halve first then negate
-        a = dsdl_rational_halve(a);
+    if (!dsdl_bigint_is_zero(&a.num)) {
+        a.num.negative = !a.num.negative;
     }
-    a.num = -a.num;
     return a;
 }
 
 /// Compare two rationals: returns <0, 0, >0.
-/// Uses overflow-safe arithmetic with halving approximation.
 static int dsdl_rational_cmp(dsdl_rational_t a, dsdl_rational_t b)
 {
-    // a/b vs c/d  =>  compare a*d vs c*b
-    // First ensure denominators fit in intmax_t
-    while (a.den > (uintmax_t)INTMAX_MAX || b.den > (uintmax_t)INTMAX_MAX) {
-        a = dsdl_rational_halve(a);
-        b = dsdl_rational_halve(b);
+    if (dsdl_rational_is_nan(a) || dsdl_rational_is_nan(b)) {
+        return 0;
+    }
+    if (a.num.negative != b.num.negative) {
+        if (dsdl_bigint_is_zero(&a.num) && dsdl_bigint_is_zero(&b.num)) {
+            return 0;
+        }
+        return a.num.negative ? -1 : 1;
     }
 
-    // Now reduce until multiplication won't overflow
-    while (dsdl_would_overflow_mul_signed(a.num, (intmax_t)b.den) ||
-           dsdl_would_overflow_mul_signed(b.num, (intmax_t)a.den)) {
-        a = dsdl_rational_halve(a);
-        b = dsdl_rational_halve(b);
+    dsdl_bigint_t a_num = a.num;
+    dsdl_bigint_t b_num = b.num;
+    a_num.negative      = false;
+    b_num.negative      = false;
+
+    dsdl_bigint_t left;
+    dsdl_bigint_t right;
+    if (!dsdl_bigint_mul_abs(&a_num, &b.den, &left) || !dsdl_bigint_mul_abs(&b_num, &a.den, &right)) {
+        double a_d = 0.0;
+        double b_d = 0.0;
+        if (dsdl_rational_to_double(a, &a_d) && dsdl_rational_to_double(b, &b_d)) {
+            if (a_d < b_d) {
+                return -1;
+            }
+            if (a_d > b_d) {
+                return 1;
+            }
+        }
+        return 0;
     }
 
-    const intmax_t lhs = a.num * (intmax_t)b.den;
-    const intmax_t rhs = b.num * (intmax_t)a.den;
-    if (lhs < rhs) {
-        return -1;
+    int cmp = dsdl_bigint_cmp_abs(&left, &right);
+    if (a.num.negative) {
+        cmp = -cmp;
     }
-    if (lhs > rhs) {
-        return 1;
-    }
-    return 0;
+    return cmp;
 }
 
-/// Check if rational is an integer (denominator == 1).
-static bool dsdl_rational_is_int(dsdl_rational_t r) { return r.den == 1; }
-
-/// Convert a double to a rational approximation.
-/// Uses continued fraction expansion for best approximation within intmax_t range.
+/// Convert a double to an exact rational value.
 static dsdl_rational_t dsdl_rational_from_double(double x)
 {
-    dsdl_rational_t result = { 0, 1 };
-
-    // Handle special cases
     if (!isfinite(x)) {
-        result.den = 0; // NaN
-        return result;
+        return dsdl_rational_nan();
     }
-    if (fabs(x) < 1e-15) {
-        return result; // Effectively zero
+    if (!((x > 0.0) || (x < 0.0))) {
+        return dsdl_rational_from_int(0);
     }
 
-    // Handle sign
-    const bool negative = x < 0;
+    const bool negative = x < 0.0;
     if (negative) {
         x = -x;
     }
 
-    // Use continued fraction expansion for best rational approximation
-    // Limit iterations to prevent infinite loops
-    intmax_t  h0 = 0, h1 = 1; // Numerator convergents
-    uintmax_t k0 = 1, k1 = 0; // Denominator convergents
-
-    for (int iter = 0; iter < 64 && x > 1e-15; ++iter) {
-        const double   a_d = floor(x);
-        const intmax_t a   = (a_d > (double)INTMAX_MAX) ? INTMAX_MAX : (intmax_t)a_d;
-
-        // Check for overflow before computing next convergent
-        // h2 = a * h1 + h0, k2 = a * k1 + k0
-        if (dsdl_would_overflow_mul_signed(a, h1) || dsdl_would_overflow_mul_unsigned((uintmax_t)a, k1)) {
-            break;
-        }
-        const intmax_t  h2_tmp = a * h1;
-        const uintmax_t k2_tmp = (uintmax_t)a * k1;
-
-        if (dsdl_would_overflow_add_signed(h2_tmp, h0) || k2_tmp > UINTMAX_MAX - k0) {
-            break;
-        }
-
-        const intmax_t  h2 = h2_tmp + h0;
-        const uintmax_t k2 = k2_tmp + k0;
-
-        h0 = h1;
-        h1 = h2;
-        k0 = k1;
-        k1 = k2;
-
-        // Compute remainder for next iteration
-        const double remainder = x - a_d;
-        if (remainder < 1e-15) {
-            break;
-        }
-        x = 1.0 / remainder;
+    int    exp2 = 0;
+    double frac = frexp(x, &exp2);
+    if (!(frac > 0.0)) {
+        return dsdl_rational_from_int(0);
     }
 
-    result.num = negative ? -h1 : h1;
-    result.den = (k1 == 0) ? 1 : k1;
-    return dsdl_rational_normalize(result);
+    const int      mant_bits = DBL_MANT_DIG;
+    const double   scaled    = ldexp(frac, mant_bits);
+    const uint64_t mant      = (uint64_t)scaled;
+    exp2 -= mant_bits;
+
+    dsdl_rational_t r;
+    if (!dsdl_bigint_from_uintmax(&r.num, (uintmax_t)mant) || !dsdl_bigint_from_uintmax(&r.den, 1U)) {
+        return dsdl_rational_nan();
+    }
+
+    if (exp2 >= 0) {
+        if (!dsdl_bigint_mul_pow2_inplace(&r.num, (uint32_t)exp2)) {
+            return dsdl_rational_nan();
+        }
+    } else {
+        if (!dsdl_bigint_mul_pow2_inplace(&r.den, (uint32_t)(-exp2))) {
+            return dsdl_rational_nan();
+        }
+    }
+
+    r.num.negative = negative;
+    return dsdl_rational_normalize(r);
 }
 
 // Forward declarations - needed by BLS functions below
@@ -428,7 +990,8 @@ typedef enum
 /// Instances are heap-allocated via dsdl_alloc().
 struct dsdl_bls_t
 {
-    dsdl_bls_kind_t kind;
+    dsdl_bls_kind_t    kind;
+    struct dsdl_bls_t* next_alloc; ///< Internal: allocation tracking list.
     union
     {
         struct
@@ -474,6 +1037,15 @@ struct dsdl_bls_t
 static uint64_t dsdl_bls_min(dsdl_bls_t* bls);
 static uint64_t dsdl_bls_max(dsdl_bls_t* bls);
 
+static dsdl_bls_t* dsdl_bls_register(dsdl_t* const dsdl, dsdl_bls_t* const bls)
+{
+    if ((dsdl != NULL) && (bls != NULL)) {
+        bls->next_alloc       = dsdl->bls_allocations;
+        dsdl->bls_allocations = bls;
+    }
+    return bls;
+}
+
 /// Create a nullary (leaf) bit length set with a single value.
 static dsdl_bls_t* dsdl_bls_new_single(dsdl_t* const dsdl, const uint64_t value)
 {
@@ -489,7 +1061,7 @@ static dsdl_bls_t* dsdl_bls_new_single(dsdl_t* const dsdl, const uint64_t value)
     bls->data.nullary.values[0] = value;
     bls->cached_min             = value;
     bls->cached_max             = value;
-    return bls;
+    return dsdl_bls_register(dsdl, bls);
 }
 
 /// Create a nullary bit length set from an array of values.
@@ -534,7 +1106,7 @@ static dsdl_bls_t* dsdl_bls_new_set(dsdl_t* const dsdl, const size_t count, cons
     bls->data.nullary.count = n;
     bls->cached_min         = bls->data.nullary.values[0];
     bls->cached_max         = bls->data.nullary.values[n - 1];
-    return bls;
+    return dsdl_bls_register(dsdl, bls);
 }
 
 /// Create a concatenation (sum of cartesian product) of bit length sets.
@@ -560,7 +1132,7 @@ static dsdl_bls_t* dsdl_bls_new_concat(dsdl_t* const dsdl, const size_t count, d
     }
     bls->cached_min = DSDL_BLS_NOT_COMPUTED;
     bls->cached_max = DSDL_BLS_NOT_COMPUTED;
-    return bls;
+    return dsdl_bls_register(dsdl, bls);
 }
 
 /// Create a fixed repetition: child repeated k times.
@@ -584,7 +1156,7 @@ static dsdl_bls_t* dsdl_bls_new_repeat(dsdl_t* const dsdl, dsdl_bls_t* const chi
     bls->data.repeat.k     = k;
     bls->cached_min        = DSDL_BLS_NOT_COMPUTED;
     bls->cached_max        = DSDL_BLS_NOT_COMPUTED;
-    return bls;
+    return dsdl_bls_register(dsdl, bls);
 }
 
 /// Create a range repetition: child repeated 0 to k_max times.
@@ -601,7 +1173,7 @@ static dsdl_bls_t* dsdl_bls_new_repeat_range(dsdl_t* const dsdl, dsdl_bls_t* con
     bls->data.repeat_range.k_max = k_max;
     bls->cached_min              = 0; // Always includes k=0 case
     bls->cached_max              = DSDL_BLS_NOT_COMPUTED;
-    return bls;
+    return dsdl_bls_register(dsdl, bls);
 }
 
 /// Create a union (set union) of bit length sets.
@@ -630,7 +1202,7 @@ static dsdl_bls_t* dsdl_bls_new_unite(dsdl_t* const dsdl, const size_t count, ds
     }
     bls->cached_min = DSDL_BLS_NOT_COMPUTED;
     bls->cached_max = DSDL_BLS_NOT_COMPUTED;
-    return bls;
+    return dsdl_bls_register(dsdl, bls);
 }
 
 /// Create a padding operator: align child to boundary.
@@ -650,7 +1222,7 @@ static dsdl_bls_t* dsdl_bls_new_pad(dsdl_t* const dsdl, dsdl_bls_t* const child,
     bls->data.pad.alignment = alignment;
     bls->cached_min         = DSDL_BLS_NOT_COMPUTED;
     bls->cached_max         = DSDL_BLS_NOT_COMPUTED;
-    return bls;
+    return dsdl_bls_register(dsdl, bls);
 }
 
 static uint64_t* dsdl_alloc_u64_array(dsdl_t* const dsdl, const uint64_t count)
@@ -668,6 +1240,26 @@ static uint64_t* dsdl_alloc_u64_array(dsdl_t* const dsdl, const uint64_t count)
 static uint64_t dsdl_align_up(const uint64_t x, const uint64_t alignment)
 {
     return ((x + alignment - 1) / alignment) * alignment;
+}
+
+static uint64_t dsdl_gcd_u64(uint64_t a, uint64_t b)
+{
+    while (b != 0U) {
+        const uint64_t r = a % b;
+        a                = b;
+        b                = r;
+    }
+    return a;
+}
+
+static uintmax_t dsdl_gcd_uintmax(uintmax_t a, uintmax_t b)
+{
+    while (b != 0U) {
+        const uintmax_t r = a % b;
+        a                 = b;
+        b                 = r;
+    }
+    return a;
 }
 
 /// Compute minimum value in a bit length set.
@@ -1046,7 +1638,7 @@ static uint64_t dsdl_bls_modulo(dsdl_t* const     dsdl,
             const uint64_t alignment = bls->data.pad.alignment;
             // We need child % lcm(alignment, divisor), but that's complex.
             // Simpler: get child modulo (lcm), apply padding, then modulo divisor.
-            const uint64_t lcm = (alignment * divisor) / dsdl_gcd(alignment, divisor);
+            const uint64_t lcm = (alignment * divisor) / dsdl_gcd_u64(alignment, divisor);
 
             uint64_t* const child_mods = dsdl_alloc_u64_array(dsdl, lcm);
             if (child_mods == NULL) {
@@ -1404,13 +1996,9 @@ static bool dsdl_value_from_bls(dsdl_t* const dsdl, dsdl_bls_t* const bls, dsdl_
         return false;
     }
     for (size_t i = 0; i < count; i++) {
-        if (values[i] > (uint64_t)INTMAX_MAX) {
-            dsdl_free(dsdl, values);
-            return false;
-        }
         elements[i].kind        = dsdl_value_rational;
         elements[i].flags       = 0;
-        elements[i].as.rational = dsdl_rational_from_int((intmax_t)values[i]);
+        elements[i].as.rational = dsdl_rational_from_uintmax((uintmax_t)values[i]);
     }
     dsdl_free(dsdl, values);
     out->kind            = dsdl_value_set;
@@ -1477,6 +2065,28 @@ static void* dsdl_realloc(dsdl_t* const self, void* const ptr, const size_t new_
 {
     assert((self != NULL) && (self->realloc != NULL));
     return self->realloc(self, ptr, new_size);
+}
+
+typedef struct dsdl_type_alloc_t
+{
+    struct dsdl_type_alloc_t* next;
+} dsdl_type_alloc_t;
+
+static void* dsdl_type_alloc(dsdl_t* const self, const size_t size)
+{
+    if (self == NULL) {
+        return NULL;
+    }
+    if (size > (SIZE_MAX - sizeof(dsdl_type_alloc_t))) {
+        return NULL;
+    }
+    dsdl_type_alloc_t* const alloc = (dsdl_type_alloc_t*)dsdl_alloc(self, sizeof(*alloc) + size);
+    if (alloc == NULL) {
+        return NULL;
+    }
+    alloc->next            = self->type_allocations;
+    self->type_allocations = alloc;
+    return (void*)(alloc + 1);
 }
 
 static void dsdl_value_dispose(dsdl_t* const dsdl, dsdl_value_t* const value);
@@ -1804,7 +2414,7 @@ static int dsdl_hex_value(const char c)
 /// Returns rational with den=1 on success, den=0 on failure.
 static dsdl_rational_t dsdl_parse_int_binary(dsdl_parser_t* const parser)
 {
-    dsdl_rational_t result = { 0, 0 }; // NaN = failure
+    dsdl_rational_t result = dsdl_rational_nan(); // NaN = failure
 
     // Check for 0b or 0B prefix
     if (!((dsdl_parser_peek(parser, 0) == '0') &&
@@ -1814,8 +2424,9 @@ static dsdl_rational_t dsdl_parse_int_binary(dsdl_parser_t* const parser)
     dsdl_parser_advance(parser, 2);
 
     // Must have at least one digit
-    bool     has_digit = false;
-    intmax_t value     = 0;
+    bool          has_digit = false;
+    dsdl_bigint_t value;
+    dsdl_bigint_zero(&value);
 
     while (!dsdl_parser_eof(parser)) {
         const char c = dsdl_parser_peek(parser, 0);
@@ -1826,7 +2437,9 @@ static dsdl_rational_t dsdl_parse_int_binary(dsdl_parser_t* const parser)
         }
         if (dsdl_is_binary_digit(c)) {
             has_digit = true;
-            value     = (value << 1) | (c - '0');
+            if (!dsdl_bigint_mul_add_small_inplace(&value, 2U, (uint32_t)(c - '0'))) {
+                return result;
+            }
             dsdl_parser_advance(parser, 1);
         } else {
             break;
@@ -1835,7 +2448,9 @@ static dsdl_rational_t dsdl_parse_int_binary(dsdl_parser_t* const parser)
 
     if (has_digit) {
         result.num = value;
-        result.den = 1;
+        if (!dsdl_bigint_from_uintmax(&result.den, 1U)) {
+            return dsdl_rational_nan();
+        }
     }
     return result;
 }
@@ -1843,7 +2458,7 @@ static dsdl_rational_t dsdl_parse_int_binary(dsdl_parser_t* const parser)
 /// Parse an octal integer literal: 0o[0-7_]+
 static dsdl_rational_t dsdl_parse_int_octal(dsdl_parser_t* const parser)
 {
-    dsdl_rational_t result = { 0, 0 }; // NaN = failure
+    dsdl_rational_t result = dsdl_rational_nan(); // NaN = failure
 
     // Check for 0o or 0O prefix
     if (!((dsdl_parser_peek(parser, 0) == '0') &&
@@ -1852,8 +2467,9 @@ static dsdl_rational_t dsdl_parse_int_octal(dsdl_parser_t* const parser)
     }
     dsdl_parser_advance(parser, 2);
 
-    bool     has_digit = false;
-    intmax_t value     = 0;
+    bool          has_digit = false;
+    dsdl_bigint_t value;
+    dsdl_bigint_zero(&value);
 
     while (!dsdl_parser_eof(parser)) {
         const char c = dsdl_parser_peek(parser, 0);
@@ -1863,7 +2479,9 @@ static dsdl_rational_t dsdl_parse_int_octal(dsdl_parser_t* const parser)
         }
         if (dsdl_is_octal_digit(c)) {
             has_digit = true;
-            value     = (value << 3) | (c - '0');
+            if (!dsdl_bigint_mul_add_small_inplace(&value, 8U, (uint32_t)(c - '0'))) {
+                return result;
+            }
             dsdl_parser_advance(parser, 1);
         } else {
             break;
@@ -1872,7 +2490,9 @@ static dsdl_rational_t dsdl_parse_int_octal(dsdl_parser_t* const parser)
 
     if (has_digit) {
         result.num = value;
-        result.den = 1;
+        if (!dsdl_bigint_from_uintmax(&result.den, 1U)) {
+            return dsdl_rational_nan();
+        }
     }
     return result;
 }
@@ -1880,7 +2500,7 @@ static dsdl_rational_t dsdl_parse_int_octal(dsdl_parser_t* const parser)
 /// Parse a hexadecimal integer literal: 0x[0-9a-fA-F_]+
 static dsdl_rational_t dsdl_parse_int_hex(dsdl_parser_t* const parser)
 {
-    dsdl_rational_t result = { 0, 0 }; // NaN = failure
+    dsdl_rational_t result = dsdl_rational_nan(); // NaN = failure
 
     // Check for 0x or 0X prefix
     if (!((dsdl_parser_peek(parser, 0) == '0') &&
@@ -1889,8 +2509,9 @@ static dsdl_rational_t dsdl_parse_int_hex(dsdl_parser_t* const parser)
     }
     dsdl_parser_advance(parser, 2);
 
-    bool     has_digit = false;
-    intmax_t value     = 0;
+    bool          has_digit = false;
+    dsdl_bigint_t value;
+    dsdl_bigint_zero(&value);
 
     while (!dsdl_parser_eof(parser)) {
         const char c = dsdl_parser_peek(parser, 0);
@@ -1900,7 +2521,9 @@ static dsdl_rational_t dsdl_parse_int_hex(dsdl_parser_t* const parser)
         }
         if (dsdl_is_hex_digit(c)) {
             has_digit = true;
-            value     = (value << 4) | dsdl_hex_value(c);
+            if (!dsdl_bigint_mul_add_small_inplace(&value, 16U, (uint32_t)dsdl_hex_value(c))) {
+                return result;
+            }
             dsdl_parser_advance(parser, 1);
         } else {
             break;
@@ -1909,7 +2532,9 @@ static dsdl_rational_t dsdl_parse_int_hex(dsdl_parser_t* const parser)
 
     if (has_digit) {
         result.num = value;
-        result.den = 1;
+        if (!dsdl_bigint_from_uintmax(&result.den, 1U)) {
+            return dsdl_rational_nan();
+        }
     }
     return result;
 }
@@ -1918,15 +2543,16 @@ static dsdl_rational_t dsdl_parse_int_hex(dsdl_parser_t* const parser)
 /// Returns rational with den=1 on success, den=0 on failure.
 static dsdl_rational_t dsdl_parse_int_decimal(dsdl_parser_t* const parser)
 {
-    dsdl_rational_t result = { 0, 0 }; // NaN = failure
+    dsdl_rational_t result = dsdl_rational_nan(); // NaN = failure
 
     // Must start with a digit
     if (!dsdl_is_digit(dsdl_parser_peek(parser, 0))) {
         return result;
     }
 
-    bool     has_digit = false;
-    intmax_t value     = 0;
+    bool          has_digit = false;
+    dsdl_bigint_t value;
+    dsdl_bigint_zero(&value);
 
     while (!dsdl_parser_eof(parser)) {
         const char c = dsdl_parser_peek(parser, 0);
@@ -1936,7 +2562,9 @@ static dsdl_rational_t dsdl_parse_int_decimal(dsdl_parser_t* const parser)
         }
         if (dsdl_is_digit(c)) {
             has_digit = true;
-            value     = (value * 10) + (c - '0');
+            if (!dsdl_bigint_mul_add_small_inplace(&value, 10U, (uint32_t)(c - '0'))) {
+                return result;
+            }
             dsdl_parser_advance(parser, 1);
         } else {
             break;
@@ -1945,7 +2573,9 @@ static dsdl_rational_t dsdl_parse_int_decimal(dsdl_parser_t* const parser)
 
     if (has_digit) {
         result.num = value;
-        result.den = 1;
+        if (!dsdl_bigint_from_uintmax(&result.den, 1U)) {
+            return dsdl_rational_nan();
+        }
     }
     return result;
 }
@@ -1958,21 +2588,21 @@ static dsdl_rational_t dsdl_parse_integer(dsdl_parser_t* const parser)
 
     // Try binary (0b...)
     dsdl_rational_t result = dsdl_parse_int_binary(parser);
-    if (result.den != 0) {
+    if (!dsdl_rational_is_nan(result)) {
         return result;
     }
     parser->pos = start_pos; // Backtrack
 
     // Try octal (0o...)
     result = dsdl_parse_int_octal(parser);
-    if (result.den != 0) {
+    if (!dsdl_rational_is_nan(result)) {
         return result;
     }
     parser->pos = start_pos;
 
     // Try hex (0x...)
     result = dsdl_parse_int_hex(parser);
-    if (result.den != 0) {
+    if (!dsdl_rational_is_nan(result)) {
         return result;
     }
     parser->pos = start_pos;
@@ -1982,10 +2612,12 @@ static dsdl_rational_t dsdl_parse_integer(dsdl_parser_t* const parser)
 }
 
 /// Parse digits for real number (returns count of digits parsed, 0 on failure).
-static size_t dsdl_parse_real_digits(dsdl_parser_t* const parser, intmax_t* const out_value)
+static size_t dsdl_parse_real_digits(dsdl_parser_t* const parser, dsdl_bigint_t* const out_value)
 {
-    size_t   count = 0;
-    intmax_t value = 0;
+    size_t count = 0;
+    if (out_value != NULL) {
+        dsdl_bigint_zero(out_value);
+    }
 
     while (!dsdl_parser_eof(parser)) {
         const char c = dsdl_parser_peek(parser, 0);
@@ -1995,16 +2627,17 @@ static size_t dsdl_parse_real_digits(dsdl_parser_t* const parser, intmax_t* cons
         }
         if (dsdl_is_digit(c)) {
             count++;
-            value = (value * 10) + (c - '0');
+            if (out_value != NULL) {
+                if (!dsdl_bigint_mul_add_small_inplace(out_value, 10U, (uint32_t)(c - '0'))) {
+                    return 0;
+                }
+            }
             dsdl_parser_advance(parser, 1);
         } else {
             break;
         }
     }
 
-    if (out_value != NULL) {
-        *out_value = value;
-    }
     return count;
 }
 
@@ -2013,17 +2646,17 @@ static size_t dsdl_parse_real_digits(dsdl_parser_t* const parser, intmax_t* cons
 /// Note: For simplicity, we convert to double and then back to rational for fractional parts.
 static dsdl_rational_t dsdl_parse_real(dsdl_parser_t* const parser)
 {
-    dsdl_rational_t result    = { 0, 0 }; // NaN = failure
+    dsdl_rational_t result    = dsdl_rational_nan(); // NaN = failure
     const size_t    start_pos = parser->pos;
 
     // Components of the real number
-    intmax_t int_part   = 0;
-    intmax_t frac_part  = 0;
-    size_t   frac_count = 0; // Number of fractional digits
-    intmax_t exp_value  = 0;
-    bool     exp_neg    = false;
-    bool     has_point  = false;
-    bool     has_exp    = false;
+    dsdl_bigint_t int_part;
+    dsdl_bigint_t frac_part;
+    size_t        frac_count = 0; // Number of fractional digits
+    uint32_t      exp_value  = 0;
+    bool          exp_neg    = false;
+    bool          has_point  = false;
+    bool          has_exp    = false;
 
     // Parse integer part (optional if there's a point)
     const size_t int_digits = dsdl_parse_real_digits(parser, &int_part);
@@ -2061,7 +2694,27 @@ static dsdl_rational_t dsdl_parse_real(dsdl_parser_t* const parser)
         }
 
         // Exponent digits (required)
-        if (dsdl_parse_real_digits(parser, &exp_value) == 0) {
+        bool exp_has_digit = false;
+        while (!dsdl_parser_eof(parser)) {
+            const char c = dsdl_parser_peek(parser, 0);
+            if (c == '_') {
+                dsdl_parser_advance(parser, 1);
+                continue;
+            }
+            if (dsdl_is_digit(c)) {
+                exp_has_digit        = true;
+                const uint32_t digit = (uint32_t)(c - '0');
+                if (exp_value > (UINT32_MAX - digit) / 10U) {
+                    parser->pos = start_pos;
+                    return result;
+                }
+                exp_value = (exp_value * 10U) + digit;
+                dsdl_parser_advance(parser, 1);
+            } else {
+                break;
+            }
+        }
+        if (!exp_has_digit) {
             // Invalid: e without digits
             parser->pos = start_pos;
             return result;
@@ -2086,54 +2739,61 @@ static dsdl_rational_t dsdl_parse_real(dsdl_parser_t* const parser)
     //                          den = 10^frac_count
     // Then multiply/divide by 10^exp as needed.
 
-    // Start with integer and fractional part
-    // Compute frac_denom = 10^frac_count, with overflow check
-    uintmax_t frac_denom = 1;
-    for (size_t i = 0; i < frac_count; ++i) {
-        if (frac_denom > UINTMAX_MAX / 10) {
-            // Would overflow - truncate precision
-            break;
+    dsdl_bigint_t num = int_part;
+    dsdl_bigint_t den;
+    if (frac_count > 0U) {
+        dsdl_bigint_t scaled_int = int_part;
+        if (!dsdl_bigint_mul_pow10_inplace(&scaled_int, (uint32_t)frac_count)) {
+            parser->pos = start_pos;
+            return result;
         }
-        frac_denom *= 10;
+        dsdl_bigint_t sum;
+        if (!dsdl_bigint_add_abs(&scaled_int, &frac_part, &sum)) {
+            parser->pos = start_pos;
+            return result;
+        }
+        num = sum;
+        if (!dsdl_bigint_pow10((uint32_t)frac_count, &den)) {
+            parser->pos = start_pos;
+            return result;
+        }
+    } else {
+        if (!dsdl_bigint_from_uintmax(&den, 1U)) {
+            parser->pos = start_pos;
+            return result;
+        }
     }
 
-    // Ensure frac_denom fits in intmax_t for safe signed arithmetic
-    while (frac_denom > (uintmax_t)INTMAX_MAX) {
-        frac_denom /= 2;
-        int_part /= 2;
-        frac_part /= 2;
-    }
-
-    // Check for multiplication overflow: int_part * frac_denom
-    while (dsdl_would_overflow_mul_signed(int_part, (intmax_t)frac_denom)) {
-        frac_denom /= 2;
-        int_part /= 2;
-        frac_part /= 2;
-    }
-
-    result.num = int_part * (intmax_t)frac_denom + frac_part;
-    result.den = frac_denom;
-
-    // Apply exponent with overflow protection
-    if (has_exp) {
-        for (intmax_t i = 0; i < exp_value; ++i) {
-            if (exp_neg) {
-                if (result.den > UINTMAX_MAX / 10) {
-                    // Would overflow denominator - halve the rational
-                    result = dsdl_rational_halve(result);
-                }
-                result.den *= 10;
-            } else {
-                // Check signed overflow for numerator
-                if ((result.num > 0 && result.num > INTMAX_MAX / 10) ||
-                    (result.num < 0 && result.num < INTMAX_MIN / 10)) {
-                    result = dsdl_rational_halve(result);
-                }
-                result.num *= 10;
+    if (has_exp && (exp_value > 0U)) {
+        const uint32_t exp_limit = 1000U;
+        if (exp_value > exp_limit) {
+            parser->pos = start_pos;
+            return result;
+        }
+        dsdl_bigint_t pow10;
+        if (!dsdl_bigint_pow10(exp_value, &pow10)) {
+            parser->pos = start_pos;
+            return result;
+        }
+        dsdl_bigint_t scaled;
+        if (exp_neg) {
+            if (!dsdl_bigint_mul_abs(&den, &pow10, &scaled)) {
+                parser->pos = start_pos;
+                return result;
             }
+            den = scaled;
+        } else {
+            if (!dsdl_bigint_mul_abs(&num, &pow10, &scaled)) {
+                parser->pos = start_pos;
+                return result;
+            }
+            num = scaled;
         }
     }
 
+    result.num          = num;
+    result.den          = den;
+    result.num.negative = false;
     return dsdl_rational_normalize(result);
 }
 
@@ -2145,7 +2805,7 @@ static dsdl_rational_t dsdl_parse_number(dsdl_parser_t* const parser)
 
     // Try real first (point or exponent notation)
     dsdl_rational_t result = dsdl_parse_real(parser);
-    if (result.den != 0) {
+    if (!dsdl_rational_is_nan(result)) {
         return result;
     }
     parser->pos = start_pos;
@@ -2404,6 +3064,9 @@ static bool dsdl_parse_set(dsdl_parser_t* const parser, dsdl_value_t* const out_
     if (dsdl_parser_peek(parser, 0) != '{') {
         return false;
     }
+    const size_t start_pos  = parser->pos;
+    const size_t start_line = parser->line;
+    const size_t start_col  = parser->col;
     dsdl_parser_advance(parser, 1); // Consume '{'
     dsdl_parser_skip_ws(parser);
 
@@ -2415,8 +3078,10 @@ static bool dsdl_parse_set(dsdl_parser_t* const parser, dsdl_value_t* const out_
 
     // Check for empty set
     if (dsdl_parser_peek(parser, 0) == '}') {
-        dsdl_parser_advance(parser, 1);
-        return true;
+        parser->pos  = start_pos;
+        parser->line = start_line;
+        parser->col  = start_col;
+        return false; // Empty sets are not permitted
     }
 
     // Dynamic allocation with growth strategy
@@ -2534,7 +3199,7 @@ static bool dsdl_parse_literal(dsdl_parser_t* const parser, dsdl_value_t* const 
 
     // Try number (integer or real)
     dsdl_rational_t num = dsdl_parse_number(parser);
-    if (num.den != 0) {
+    if (!dsdl_rational_is_nan(num)) {
         out_value->kind        = dsdl_value_rational;
         out_value->flags       = 0;
         out_value->as.rational = num;
@@ -2628,6 +3293,7 @@ typedef enum
 typedef enum
 {
     dsdl_unary_not,
+    dsdl_unary_pos,
     dsdl_unary_neg,
 } dsdl_unary_op_t;
 
@@ -2789,6 +3455,151 @@ static bool dsdl_str_equal(const wkv_str_t a, const wkv_str_t b)
     return memcmp(a.str, b.str, a.len) == 0;
 }
 
+static bool dsdl_utf8_decode(const char* const str, const size_t len, size_t* const pos, uint32_t* const out)
+{
+    if ((str == NULL) || (pos == NULL) || (out == NULL) || (*pos >= len)) {
+        return false;
+    }
+    const unsigned char c0 = (unsigned char)str[*pos];
+    if (c0 < 0x80U) {
+        *out = (uint32_t)c0;
+        *pos += 1U;
+        return true;
+    }
+    if ((c0 & 0xE0U) == 0xC0U) {
+        if ((*pos + 1U) >= len) {
+            return false;
+        }
+        const unsigned char c1 = (unsigned char)str[*pos + 1U];
+        if ((c1 & 0xC0U) != 0x80U) {
+            return false;
+        }
+        const uint32_t cp = ((uint32_t)(c0 & 0x1FU) << 6U) | (uint32_t)(c1 & 0x3FU);
+        if (cp < 0x80U) {
+            return false;
+        }
+        *out = cp;
+        *pos += 2U;
+        return true;
+    }
+    if ((c0 & 0xF0U) == 0xE0U) {
+        if ((*pos + 2U) >= len) {
+            return false;
+        }
+        const unsigned char c1 = (unsigned char)str[*pos + 1U];
+        const unsigned char c2 = (unsigned char)str[*pos + 2U];
+        if (((c1 & 0xC0U) != 0x80U) || ((c2 & 0xC0U) != 0x80U)) {
+            return false;
+        }
+        const uint32_t cp = ((uint32_t)(c0 & 0x0FU) << 12U) | ((uint32_t)(c1 & 0x3FU) << 6U) | (uint32_t)(c2 & 0x3FU);
+        if ((cp < 0x800U) || ((cp >= 0xD800U) && (cp <= 0xDFFFU))) {
+            return false;
+        }
+        *out = cp;
+        *pos += 3U;
+        return true;
+    }
+    if ((c0 & 0xF8U) == 0xF0U) {
+        if ((*pos + 3U) >= len) {
+            return false;
+        }
+        const unsigned char c1 = (unsigned char)str[*pos + 1U];
+        const unsigned char c2 = (unsigned char)str[*pos + 2U];
+        const unsigned char c3 = (unsigned char)str[*pos + 3U];
+        if (((c1 & 0xC0U) != 0x80U) || ((c2 & 0xC0U) != 0x80U) || ((c3 & 0xC0U) != 0x80U)) {
+            return false;
+        }
+        const uint32_t cp = ((uint32_t)(c0 & 0x07U) << 18U) | ((uint32_t)(c1 & 0x3FU) << 12U) |
+                            ((uint32_t)(c2 & 0x3FU) << 6U) | (uint32_t)(c3 & 0x3FU);
+        if ((cp < 0x10000U) || (cp > 0x10FFFFU)) {
+            return false;
+        }
+        *out = cp;
+        *pos += 4U;
+        return true;
+    }
+    return false;
+}
+
+static uint32_t dsdl_compose_acute(const uint32_t base)
+{
+    switch (base) {
+        case 'A':
+            return 0x00C1U;
+        case 'E':
+            return 0x00C9U;
+        case 'I':
+            return 0x00CDU;
+        case 'O':
+            return 0x00D3U;
+        case 'U':
+            return 0x00DAU;
+        case 'Y':
+            return 0x00DDU;
+        case 'a':
+            return 0x00E1U;
+        case 'e':
+            return 0x00E9U;
+        case 'i':
+            return 0x00EDU;
+        case 'o':
+            return 0x00F3U;
+        case 'u':
+            return 0x00FAU;
+        case 'y':
+            return 0x00FDU;
+        default:
+            return 0U;
+    }
+}
+
+static bool dsdl_nfc_next(const char* const str, const size_t len, size_t* const pos, uint32_t* const out)
+{
+    size_t   cur = *pos;
+    uint32_t cp  = 0U;
+    if (!dsdl_utf8_decode(str, len, &cur, &cp)) {
+        return false;
+    }
+    if (cp != 0U) {
+        size_t   lookahead = cur;
+        uint32_t next      = 0U;
+        if (dsdl_utf8_decode(str, len, &lookahead, &next) && (next == 0x0301U)) {
+            const uint32_t composed = dsdl_compose_acute(cp);
+            if (composed != 0U) {
+                *pos = lookahead;
+                *out = composed;
+                return true;
+            }
+        }
+    }
+    *pos = cur;
+    *out = cp;
+    return true;
+}
+
+static bool dsdl_string_equal_nfc(const wkv_str_t a, const wkv_str_t b)
+{
+    if ((a.len == 0U) && (b.len == 0U)) {
+        return true;
+    }
+    if ((a.str == NULL) || (b.str == NULL)) {
+        return false;
+    }
+    size_t pos_a = 0U;
+    size_t pos_b = 0U;
+    while ((pos_a < a.len) || (pos_b < b.len)) {
+        uint32_t cp_a = 0U;
+        uint32_t cp_b = 0U;
+        if (!dsdl_nfc_next(a.str, a.len, &pos_a, &cp_a) || !dsdl_nfc_next(b.str, b.len, &pos_b, &cp_b)) {
+            return false;
+        }
+        if (cp_a != cp_b) {
+            return false;
+        }
+    }
+    return true;
+}
+
 static bool dsdl_value_equal(const dsdl_value_t* const left, const dsdl_value_t* const right)
 {
     if ((left == NULL) || (right == NULL) || (left->kind != right->kind)) {
@@ -2798,16 +3609,7 @@ static bool dsdl_value_equal(const dsdl_value_t* const left, const dsdl_value_t*
         case dsdl_value_rational:
             return dsdl_rational_cmp(left->as.rational, right->as.rational) == 0;
         case dsdl_value_string:
-            if (left->as.string.len != right->as.string.len) {
-                return false;
-            }
-            if (left->as.string.len == 0) {
-                return true;
-            }
-            if ((left->as.string.str == NULL) || (right->as.string.str == NULL)) {
-                return false;
-            }
-            return memcmp(left->as.string.str, right->as.string.str, left->as.string.len) == 0;
+            return dsdl_string_equal_nfc(left->as.string, right->as.string);
         case dsdl_value_bool:
             return left->as.boolean == right->as.boolean;
         case dsdl_value_type:
@@ -3022,7 +3824,7 @@ static bool dsdl_set_attribute(const dsdl_value_t* const set_val, const dsdl_att
     if (attr == dsdl_attr_count) {
         out->kind        = dsdl_value_rational;
         out->flags       = 0;
-        out->as.rational = dsdl_rational_from_int((intmax_t)set_val->as.set.count);
+        out->as.rational = dsdl_rational_from_uintmax((uintmax_t)set_val->as.set.count);
         return true;
     }
     if ((attr != dsdl_attr_min) && (attr != dsdl_attr_max)) {
@@ -3139,7 +3941,7 @@ static bool dsdl_apply_type_attribute(dsdl_t* const          dsdl,
         }
         elements[0].kind        = dsdl_value_rational;
         elements[0].flags       = 0;
-        elements[0].as.rational = dsdl_rational_from_int((intmax_t)bit_width);
+        elements[0].as.rational = dsdl_rational_from_uintmax((uintmax_t)bit_width);
         result->kind            = dsdl_value_set;
         result->flags           = DSDL_VALUE_FLAG_OWNED;
         result->as.set.count    = 1;
@@ -3149,7 +3951,7 @@ static bool dsdl_apply_type_attribute(dsdl_t* const          dsdl,
     if (attr == dsdl_attr_extent) {
         result->kind        = dsdl_value_rational;
         result->flags       = 0;
-        result->as.rational = dsdl_rational_from_int((intmax_t)bit_width);
+        result->as.rational = dsdl_rational_from_uintmax((uintmax_t)bit_width);
         return true;
     }
 
@@ -3163,6 +3965,9 @@ static bool dsdl_apply_type_attribute_composite(dsdl_t* const                   
 {
     if ((dsdl == NULL) || (type == NULL) || (result == NULL)) {
         return false;
+    }
+    if ((type->response != NULL) && (attr == dsdl_attr_bit_length)) {
+        return false; // Services do not define _bit_length_
     }
     if (attr == dsdl_attr_bit_length) {
         dsdl_bls_t* const bls = dsdl_type_bls(dsdl, (dsdl_type_t*)(uintptr_t)type);
@@ -3182,12 +3987,9 @@ static bool dsdl_apply_type_attribute_composite(dsdl_t* const                   
             }
             extent_bits = dsdl_bls_max(bls);
         }
-        if (extent_bits > (uint64_t)INTMAX_MAX) {
-            return false;
-        }
         result->kind        = dsdl_value_rational;
         result->flags       = 0;
-        result->as.rational = dsdl_rational_from_int((intmax_t)extent_bits);
+        result->as.rational = dsdl_rational_from_uintmax((uintmax_t)extent_bits);
         return true;
     }
     return false;
@@ -3412,7 +4214,8 @@ static bool dsdl_closure_eval_offset(dsdl_closure_t* const self, dsdl_value_t* c
         return false;
     }
     dsdl_closure_offset_ctx_t* const ctx = (dsdl_closure_offset_ctx_t*)self->context;
-    if ((ctx == NULL) || (ctx->eval == NULL) || (ctx->eval->dsdl == NULL) || (ctx->eval->offset == NULL)) {
+    if ((ctx == NULL) || (ctx->eval == NULL) || (ctx->eval->dsdl == NULL) || (ctx->eval->offset == NULL) ||
+        !ctx->eval->offset_is_defined) {
         return false;
     }
     return dsdl_value_from_bls(ctx->eval->dsdl, ctx->eval->offset, out);
@@ -3940,6 +4743,15 @@ static bool dsdl_apply_unary_op(dsdl_t* const             dsdl,
         result->as.boolean = !operand->as.boolean;
         return true;
     }
+    if (op == dsdl_unary_pos) {
+        if (operand->kind != dsdl_value_rational) {
+            return false;
+        }
+        result->kind        = dsdl_value_rational;
+        result->flags       = 0;
+        result->as.rational = operand->as.rational;
+        return true;
+    }
     if (op == dsdl_unary_neg) {
         if (operand->kind != dsdl_value_rational) {
             return false;
@@ -4065,10 +4877,12 @@ static bool dsdl_apply_binary_op(dsdl_t* const             dsdl,
             return true;
         }
         if (op == dsdl_op_mod) {
-            if (dsdl_rational_is_int(a) && dsdl_rational_is_int(b) && (b.num != 0)) {
+            intmax_t a_int = 0;
+            intmax_t b_int = 0;
+            if (dsdl_rational_to_intmax(a, &a_int) && dsdl_rational_to_intmax(b, &b_int) && (b_int != 0)) {
                 result->kind        = dsdl_value_rational;
                 result->flags       = 0;
-                result->as.rational = dsdl_rational_from_int(a.num % b.num);
+                result->as.rational = dsdl_rational_from_int(a_int % b_int);
                 return true;
             }
             return false;
@@ -4077,33 +4891,45 @@ static bool dsdl_apply_binary_op(dsdl_t* const             dsdl,
             result->kind  = dsdl_value_rational;
             result->flags = 0;
             if (dsdl_rational_is_int(b)) {
-                intmax_t exp            = b.num;
-                result->as.rational.num = 1;
-                result->as.rational.den = 1;
+                intmax_t exp = 0;
+                if (!dsdl_rational_to_intmax(b, &exp)) {
+                    return false;
+                }
+                dsdl_rational_t base = a;
+                dsdl_rational_t acc  = dsdl_rational_from_int(1);
+                uintmax_t       e    = (exp < 0) ? (uintmax_t)(-(exp + 1)) + 1U : (uintmax_t)exp;
+
                 if (exp < 0) {
-                    dsdl_rational_t base = a;
-                    while (base.den > (uintmax_t)INTMAX_MAX) {
-                        base = dsdl_rational_halve(base);
+                    if (dsdl_bigint_is_zero(&base.num)) {
+                        return false;
                     }
-                    dsdl_rational_t inv = { (intmax_t)base.den, dsdl_abs(base.num) };
-                    if ((base.num < 0) && (((-exp) % 2) == 1)) {
-                        inv.num = -inv.num;
+                    dsdl_rational_t inv;
+                    inv.num          = base.den;
+                    inv.num.negative = base.num.negative;
+                    inv.den          = base.num;
+                    inv.den.negative = false;
+                    base             = dsdl_rational_normalize(inv);
+                }
+
+                while (e > 0U) {
+                    if ((e & 1U) != 0U) {
+                        acc = dsdl_rational_mul(acc, base);
                     }
-                    exp = -exp;
-                    for (intmax_t i = 0; i < exp; ++i) {
-                        result->as.rational = dsdl_rational_mul(result->as.rational, inv);
-                    }
-                } else {
-                    for (intmax_t i = 0; i < exp; ++i) {
-                        result->as.rational = dsdl_rational_mul(result->as.rational, a);
+                    e >>= 1U;
+                    if (e > 0U) {
+                        base = dsdl_rational_mul(base, base);
                     }
                 }
+                result->as.rational = acc;
             } else {
-                const double base_d   = (double)a.num / (double)a.den;
-                const double exp_d    = (double)b.num / (double)b.den;
+                double base_d = 0.0;
+                double exp_d  = 0.0;
+                if (!dsdl_rational_to_double(a, &base_d) || !dsdl_rational_to_double(b, &exp_d)) {
+                    return false;
+                }
                 const double result_d = pow(base_d, exp_d);
                 result->as.rational   = dsdl_rational_from_double(result_d);
-                if (result->as.rational.den == 0) {
+                if (dsdl_rational_is_nan(result->as.rational)) {
                     return false;
                 }
             }
@@ -4111,13 +4937,18 @@ static bool dsdl_apply_binary_op(dsdl_t* const             dsdl,
         }
         if ((op == dsdl_op_bit_or) || (op == dsdl_op_bit_xor) || (op == dsdl_op_bit_and)) {
             if (dsdl_rational_is_int(a) && dsdl_rational_is_int(b)) {
+                intmax_t a_int = 0;
+                intmax_t b_int = 0;
+                if (!dsdl_rational_to_intmax(a, &a_int) || !dsdl_rational_to_intmax(b, &b_int)) {
+                    return false;
+                }
                 intmax_t r = 0;
                 if (op == dsdl_op_bit_or) {
-                    r = a.num | b.num;
+                    r = a_int | b_int;
                 } else if (op == dsdl_op_bit_xor) {
-                    r = a.num ^ b.num;
+                    r = a_int ^ b_int;
                 } else {
-                    r = a.num & b.num;
+                    r = a_int & b_int;
                 }
                 result->kind        = dsdl_value_rational;
                 result->flags       = 0;
@@ -4324,8 +5155,18 @@ static bool dsdl_parse_unary(dsdl_parser_t* const parser, dsdl_value_t* const ou
         dsdl_parser_advance(parser, 1);
         dsdl_parser_skip_ws(parser);
 
-        // Parse the operand at exponential precedence (just above unary)
-        return dsdl_parse_expr_prec(parser, dsdl_prec_exp, out_value);
+        dsdl_value_t operand;
+        if (!dsdl_parse_expr_prec(parser, dsdl_prec_exp, &operand)) {
+            return false;
+        }
+        dsdl_value_t result;
+        if (!dsdl_apply_unary_op(parser->dsdl, dsdl_unary_pos, &operand, &result)) {
+            dsdl_value_dispose(parser->dsdl, &operand);
+            return false;
+        }
+        dsdl_value_dispose(parser->dsdl, &operand);
+        *out_value = result;
+        return true;
     }
 
     // Unary minus
@@ -4594,7 +5435,7 @@ static bool dsdl_parse_type_versioned(dsdl_parser_t* const parser, dsdl_parsed_t
 
     // Parse major version
     dsdl_rational_t major_r = dsdl_parse_int_decimal(parser);
-    if ((major_r.den == 0) || !dsdl_rational_is_int(major_r)) {
+    if (dsdl_rational_is_nan(major_r)) {
         parser->pos = start_pos;
         return false;
     }
@@ -4608,13 +5449,20 @@ static bool dsdl_parse_type_versioned(dsdl_parser_t* const parser, dsdl_parsed_t
 
     // Parse minor version
     dsdl_rational_t minor_r = dsdl_parse_int_decimal(parser);
-    if ((minor_r.den == 0) || !dsdl_rational_is_int(minor_r)) {
+    if (dsdl_rational_is_nan(minor_r)) {
+        parser->pos = start_pos;
+        return false;
+    }
+
+    intmax_t major = 0;
+    intmax_t minor = 0;
+    if (!dsdl_rational_to_intmax(major_r, &major) || !dsdl_rational_to_intmax(minor_r, &minor)) {
         parser->pos = start_pos;
         return false;
     }
 
     // Verify versions are valid (0-255)
-    if ((major_r.num < 0) || (major_r.num > 255) || (minor_r.num < 0) || (minor_r.num > 255)) {
+    if ((major < 0) || (major > 255) || (minor < 0) || (minor > 255)) {
         parser->pos = start_pos;
         return false;
     }
@@ -4623,8 +5471,8 @@ static bool dsdl_parse_type_versioned(dsdl_parser_t* const parser, dsdl_parsed_t
     out_type->kind          = DSDL_COMPOSITE_STRUCT; // Placeholder until we resolve
     out_type->type_name.str = first.str;
     out_type->type_name.len = type_name_end - start_pos;
-    out_type->version_major = (uint_least8_t)major_r.num;
-    out_type->version_minor = (uint_least8_t)minor_r.num;
+    out_type->version_major = (uint_least8_t)major;
+    out_type->version_minor = (uint_least8_t)minor;
 
     return true;
 }
@@ -4688,11 +5536,16 @@ static bool dsdl_parse_type_array(dsdl_parser_t* const parser, dsdl_parsed_type_
     }
 
     if ((size_val.kind == dsdl_value_rational) && dsdl_rational_is_int(size_val.as.rational)) {
-        if (size_val.as.rational.num <= 0) {
+        uintmax_t capacity_um = 0U;
+        if (!dsdl_rational_to_uintmax(size_val.as.rational, &capacity_um) || (capacity_um == 0U)) {
             dsdl_value_dispose(parser->dsdl, &size_val);
             return false;
         }
-        uint64_t capacity = (uint64_t)size_val.as.rational.num;
+        if (capacity_um > UINT64_MAX) {
+            dsdl_value_dispose(parser->dsdl, &size_val);
+            return false;
+        }
+        uint64_t capacity = (uint64_t)capacity_um;
         if (is_variable && !out_type->is_inclusive) {
             if (capacity <= 1U) {
                 dsdl_value_dispose(parser->dsdl, &size_val);
@@ -4725,6 +5578,13 @@ static bool dsdl_parse_type_array(dsdl_parser_t* const parser, dsdl_parsed_type_
         out_type->kind = DSDL_ARRAY_VARIABLE;
     } else {
         out_type->kind = DSDL_ARRAY_FIXED;
+    }
+    if (dsdl_type_is_void(out_type->element_kind)) {
+        if (out_type->has_array_size_expr) {
+            dsdl_value_dispose(parser->dsdl, &out_type->array_size_expr);
+            out_type->has_array_size_expr = false;
+        }
+        return false;
     }
 
     return true;
@@ -4939,12 +5799,21 @@ struct dsdl_parsed_def_t
     dsdl_value_t*       const_values;
     wkv_str_t*          const_names;
     dsdl_parsed_type_t* const_types;
+    size_t*             const_field_idx;
 
     // For service types: response fields
     size_t              response_field_count;
     size_t              response_field_capacity;
     dsdl_parsed_type_t* response_field_types;
     wkv_str_t*          response_field_names;
+
+    // For service types: response constants
+    size_t              response_const_count;
+    size_t              response_const_capacity;
+    dsdl_value_t*       response_const_values;
+    wkv_str_t*          response_const_names;
+    dsdl_parsed_type_t* response_const_types;
+    size_t*             response_const_field_idx;
 
     // Directives
     dsdl_parsed_section_t request;
@@ -4963,6 +5832,13 @@ struct dsdl_parsed_def_t
     dsdl_value_t* assert_exprs;       ///< The assertion expressions
     size_t*       assert_field_idx;   ///< Field index when assertion appeared (for _offset_)
     bool*         assert_in_response; ///< True if assertion is in response section
+
+    // Print expressions (@print directives with expression)
+    size_t        print_count;
+    size_t        print_capacity;
+    dsdl_value_t* print_exprs;       ///< The print expressions
+    size_t*       print_field_idx;   ///< Field index when print appeared (for _offset_)
+    bool*         print_in_response; ///< True if print is in response section
 };
 
 // Forward declarations
@@ -4982,25 +5858,40 @@ static bool dsdl_parsed_def_init(dsdl_parsed_def_t* const def, dsdl_t* const dsd
     def->field_types    = (dsdl_parsed_type_t*)dsdl_alloc(dsdl, initial_capacity * sizeof(dsdl_parsed_type_t));
     def->field_names    = (wkv_str_t*)dsdl_alloc(dsdl, initial_capacity * sizeof(wkv_str_t));
 
-    def->const_capacity = initial_capacity;
-    def->const_values   = (dsdl_value_t*)dsdl_alloc(dsdl, initial_capacity * sizeof(dsdl_value_t));
-    def->const_names    = (wkv_str_t*)dsdl_alloc(dsdl, initial_capacity * sizeof(wkv_str_t));
-    def->const_types    = (dsdl_parsed_type_t*)dsdl_alloc(dsdl, initial_capacity * sizeof(dsdl_parsed_type_t));
+    def->const_capacity  = initial_capacity;
+    def->const_values    = (dsdl_value_t*)dsdl_alloc(dsdl, initial_capacity * sizeof(dsdl_value_t));
+    def->const_names     = (wkv_str_t*)dsdl_alloc(dsdl, initial_capacity * sizeof(wkv_str_t));
+    def->const_types     = (dsdl_parsed_type_t*)dsdl_alloc(dsdl, initial_capacity * sizeof(dsdl_parsed_type_t));
+    def->const_field_idx = (size_t*)dsdl_alloc(dsdl, initial_capacity * sizeof(size_t));
 
     def->response_field_capacity = initial_capacity;
     def->response_field_types    = (dsdl_parsed_type_t*)dsdl_alloc(dsdl, initial_capacity * sizeof(dsdl_parsed_type_t));
     def->response_field_names    = (wkv_str_t*)dsdl_alloc(dsdl, initial_capacity * sizeof(wkv_str_t));
+
+    def->response_const_capacity = initial_capacity;
+    def->response_const_values   = (dsdl_value_t*)dsdl_alloc(dsdl, initial_capacity * sizeof(dsdl_value_t));
+    def->response_const_names    = (wkv_str_t*)dsdl_alloc(dsdl, initial_capacity * sizeof(wkv_str_t));
+    def->response_const_types    = (dsdl_parsed_type_t*)dsdl_alloc(dsdl, initial_capacity * sizeof(dsdl_parsed_type_t));
+    def->response_const_field_idx = (size_t*)dsdl_alloc(dsdl, initial_capacity * sizeof(size_t));
 
     def->assert_capacity    = initial_capacity;
     def->assert_exprs       = (dsdl_value_t*)dsdl_alloc(dsdl, initial_capacity * sizeof(dsdl_value_t));
     def->assert_field_idx   = (size_t*)dsdl_alloc(dsdl, initial_capacity * sizeof(size_t));
     def->assert_in_response = (bool*)dsdl_alloc(dsdl, initial_capacity * sizeof(bool));
 
+    def->print_capacity    = initial_capacity;
+    def->print_exprs       = (dsdl_value_t*)dsdl_alloc(dsdl, initial_capacity * sizeof(dsdl_value_t));
+    def->print_field_idx   = (size_t*)dsdl_alloc(dsdl, initial_capacity * sizeof(size_t));
+    def->print_in_response = (bool*)dsdl_alloc(dsdl, initial_capacity * sizeof(bool));
+
     // Check if any allocation failed
     if ((def->field_types == NULL) || (def->field_names == NULL) || (def->const_values == NULL) ||
-        (def->const_names == NULL) || (def->const_types == NULL) || (def->response_field_types == NULL) ||
-        (def->response_field_names == NULL) || (def->assert_exprs == NULL) || (def->assert_field_idx == NULL) ||
-        (def->assert_in_response == NULL)) {
+        (def->const_names == NULL) || (def->const_types == NULL) || (def->const_field_idx == NULL) ||
+        (def->response_field_types == NULL) || (def->response_field_names == NULL) ||
+        (def->response_const_values == NULL) || (def->response_const_names == NULL) ||
+        (def->response_const_types == NULL) || (def->response_const_field_idx == NULL) || (def->assert_exprs == NULL) ||
+        (def->assert_field_idx == NULL) || (def->assert_in_response == NULL) || (def->print_exprs == NULL) ||
+        (def->print_field_idx == NULL) || (def->print_in_response == NULL)) {
         dsdl_parsed_def_deinit(def);
         return false;
     }
@@ -5033,14 +5924,31 @@ static void dsdl_parsed_def_deinit(dsdl_parsed_def_t* const def)
                 }
             }
         }
+        if (def->response_const_types != NULL) {
+            for (size_t i = 0; i < def->response_const_count; i++) {
+                if (def->response_const_types[i].has_array_size_expr) {
+                    dsdl_value_dispose(def->dsdl, &def->response_const_types[i].array_size_expr);
+                }
+            }
+        }
         if (def->const_values != NULL) {
             for (size_t i = 0; i < def->const_count; i++) {
                 dsdl_value_dispose(def->dsdl, &def->const_values[i]);
             }
         }
+        if (def->response_const_values != NULL) {
+            for (size_t i = 0; i < def->response_const_count; i++) {
+                dsdl_value_dispose(def->dsdl, &def->response_const_values[i]);
+            }
+        }
         if (def->assert_exprs != NULL) {
             for (size_t i = 0; i < def->assert_count; i++) {
                 dsdl_value_dispose(def->dsdl, &def->assert_exprs[i]);
+            }
+        }
+        if (def->print_exprs != NULL) {
+            for (size_t i = 0; i < def->print_count; i++) {
+                dsdl_value_dispose(def->dsdl, &def->print_exprs[i]);
             }
         }
         if (def->request.has_extent_expr) {
@@ -5057,11 +5965,19 @@ static void dsdl_parsed_def_deinit(dsdl_parsed_def_t* const def)
         dsdl_free(def->dsdl, def->const_values);
         dsdl_free(def->dsdl, def->const_names);
         dsdl_free(def->dsdl, def->const_types);
+        dsdl_free(def->dsdl, def->const_field_idx);
         dsdl_free(def->dsdl, def->response_field_types);
         dsdl_free(def->dsdl, def->response_field_names);
+        dsdl_free(def->dsdl, def->response_const_values);
+        dsdl_free(def->dsdl, def->response_const_names);
+        dsdl_free(def->dsdl, def->response_const_types);
+        dsdl_free(def->dsdl, def->response_const_field_idx);
         dsdl_free(def->dsdl, def->assert_exprs);
         dsdl_free(def->dsdl, def->assert_field_idx);
         dsdl_free(def->dsdl, def->assert_in_response);
+        dsdl_free(def->dsdl, def->print_exprs);
+        dsdl_free(def->dsdl, def->print_field_idx);
+        dsdl_free(def->dsdl, def->print_in_response);
     }
     (void)memset(def, 0, sizeof(*def));
 }
@@ -5096,15 +6012,44 @@ static bool dsdl_parsed_def_ensure_const_capacity(dsdl_parsed_def_t* const def)
         wkv_str_t* new_names = (wkv_str_t*)dsdl_realloc(def->dsdl, def->const_names, new_capacity * sizeof(wkv_str_t));
         dsdl_parsed_type_t* new_types =
           (dsdl_parsed_type_t*)dsdl_realloc(def->dsdl, def->const_types, new_capacity * sizeof(dsdl_parsed_type_t));
+        size_t* new_field_idx = (size_t*)dsdl_realloc(def->dsdl, def->const_field_idx, new_capacity * sizeof(size_t));
 
-        if ((new_values == NULL) || (new_names == NULL) || (new_types == NULL)) {
+        if ((new_values == NULL) || (new_names == NULL) || (new_types == NULL) || (new_field_idx == NULL)) {
             return false;
         }
 
-        def->const_values   = new_values;
-        def->const_names    = new_names;
-        def->const_types    = new_types;
-        def->const_capacity = new_capacity;
+        def->const_values    = new_values;
+        def->const_names     = new_names;
+        def->const_types     = new_types;
+        def->const_field_idx = new_field_idx;
+        def->const_capacity  = new_capacity;
+    }
+    return true;
+}
+
+/// Ensure response const array has capacity for at least one more element.
+static bool dsdl_parsed_def_ensure_response_const_capacity(dsdl_parsed_def_t* const def)
+{
+    if (def->response_const_count >= def->response_const_capacity) {
+        const size_t  new_capacity = def->response_const_capacity * 2;
+        dsdl_value_t* new_values =
+          (dsdl_value_t*)dsdl_realloc(def->dsdl, def->response_const_values, new_capacity * sizeof(dsdl_value_t));
+        wkv_str_t* new_names =
+          (wkv_str_t*)dsdl_realloc(def->dsdl, def->response_const_names, new_capacity * sizeof(wkv_str_t));
+        dsdl_parsed_type_t* new_types = (dsdl_parsed_type_t*)dsdl_realloc(
+          def->dsdl, def->response_const_types, new_capacity * sizeof(dsdl_parsed_type_t));
+        size_t* new_field_idx =
+          (size_t*)dsdl_realloc(def->dsdl, def->response_const_field_idx, new_capacity * sizeof(size_t));
+
+        if ((new_values == NULL) || (new_names == NULL) || (new_types == NULL) || (new_field_idx == NULL)) {
+            return false;
+        }
+
+        def->response_const_values    = new_values;
+        def->response_const_names     = new_names;
+        def->response_const_types     = new_types;
+        def->response_const_field_idx = new_field_idx;
+        def->response_const_capacity  = new_capacity;
     }
     return true;
 }
@@ -5152,6 +6097,50 @@ static bool dsdl_parsed_def_ensure_assert_capacity(dsdl_parsed_def_t* const def)
     return true;
 }
 
+/// Ensure print array has capacity for at least one more element.
+static bool dsdl_parsed_def_ensure_print_capacity(dsdl_parsed_def_t* const def)
+{
+    if (def->print_count >= def->print_capacity) {
+        const size_t  new_capacity = def->print_capacity * 2;
+        dsdl_value_t* new_exprs =
+          (dsdl_value_t*)dsdl_realloc(def->dsdl, def->print_exprs, new_capacity * sizeof(dsdl_value_t));
+        size_t* new_field_idx   = (size_t*)dsdl_realloc(def->dsdl, def->print_field_idx, new_capacity * sizeof(size_t));
+        bool*   new_in_response = (bool*)dsdl_realloc(def->dsdl, def->print_in_response, new_capacity * sizeof(bool));
+
+        if ((new_exprs == NULL) || (new_field_idx == NULL) || (new_in_response == NULL)) {
+            return false;
+        }
+
+        def->print_exprs       = new_exprs;
+        def->print_field_idx   = new_field_idx;
+        def->print_in_response = new_in_response;
+        def->print_capacity    = new_capacity;
+    }
+    return true;
+}
+
+static bool dsdl_name_collision(const wkv_str_t        name,
+                                const wkv_str_t* const field_names,
+                                const size_t           field_count,
+                                const wkv_str_t* const const_names,
+                                const size_t           const_count)
+{
+    if ((name.str == NULL) || (name.len == 0U)) {
+        return false;
+    }
+    for (size_t i = 0; i < field_count; i++) {
+        if ((field_names[i].len > 0U) && dsdl_str_equal(field_names[i], name)) {
+            return true;
+        }
+    }
+    for (size_t i = 0; i < const_count; i++) {
+        if ((const_names[i].len > 0U) && dsdl_str_equal(const_names[i], name)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 /// Parse a complete DSDL definition.
 /// Expects out_def to be initialized with dsdl_parsed_def_init().
 static bool dsdl_parse_definition(dsdl_parser_t* const parser, dsdl_parsed_def_t* const out_def)
@@ -5181,6 +6170,29 @@ static bool dsdl_parse_definition(dsdl_parser_t* const parser, dsdl_parsed_def_t
                            stmt.name.str ? stmt.name.str : "",
                            stmt.type.kind,
                            parser->line);
+                dsdl_parsed_section_t* const section = parsing_response ? &out_def->response : &out_def->request;
+                if (section->has_extent) {
+                    return false; // Attributes cannot appear after @extent
+                }
+                if (stmt.kind == dsdl_stmt_field) {
+                    const wkv_str_t* const field_names =
+                      parsing_response ? out_def->response_field_names : out_def->field_names;
+                    const size_t field_count = parsing_response ? out_def->response_field_count : out_def->field_count;
+                    const wkv_str_t* const const_names =
+                      parsing_response ? out_def->response_const_names : out_def->const_names;
+                    const size_t const_count = parsing_response ? out_def->response_const_count : out_def->const_count;
+                    if (dsdl_name_collision(stmt.name, field_names, field_count, const_names, const_count)) {
+                        return false; // Duplicate attribute name
+                    }
+                    if (!dsdl_type_is_array(stmt.type.kind) &&
+                        ((stmt.type.kind == DSDL_BYTE) || (stmt.type.kind == DSDL_UTF8))) {
+                        return false; // byte/utf8 cannot be standalone
+                    }
+                    if (dsdl_type_is_array(stmt.type.kind) && (stmt.type.element_kind == DSDL_UTF8) &&
+                        (stmt.type.kind != DSDL_ARRAY_VARIABLE)) {
+                        return false; // utf8 must be in variable-length arrays
+                    }
+                }
                 if (parsing_response) {
                     if (!dsdl_parsed_def_ensure_response_capacity(out_def)) {
                         return false; // OOM
@@ -5202,16 +6214,57 @@ static bool dsdl_parse_definition(dsdl_parser_t* const parser, dsdl_parsed_def_t
             case dsdl_stmt_constant: {
                 DSDL_TRACE(
                   parser->dsdl, "Constant '%.*s' at line %zu", (int)stmt.name.len, stmt.name.str, parser->line);
-                if (!dsdl_parsed_def_ensure_const_capacity(out_def)) {
+                dsdl_parsed_section_t* const section = parsing_response ? &out_def->response : &out_def->request;
+                if (section->has_extent) {
                     if (stmt.has_value) {
                         dsdl_value_dispose(parser->dsdl, &stmt.value);
                     }
-                    return false; // OOM
+                    return false; // Attributes cannot appear after @extent
                 }
-                const size_t idx           = out_def->const_count++;
-                out_def->const_types[idx]  = stmt.type;
-                out_def->const_names[idx]  = stmt.name;
-                out_def->const_values[idx] = stmt.value;
+                const wkv_str_t* const field_names =
+                  parsing_response ? out_def->response_field_names : out_def->field_names;
+                const size_t field_count = parsing_response ? out_def->response_field_count : out_def->field_count;
+                const wkv_str_t* const const_names =
+                  parsing_response ? out_def->response_const_names : out_def->const_names;
+                const size_t const_count = parsing_response ? out_def->response_const_count : out_def->const_count;
+                if (dsdl_name_collision(stmt.name, field_names, field_count, const_names, const_count)) {
+                    if (stmt.has_value) {
+                        dsdl_value_dispose(parser->dsdl, &stmt.value);
+                    }
+                    return false; // Duplicate attribute name
+                }
+                if (!dsdl_type_is_array(stmt.type.kind) &&
+                    ((stmt.type.kind == DSDL_BYTE) || (stmt.type.kind == DSDL_UTF8))) {
+                    if (stmt.has_value) {
+                        dsdl_value_dispose(parser->dsdl, &stmt.value);
+                    }
+                    return false; // byte/utf8 cannot be standalone
+                }
+                if (parsing_response) {
+                    if (!dsdl_parsed_def_ensure_response_const_capacity(out_def)) {
+                        if (stmt.has_value) {
+                            dsdl_value_dispose(parser->dsdl, &stmt.value);
+                        }
+                        return false; // OOM
+                    }
+                    const size_t idx                       = out_def->response_const_count++;
+                    out_def->response_const_types[idx]     = stmt.type;
+                    out_def->response_const_names[idx]     = stmt.name;
+                    out_def->response_const_values[idx]    = stmt.value;
+                    out_def->response_const_field_idx[idx] = out_def->response_field_count;
+                } else {
+                    if (!dsdl_parsed_def_ensure_const_capacity(out_def)) {
+                        if (stmt.has_value) {
+                            dsdl_value_dispose(parser->dsdl, &stmt.value);
+                        }
+                        return false; // OOM
+                    }
+                    const size_t idx              = out_def->const_count++;
+                    out_def->const_types[idx]     = stmt.type;
+                    out_def->const_names[idx]     = stmt.name;
+                    out_def->const_values[idx]    = stmt.value;
+                    out_def->const_field_idx[idx] = out_def->field_count;
+                }
                 break;
             }
 
@@ -5230,17 +6283,32 @@ static bool dsdl_parse_definition(dsdl_parser_t* const parser, dsdl_parsed_def_t
                 dsdl_parsed_section_t* const section = parsing_response ? &out_def->response : &out_def->request;
                 // Process known directives
                 if ((stmt.name.len == 6) && (memcmp(stmt.name.str, "sealed", 6) == 0)) {
-                    section->is_sealed = true;
                     if (stmt.has_value) {
                         dsdl_value_dispose(parser->dsdl, &stmt.value);
+                        return false; // @sealed does not accept expressions
                     }
+                    if (section->is_sealed) {
+                        return false; // Duplicate @sealed
+                    }
+                    section->is_sealed = true;
                 } else if ((stmt.name.len == 6) && (memcmp(stmt.name.str, "extent", 6) == 0)) {
+                    if (section->has_extent) {
+                        if (stmt.has_value) {
+                            dsdl_value_dispose(parser->dsdl, &stmt.value);
+                        }
+                        return false; // Duplicate @extent
+                    }
                     if (!stmt.has_value) {
                         return false; // Invalid extent
                     }
                     if ((stmt.value.kind == dsdl_value_rational) && dsdl_rational_is_int(stmt.value.as.rational)) {
+                        uintmax_t extent_um = 0U;
+                        if (!dsdl_rational_to_uintmax(stmt.value.as.rational, &extent_um) || (extent_um > UINT64_MAX)) {
+                            dsdl_value_dispose(parser->dsdl, &stmt.value);
+                            return false;
+                        }
                         section->has_extent  = true;
-                        section->extent_bits = (uint64_t)stmt.value.as.rational.num;
+                        section->extent_bits = (uint64_t)extent_um;
                         dsdl_value_dispose(parser->dsdl, &stmt.value);
                     } else if (stmt.value.kind == dsdl_value_deferred) {
                         section->has_extent_expr = true;
@@ -5253,15 +6321,32 @@ static bool dsdl_parse_definition(dsdl_parser_t* const parser, dsdl_parsed_def_t
                         return false; // Invalid extent
                     }
                 } else if ((stmt.name.len == 10) && (memcmp(stmt.name.str, "deprecated", 10) == 0)) {
+                    if (parsing_response || out_def->is_deprecated ||
+                        (!parsing_response && ((out_def->field_count > 0U) || (out_def->const_count > 0U)))) {
+                        if (stmt.has_value) {
+                            dsdl_value_dispose(parser->dsdl, &stmt.value);
+                        }
+                        return false; // @deprecated must be first and only in request
+                    }
+                    if (stmt.has_value) {
+                        dsdl_value_dispose(parser->dsdl, &stmt.value);
+                        return false; // @deprecated does not accept expressions
+                    }
                     out_def->is_deprecated = true;
-                    if (stmt.has_value) {
-                        dsdl_value_dispose(parser->dsdl, &stmt.value);
-                    }
                 } else if ((stmt.name.len == 5) && (memcmp(stmt.name.str, "union", 5) == 0)) {
-                    section->is_union = true;
                     if (stmt.has_value) {
                         dsdl_value_dispose(parser->dsdl, &stmt.value);
+                        return false; // @union does not accept expressions
                     }
+                    if (section->is_union) {
+                        return false; // Duplicate @union
+                    }
+                    const size_t field_count = parsing_response ? out_def->response_field_count : out_def->field_count;
+                    const size_t const_count = parsing_response ? out_def->response_const_count : out_def->const_count;
+                    if ((field_count > 0U) || (const_count > 0U)) {
+                        return false; // @union must appear before fields/constants
+                    }
+                    section->is_union = true;
                 } else if ((stmt.name.len == 13) && (memcmp(stmt.name.str, "fixed-port-id", 13) == 0)) {
                     if (!stmt.has_value) {
                         return false;
@@ -5276,8 +6361,9 @@ static bool dsdl_parse_definition(dsdl_parser_t* const parser, dsdl_parsed_def_t
                     }
                     out_def->has_fixed_port_id = true;
                     if ((stmt.value.kind == dsdl_value_rational) && dsdl_rational_is_int(stmt.value.as.rational)) {
-                        const intmax_t port_id = stmt.value.as.rational.num;
-                        if ((port_id < 0) || (port_id >= (intmax_t)DSDL_FIXED_PORT_ID_NONE)) {
+                        uintmax_t port_id = 0U;
+                        if (!dsdl_rational_to_uintmax(stmt.value.as.rational, &port_id) ||
+                            (port_id >= (uintmax_t)DSDL_FIXED_PORT_ID_NONE)) {
                             dsdl_value_dispose(parser->dsdl, &stmt.value);
                             return false;
                         }
@@ -5305,12 +6391,24 @@ static bool dsdl_parse_definition(dsdl_parser_t* const parser, dsdl_parsed_def_t
                     out_def->assert_field_idx[idx] =
                       parsing_response ? out_def->response_field_count : out_def->field_count;
                     out_def->assert_in_response[idx] = parsing_response;
+                } else if ((stmt.name.len == 5) && (memcmp(stmt.name.str, "print", 5) == 0)) {
+                    if (stmt.has_value) {
+                        if (!dsdl_parsed_def_ensure_print_capacity(out_def)) {
+                            dsdl_value_dispose(parser->dsdl, &stmt.value);
+                            return false; // OOM
+                        }
+                        const size_t idx          = out_def->print_count++;
+                        out_def->print_exprs[idx] = stmt.value;
+                        out_def->print_field_idx[idx] =
+                          parsing_response ? out_def->response_field_count : out_def->field_count;
+                        out_def->print_in_response[idx] = parsing_response;
+                    }
                 } else {
                     if (stmt.has_value) {
                         dsdl_value_dispose(parser->dsdl, &stmt.value);
                     }
+                    return false; // Unknown directive
                 }
-                // @print is informational only, ignore for now
                 break;
 
             default:
@@ -5395,6 +6493,24 @@ void dsdl_destroy(dsdl_t* const self)
     dsdl_free(self, self->namespaces);
     self->namespaces      = NULL;
     self->namespace_count = 0;
+
+    // Free tracked type descriptor allocations
+    dsdl_type_alloc_t* alloc = self->type_allocations;
+    while (alloc != NULL) {
+        dsdl_type_alloc_t* const next = alloc->next;
+        dsdl_free(self, alloc);
+        alloc = next;
+    }
+    self->type_allocations = NULL;
+
+    // Free tracked BLS allocations
+    dsdl_bls_t* bls = self->bls_allocations;
+    while (bls != NULL) {
+        dsdl_bls_t* const next = bls->next_alloc;
+        dsdl_free(self, bls);
+        bls = next;
+    }
+    self->bls_allocations = NULL;
 }
 
 // ============================================================================
@@ -5426,6 +6542,39 @@ static bool dsdl_is_all_digits(const wkv_str_t str)
         }
     }
 
+    return true;
+}
+
+static wkv_str_t dsdl_short_name_from_full(const wkv_str_t full_name)
+{
+    wkv_str_t short_name = full_name;
+    if ((full_name.str == NULL) || (full_name.len == 0)) {
+        return short_name;
+    }
+    size_t start = 0;
+    for (size_t i = 0; i < full_name.len; i++) {
+        if (full_name.str[i] == '.') {
+            start = i + 1U;
+        }
+    }
+    short_name.str = full_name.str + start;
+    short_name.len = full_name.len - start;
+    return short_name;
+}
+
+static bool dsdl_is_identifier(const wkv_str_t str)
+{
+    if ((str.str == NULL) || (str.len == 0U)) {
+        return false;
+    }
+    if (!dsdl_is_ident_start(str.str[0])) {
+        return false;
+    }
+    for (size_t i = 1U; i < str.len; i++) {
+        if (!dsdl_is_ident_cont(str.str[i])) {
+            return false;
+        }
+    }
     return true;
 }
 
@@ -5675,8 +6824,7 @@ static dsdl_parsed_filename_t dsdl_parse_filename(const wkv_str_t filename)
         }
     }
 
-    // Validate type name starts with uppercase (DSDL requirement)
-    if ((result.type_name.len == 0) || (result.type_name.str[0] < 'A') || (result.type_name.str[0] > 'Z')) {
+    if (!dsdl_is_identifier(result.type_name)) {
         return result;
     }
 
@@ -5963,14 +7111,15 @@ static const dsdl_type_composite_t* dsdl_resolve_composite_type(dsdl_t* const   
 /// then cast to the appropriate concrete type (dsdl_type_array_t*, dsdl_type_composite_t*, etc.).
 static dsdl_type_t* dsdl_create_type_descriptor(dsdl_t* const             self,
                                                 const dsdl_parsed_type_t* parsed_type,
-                                                const wkv_str_t           current_namespace)
+                                                const wkv_str_t           current_namespace,
+                                                const bool                allow_deprecated)
 {
     DSDL_TRACE(self, "Creating type descriptor for kind=0x%04x", parsed_type->kind);
 
     // For primitives, void, and aliases: allocate a single dsdl_type_t
     if (!dsdl_type_is_array(parsed_type->kind) && !dsdl_type_is_composite(parsed_type->kind)) {
         DSDL_TRACE(self, "  -> primitive type, width=%d bits", dsdl_type_bit_width(parsed_type->kind));
-        dsdl_type_t* type_ptr = (dsdl_type_t*)dsdl_alloc(self, sizeof(dsdl_type_t));
+        dsdl_type_t* type_ptr = (dsdl_type_t*)dsdl_type_alloc(self, sizeof(dsdl_type_t));
         if (type_ptr == NULL) {
             return NULL;
         }
@@ -5984,13 +7133,13 @@ static dsdl_type_t* dsdl_create_type_descriptor(dsdl_t* const             self,
                    "  -> array type, capacity=%" PRIu64 ", variable=%d",
                    parsed_type->array_size,
                    (parsed_type->kind == DSDL_ARRAY_VARIABLE));
-        dsdl_type_array_t* arr = (dsdl_type_array_t*)dsdl_alloc(self, sizeof(dsdl_type_array_t));
+        dsdl_type_array_t* arr = (dsdl_type_array_t*)dsdl_type_alloc(self, sizeof(dsdl_type_array_t));
         if (arr == NULL) {
             return NULL;
         }
+        (void)memset(arr, 0, sizeof(*arr));
         arr->type     = parsed_type->kind;
         arr->capacity = parsed_type->array_size;
-        arr->bls      = NULL;
 
         // Create a temporary parsed_type for the element (strip array info)
         dsdl_parsed_type_t element_type = *parsed_type;
@@ -5998,9 +7147,8 @@ static dsdl_type_t* dsdl_create_type_descriptor(dsdl_t* const             self,
         element_type.array_size         = 0;
         element_type.is_inclusive       = false;
 
-        arr->member_type = dsdl_create_type_descriptor(self, &element_type, current_namespace);
+        arr->member_type = dsdl_create_type_descriptor(self, &element_type, current_namespace, allow_deprecated);
         if (arr->member_type == NULL) {
-            dsdl_free(self, arr);
             return NULL;
         }
         return &arr->type;
@@ -6019,6 +7167,9 @@ static dsdl_type_t* dsdl_create_type_descriptor(dsdl_t* const             self,
         if (composite == NULL) {
             DSDL_TRACE(self, "  -> FAILED to resolve composite type");
             return NULL; // Failed to resolve
+        }
+        if (composite->deprecated && !allow_deprecated) {
+            return NULL; // Non-deprecated type cannot use deprecated types
         }
         // Return pointer to the composite's type field (first field of the struct).
         // The const cast is safe because all type data is owned by dsdl_t and
@@ -6062,7 +7213,11 @@ bool dsdl_add_namespace(dsdl_t* const self, const wkv_str_t root_directory)
 
 // Forward declarations for functions used in dsdl_read's semantic analysis
 static uint_least8_t dsdl_ceil_log2(uint64_t n);
+static uint_least8_t dsdl_union_tag_bits(size_t field_count);
+static uint_least8_t dsdl_type_alignment_bits(const dsdl_type_t* type_ptr);
+static void          dsdl_extend_bls_to_extent(dsdl_t* self, dsdl_type_composite_t* composite);
 static dsdl_bls_t*   dsdl_type_bls(dsdl_t* self, dsdl_type_t* type_ptr);
+static dsdl_bls_t*   dsdl_type_bls_field(dsdl_t* self, dsdl_type_t* type_ptr);
 
 /// Evaluate an assertion expression with the given offset BLS.
 /// Returns true if the assertion passes, false if it fails.
@@ -6151,17 +7306,21 @@ static bool dsdl_intmax_fits_bits(const intmax_t value, const uint_least8_t bits
 static bool dsdl_eval_constant_value(dsdl_t* const              dsdl,
                                      dsdl_eval_context_t* const eval,
                                      const dsdl_parsed_type_t*  type,
-                                     dsdl_value_t* const        value)
+                                     dsdl_value_t* const        value,
+                                     const bool                 allow_defer)
 {
     if ((dsdl == NULL) || (type == NULL) || (value == NULL)) {
         return false;
     }
     (void)eval;
     if (!dsdl_resolve_value(value)) {
+        if (allow_defer && (value->kind == dsdl_value_deferred)) {
+            return true;
+        }
         return false;
     }
     if (value->kind == dsdl_value_deferred) {
-        return false;
+        return allow_defer;
     }
 
     if (type->kind == DSDL_BOOL) {
@@ -6198,13 +7357,18 @@ static bool dsdl_eval_constant_value(dsdl_t* const              dsdl,
     }
 
     if (dsdl_type_is_uint(kind)) {
-        if (value->as.rational.num < 0) {
+        uintmax_t uval = 0U;
+        if (!dsdl_rational_to_uintmax(value->as.rational, &uval)) {
             return false;
         }
-        return dsdl_uintmax_fits_bits((uintmax_t)value->as.rational.num, dsdl_type_bit_width(kind));
+        return dsdl_uintmax_fits_bits(uval, dsdl_type_bit_width(kind));
     }
     if (dsdl_type_is_int(kind)) {
-        return dsdl_intmax_fits_bits(value->as.rational.num, dsdl_type_bit_width(kind));
+        intmax_t sval = 0;
+        if (!dsdl_rational_to_intmax(value->as.rational, &sval)) {
+            return false;
+        }
+        return dsdl_intmax_fits_bits(sval, dsdl_type_bit_width(kind));
     }
     return false;
 }
@@ -6230,10 +7394,14 @@ static bool dsdl_eval_array_size_expr(dsdl_t* const              dsdl,
         !dsdl_rational_is_int(type->array_size_expr.as.rational)) {
         return false;
     }
-    if (type->array_size_expr.as.rational.num <= 0) {
+    uintmax_t capacity_um = 0U;
+    if (!dsdl_rational_to_uintmax(type->array_size_expr.as.rational, &capacity_um) || (capacity_um == 0U)) {
         return false;
     }
-    uint64_t capacity = (uint64_t)type->array_size_expr.as.rational.num;
+    if (capacity_um > UINT64_MAX) {
+        return false;
+    }
+    uint64_t capacity = (uint64_t)capacity_um;
     if ((type->kind == DSDL_ARRAY_VARIABLE) && !type->is_inclusive) {
         if (capacity <= 1U) {
             return false;
@@ -6288,6 +7456,9 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_
     }
     DSDL_TRACE(
       self, "Located file: '%s' (fixed_port_id=%u, v%u.%u)", file_path, fixed_port_id, resolved_major, resolved_minor);
+    if ((resolved_major == 0U) && (resolved_minor == 0U)) {
+        return NULL; // Version 0.0 is invalid
+    }
 
     // Read file contents
     if (self->read == NULL) {
@@ -6307,6 +7478,7 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_
     dsdl_parsed_def_t   def;
     dsdl_eval_context_t eval_ctx = { 0 };
     eval_ctx.dsdl                = self;
+    eval_ctx.offset_is_defined   = true;
 
     dsdl_parser_init(&parser, self, file_content.str, file_content.len, &eval_ctx);
 
@@ -6324,6 +7496,37 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_
     }
     DSDL_TRACE(self, "parsed OK, field_count=%zu, sealed=%d", def.field_count, def.request.is_sealed);
 
+    if (!def.request.is_sealed && !def.request.has_extent) {
+        dsdl_parsed_def_deinit(&def);
+        dsdl_free_str(self, file_content.str);
+        return NULL; // Must be sealed or have extent
+    }
+    if (def.request.is_sealed && def.request.has_extent) {
+        dsdl_parsed_def_deinit(&def);
+        dsdl_free_str(self, file_content.str);
+        return NULL; // Cannot be both sealed and have extent
+    }
+    if (def.is_service && !def.response.is_sealed && !def.response.has_extent) {
+        dsdl_parsed_def_deinit(&def);
+        dsdl_free_str(self, file_content.str);
+        return NULL; // Response must be sealed or have extent
+    }
+    if (def.is_service && def.response.is_sealed && def.response.has_extent) {
+        dsdl_parsed_def_deinit(&def);
+        dsdl_free_str(self, file_content.str);
+        return NULL; // Response cannot be both sealed and have extent
+    }
+    if (def.request.is_union && (def.field_count < 2U)) {
+        dsdl_parsed_def_deinit(&def);
+        dsdl_free_str(self, file_content.str);
+        return NULL; // Union must have at least 2 fields
+    }
+    if (def.is_service && def.response.is_union && (def.response_field_count < 2U)) {
+        dsdl_parsed_def_deinit(&def);
+        dsdl_free_str(self, file_content.str);
+        return NULL; // Union must have at least 2 fields
+    }
+
     // Prepare evaluation context for constants and type references.
     eval_ctx.current_namespace = type_ref.namespace_part;
     eval_ctx.constant_names    = def.const_names;
@@ -6331,7 +7534,7 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_
     eval_ctx.constant_count    = 0;
 
     for (size_t i = 0; i < def.const_count; i++) {
-        if (!dsdl_eval_constant_value(self, &eval_ctx, &def.const_types[i], &def.const_values[i])) {
+        if (!dsdl_eval_constant_value(self, &eval_ctx, &def.const_types[i], &def.const_values[i], true)) {
             dsdl_parsed_def_deinit(&def);
             dsdl_free_str(self, file_content.str);
             return NULL;
@@ -6346,8 +7549,9 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_
             dsdl_free_str(self, file_content.str);
             return NULL;
         }
-        const intmax_t port_id = def.fixed_port_id_expr.as.rational.num;
-        if ((port_id < 0) || (port_id >= (intmax_t)DSDL_FIXED_PORT_ID_NONE)) {
+        uintmax_t port_id = 0U;
+        if (!dsdl_rational_to_uintmax(def.fixed_port_id_expr.as.rational, &port_id) ||
+            (port_id >= (uintmax_t)DSDL_FIXED_PORT_ID_NONE)) {
             dsdl_parsed_def_deinit(&def);
             dsdl_free_str(self, file_content.str);
             return NULL;
@@ -6370,20 +7574,21 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_
         fixed_port_id = def.fixed_port_id;
     }
 
-    for (size_t i = 0; i < def.field_count; i++) {
-        if (!dsdl_eval_array_size_expr(self, &eval_ctx, &def.field_types[i])) {
+    eval_ctx.constant_names  = def.response_const_names;
+    eval_ctx.constant_values = def.response_const_values;
+    eval_ctx.constant_count  = 0;
+
+    for (size_t i = 0; i < def.response_const_count; i++) {
+        if (!dsdl_eval_constant_value(
+              self, &eval_ctx, &def.response_const_types[i], &def.response_const_values[i], true)) {
             dsdl_parsed_def_deinit(&def);
             dsdl_free_str(self, file_content.str);
             return NULL;
         }
+        eval_ctx.constant_count = i + 1U;
     }
-    for (size_t i = 0; i < def.response_field_count; i++) {
-        if (!dsdl_eval_array_size_expr(self, &eval_ctx, &def.response_field_types[i])) {
-            dsdl_parsed_def_deinit(&def);
-            dsdl_free_str(self, file_content.str);
-            return NULL;
-        }
-    }
+
+    // Array size expressions are resolved later during semantic analysis once _offset_ is known.
 
     // Convert parsed definition to dsdl_type_composite_t
     // Calculate total size needed for single allocation
@@ -6445,6 +7650,7 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_
     str_ptr[name_pos++] = '.';
     name_pos += dsdl_write_u8_dec(str_ptr + name_pos, resolved_minor);
     str_ptr += composite->name_versioned.len;
+    composite->short_name = dsdl_short_name_from_full(composite->name);
 
     // Set up field_names array
     composite->field_names = (wkv_str_t*)str_ptr;
@@ -6462,22 +7668,26 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_
     composite->constant_values = (dsdl_value_t*)str_ptr;
     str_ptr += def.const_count * sizeof(dsdl_value_t);
 
+    composite->field_count    = def.field_count;
+    composite->constant_count = def.const_count;
+    composite->response       = NULL;
+    composite->bls            = NULL;
+    composite->fixed_port_id  = fixed_port_id;
+
+    if (def.field_count > 0U) {
+        memset(composite->field_types, 0, def.field_count * sizeof(dsdl_type_t*));
+    }
+    if (def.const_count > 0U) {
+        memset(composite->constant_types, 0, def.const_count * sizeof(dsdl_type_t*));
+        memset(composite->constant_values, 0, def.const_count * sizeof(dsdl_value_t));
+    }
+
     // Copy field names and create type descriptors
     for (size_t i = 0; i < def.field_count; i++) {
         composite->field_names[i].len = def.field_names[i].len;
         composite->field_names[i].str = str_ptr;
         memcpy(str_ptr, def.field_names[i].str, def.field_names[i].len);
         str_ptr += def.field_names[i].len;
-
-        // Create type descriptor for this field
-        composite->field_types[i] = dsdl_create_type_descriptor(self, &def.field_types[i], type_ref.namespace_part);
-        if (composite->field_types[i] == NULL) {
-            DSDL_TRACE(self, "type descriptor creation failed for field %zu", i);
-            dsdl_parsed_def_deinit(&def);
-            dsdl_free_str(self, file_content.str);
-            dsdl_free(self, block);
-            return NULL;
-        }
     }
 
     for (size_t i = 0; i < def.const_count; i++) {
@@ -6486,34 +7696,21 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_
         memcpy(str_ptr, def.const_names[i].str, def.const_names[i].len);
         str_ptr += def.const_names[i].len;
 
-        composite->constant_types[i] = dsdl_create_type_descriptor(self, &def.const_types[i], type_ref.namespace_part);
+        composite->constant_types[i] =
+          dsdl_create_type_descriptor(self, &def.const_types[i], type_ref.namespace_part, def.is_deprecated);
         if (composite->constant_types[i] == NULL) {
-            for (size_t j = 0; j < i; j++) {
-                dsdl_value_dispose(self, &composite->constant_values[j]);
-            }
             dsdl_parsed_def_deinit(&def);
             dsdl_free_str(self, file_content.str);
-            dsdl_free(self, block);
-            return NULL;
-        }
-
-        if (!dsdl_value_clone(self, &def.const_values[i], &composite->constant_values[i])) {
-            for (size_t j = 0; j < i; j++) {
-                dsdl_value_dispose(self, &composite->constant_values[j]);
-            }
-            dsdl_parsed_def_deinit(&def);
-            dsdl_free_str(self, file_content.str);
+            dsdl_composite_cleanup(self, composite);
             dsdl_free(self, block);
             return NULL;
         }
     }
 
     // Set basic properties
-    composite->field_count    = def.field_count;
-    composite->constant_count = def.const_count;
-    composite->sealed         = def.request.is_sealed;
-    composite->deprecated     = def.is_deprecated;
-    composite->type           = def.request.is_union ? DSDL_COMPOSITE_UNION : DSDL_COMPOSITE_STRUCT;
+    composite->sealed     = def.request.is_sealed;
+    composite->deprecated = def.is_deprecated;
+    composite->type       = def.request.is_union ? DSDL_COMPOSITE_UNION : DSDL_COMPOSITE_STRUCT;
 
     // Use version from file resolution (resolved_major/minor come from the actual file found)
     composite->version[0] = resolved_major;
@@ -6523,8 +7720,6 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_
     composite->extent = 0;
 
     // Initialize optional fields
-    composite->response      = NULL;
-    composite->bls           = NULL;
     composite->fixed_port_id = fixed_port_id;
 
     dsdl_type_composite_t* response = NULL;
@@ -6538,12 +7733,20 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_
         response_total_size += response_name_versioned_len;
         response_total_size += def.response_field_count * sizeof(wkv_str_t);
         response_total_size += def.response_field_count * sizeof(dsdl_type_t*);
+        response_total_size += def.response_const_count * sizeof(wkv_str_t);
+        response_total_size += def.response_const_count * sizeof(dsdl_type_t*);
+        response_total_size += def.response_const_count * sizeof(dsdl_value_t);
 
         size_t response_field_name_len = 0;
         for (size_t i = 0; i < def.response_field_count; i++) {
             response_field_name_len += def.response_field_names[i].len;
         }
+        size_t response_const_name_len = 0;
+        for (size_t i = 0; i < def.response_const_count; i++) {
+            response_const_name_len += def.response_const_names[i].len;
+        }
         response_total_size += response_field_name_len;
+        response_total_size += response_const_name_len;
 
         void* response_block = dsdl_alloc(self, response_total_size);
         if (response_block == NULL) {
@@ -6581,28 +7784,52 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_
         resp_str_ptr[response_pos++] = '.';
         response_pos += dsdl_write_u8_dec(resp_str_ptr + response_pos, resolved_minor);
         resp_str_ptr += response->name_versioned.len;
+        response->short_name = dsdl_short_name_from_full(response->name);
 
         response->field_names = (wkv_str_t*)resp_str_ptr;
         resp_str_ptr += def.response_field_count * sizeof(wkv_str_t);
         response->field_types = (dsdl_type_t**)resp_str_ptr;
         resp_str_ptr += def.response_field_count * sizeof(dsdl_type_t*);
+        response->constant_names = (wkv_str_t*)resp_str_ptr;
+        resp_str_ptr += def.response_const_count * sizeof(wkv_str_t);
+        response->constant_types = (dsdl_type_t**)resp_str_ptr;
+        resp_str_ptr += def.response_const_count * sizeof(dsdl_type_t*);
+        response->constant_values = (dsdl_value_t*)resp_str_ptr;
+        resp_str_ptr += def.response_const_count * sizeof(dsdl_value_t);
 
-        response->constant_count  = 0;
-        response->constant_names  = NULL;
-        response->constant_types  = NULL;
-        response->constant_values = NULL;
+        response->field_count    = def.response_field_count;
+        response->constant_count = def.response_const_count;
+        response->response       = NULL;
+        response->bls            = NULL;
+        response->fixed_port_id  = DSDL_FIXED_PORT_ID_NONE;
+
+        if (def.response_field_count > 0U) {
+            memset(response->field_types, 0, def.response_field_count * sizeof(dsdl_type_t*));
+        }
+        if (def.response_const_count > 0U) {
+            memset(response->constant_types, 0, def.response_const_count * sizeof(dsdl_type_t*));
+            memset(response->constant_values, 0, def.response_const_count * sizeof(dsdl_value_t));
+        }
 
         for (size_t i = 0; i < def.response_field_count; i++) {
             response->field_names[i].len = def.response_field_names[i].len;
             response->field_names[i].str = resp_str_ptr;
             memcpy(resp_str_ptr, def.response_field_names[i].str, def.response_field_names[i].len);
             resp_str_ptr += def.response_field_names[i].len;
+        }
 
-            response->field_types[i] =
-              dsdl_create_type_descriptor(self, &def.response_field_types[i], type_ref.namespace_part);
-            if (response->field_types[i] == NULL) {
+        for (size_t i = 0; i < def.response_const_count; i++) {
+            response->constant_names[i].len = def.response_const_names[i].len;
+            response->constant_names[i].str = resp_str_ptr;
+            memcpy(resp_str_ptr, def.response_const_names[i].str, def.response_const_names[i].len);
+            resp_str_ptr += def.response_const_names[i].len;
+
+            response->constant_types[i] = dsdl_create_type_descriptor(
+              self, &def.response_const_types[i], type_ref.namespace_part, def.is_deprecated);
+            if (response->constant_types[i] == NULL) {
                 dsdl_parsed_def_deinit(&def);
                 dsdl_free_str(self, file_content.str);
+                dsdl_composite_cleanup(self, response);
                 dsdl_composite_cleanup(self, composite);
                 dsdl_free(self, response_block);
                 dsdl_free(self, block);
@@ -6610,16 +7837,12 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_
             }
         }
 
-        response->field_count   = def.response_field_count;
-        response->sealed        = def.response.is_sealed;
-        response->deprecated    = def.is_deprecated;
-        response->type          = def.response.is_union ? DSDL_COMPOSITE_UNION : DSDL_COMPOSITE_STRUCT;
-        response->version[0]    = resolved_major;
-        response->version[1]    = resolved_minor;
-        response->extent        = 0;
-        response->response      = NULL;
-        response->bls           = NULL;
-        response->fixed_port_id = DSDL_FIXED_PORT_ID_NONE;
+        response->sealed     = def.response.is_sealed;
+        response->deprecated = def.is_deprecated;
+        response->type       = def.response.is_union ? DSDL_COMPOSITE_UNION : DSDL_COMPOSITE_STRUCT;
+        response->version[0] = resolved_major;
+        response->version[1] = resolved_minor;
+        response->extent     = 0;
 
         composite->response = response;
     }
@@ -6627,17 +7850,38 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_
     // Semantic analysis: compute _offset_ and validate assertions (request)
     // _offset_ is the bit offset before each field. For structs, it accumulates.
     // For unions, each variant starts at tag_bits offset.
-    if ((def.assert_count > 0) || def.request.has_extent_expr) {
-        dsdl_bls_t* offset = dsdl_bls_new_single(self, 0); // Start at 0
+    if ((def.assert_count > 0) || (def.print_count > 0) || def.request.has_extent_expr || (def.field_count > 0) ||
+        (def.const_count > 0)) {
+        dsdl_bls_t* offset       = dsdl_bls_new_single(self, 0); // Start at 0
+        dsdl_bls_t* final_offset = NULL;
+        size_t      next_const   = 0U;
+
+        eval_ctx.constant_names  = def.const_names;
+        eval_ctx.constant_values = def.const_values;
+        eval_ctx.constant_count  = 0U;
 
         if (def.request.is_union && (def.field_count > 0)) {
-            const uint_least8_t tag_bits    = dsdl_ceil_log2(def.field_count);
+            const uint_least8_t tag_bits    = dsdl_union_tag_bits(def.field_count);
             dsdl_bls_t* const   tag_bls     = dsdl_bls_new_single(self, tag_bits);
             dsdl_bls_t*         children[2] = { offset, tag_bls };
             offset                          = dsdl_bls_new_concat(self, 2, children);
         }
 
         for (size_t i = 0; i < def.field_count; i++) {
+            eval_ctx.offset_is_defined = (!def.request.is_union) || (i > 0U);
+            while ((next_const < def.const_count) && (def.const_field_idx[next_const] == i)) {
+                eval_ctx.offset = offset;
+                if (!dsdl_eval_constant_value(
+                      self, &eval_ctx, &def.const_types[next_const], &def.const_values[next_const], false)) {
+                    dsdl_parsed_def_deinit(&def);
+                    dsdl_free_str(self, file_content.str);
+                    dsdl_composite_cleanup(self, composite);
+                    dsdl_free(self, block);
+                    return NULL;
+                }
+                eval_ctx.constant_count = next_const + 1U;
+                next_const++;
+            }
             for (size_t a = 0; a < def.assert_count; a++) {
                 if (!def.assert_in_response[a] && (def.assert_field_idx[a] == i)) {
                     DSDL_TRACE(self,
@@ -6656,12 +7900,90 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_
                     }
                 }
             }
+            for (size_t p = 0; p < def.print_count; p++) {
+                if (!def.print_in_response[p] && (def.print_field_idx[p] == i)) {
+                    eval_ctx.offset = offset;
+                    if (!dsdl_resolve_value(&def.print_exprs[p])) {
+                        dsdl_parsed_def_deinit(&def);
+                        dsdl_free_str(self, file_content.str);
+                        dsdl_composite_cleanup(self, composite);
+                        dsdl_free(self, block);
+                        return NULL;
+                    }
+                }
+            }
+
+            eval_ctx.offset            = offset;
+            eval_ctx.offset_is_defined = true;
+            if (!dsdl_eval_array_size_expr(self, &eval_ctx, &def.field_types[i])) {
+                dsdl_parsed_def_deinit(&def);
+                dsdl_free_str(self, file_content.str);
+                dsdl_composite_cleanup(self, composite);
+                dsdl_free(self, block);
+                return NULL;
+            }
+            if (composite->field_types[i] == NULL) {
+                composite->field_types[i] =
+                  dsdl_create_type_descriptor(self, &def.field_types[i], type_ref.namespace_part, def.is_deprecated);
+                if (composite->field_types[i] == NULL) {
+                    DSDL_TRACE(self, "type descriptor creation failed for field %zu", i);
+                    dsdl_parsed_def_deinit(&def);
+                    dsdl_free_str(self, file_content.str);
+                    dsdl_composite_cleanup(self, composite);
+                    dsdl_free(self, block);
+                    return NULL;
+                }
+            }
 
             if (!def.request.is_union) {
-                dsdl_bls_t* const field_bls   = dsdl_type_bls(self, composite->field_types[i]);
+                const uint_least8_t alignment = dsdl_type_alignment_bits(composite->field_types[i]);
+                if (alignment > 1U) {
+                    offset = dsdl_bls_new_pad(self, offset, alignment);
+                }
+                dsdl_bls_t* const field_bls   = dsdl_type_bls_field(self, composite->field_types[i]);
                 dsdl_bls_t*       children[2] = { offset, field_bls };
                 offset                        = dsdl_bls_new_concat(self, 2, children);
             }
+        }
+
+        if (!def.request.is_union) {
+            final_offset = offset;
+        } else {
+            if (def.field_count > 0U) {
+                dsdl_bls_t** variants = (dsdl_bls_t**)dsdl_alloc(self, def.field_count * sizeof(dsdl_bls_t*));
+                if (variants == NULL) {
+                    dsdl_parsed_def_deinit(&def);
+                    dsdl_free_str(self, file_content.str);
+                    dsdl_composite_cleanup(self, composite);
+                    dsdl_free(self, block);
+                    return NULL;
+                }
+                for (size_t i = 0; i < def.field_count; i++) {
+                    variants[i] = dsdl_type_bls_field(self, composite->field_types[i]);
+                }
+                dsdl_bls_t* const variants_bls = dsdl_bls_new_unite(self, def.field_count, variants);
+                dsdl_free(self, variants);
+
+                dsdl_bls_t* children[2] = { offset, variants_bls };
+                final_offset            = dsdl_bls_new_concat(self, 2, children);
+            } else {
+                final_offset = offset;
+            }
+        }
+
+        eval_ctx.offset            = final_offset;
+        eval_ctx.offset_is_defined = true;
+        while ((next_const < def.const_count) && (def.const_field_idx[next_const] == def.field_count)) {
+            if (!dsdl_eval_constant_value(
+                  self, &eval_ctx, &def.const_types[next_const], &def.const_values[next_const], false)) {
+                dsdl_parsed_def_deinit(&def);
+                dsdl_free_str(self, file_content.str);
+                dsdl_composite_cleanup(self, composite);
+                dsdl_free(self, block);
+                return NULL;
+            }
+            eval_ctx.constant_count = next_const + 1U;
+            next_const++;
         }
 
         for (size_t a = 0; a < def.assert_count; a++) {
@@ -6669,10 +7991,22 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_
                 DSDL_TRACE(self,
                            "Final assertion %zu, offset min=%" PRIu64 " max=%" PRIu64,
                            a,
-                           dsdl_bls_min(offset),
-                           dsdl_bls_max(offset));
-                if (!dsdl_eval_assertion(self, &eval_ctx, &def.assert_exprs[a], offset)) {
+                           dsdl_bls_min(final_offset),
+                           dsdl_bls_max(final_offset));
+                if (!dsdl_eval_assertion(self, &eval_ctx, &def.assert_exprs[a], final_offset)) {
                     DSDL_TRACE(self, "Final assertion %zu FAILED", a);
+                    dsdl_parsed_def_deinit(&def);
+                    dsdl_free_str(self, file_content.str);
+                    dsdl_composite_cleanup(self, composite);
+                    dsdl_free(self, block);
+                    return NULL;
+                }
+            }
+        }
+        for (size_t p = 0; p < def.print_count; p++) {
+            if (!def.print_in_response[p] && (def.print_field_idx[p] == def.field_count)) {
+                eval_ctx.offset = final_offset;
+                if (!dsdl_resolve_value(&def.print_exprs[p])) {
                     dsdl_parsed_def_deinit(&def);
                     dsdl_free_str(self, file_content.str);
                     dsdl_composite_cleanup(self, composite);
@@ -6683,11 +8017,10 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_
         }
 
         if (def.request.has_extent_expr) {
-            eval_ctx.offset = offset;
+            eval_ctx.offset = final_offset;
             if (!dsdl_resolve_value(&def.request.extent_expr) ||
                 (def.request.extent_expr.kind != dsdl_value_rational) ||
-                !dsdl_rational_is_int(def.request.extent_expr.as.rational) ||
-                (def.request.extent_expr.as.rational.num < 0)) {
+                !dsdl_rational_is_int(def.request.extent_expr.as.rational)) {
                 DSDL_TRACE(self, "Extent expression evaluation FAILED");
                 dsdl_parsed_def_deinit(&def);
                 dsdl_free_str(self, file_content.str);
@@ -6695,22 +8028,57 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_
                 dsdl_free(self, block);
                 return NULL;
             }
-            def.request.extent_bits = (uint64_t)def.request.extent_expr.as.rational.num;
+            uintmax_t extent_um = 0U;
+            if (!dsdl_rational_to_uintmax(def.request.extent_expr.as.rational, &extent_um) ||
+                (extent_um > UINT64_MAX)) {
+                DSDL_TRACE(self, "Extent expression value out of range");
+                dsdl_parsed_def_deinit(&def);
+                dsdl_free_str(self, file_content.str);
+                dsdl_composite_cleanup(self, composite);
+                dsdl_free(self, block);
+                return NULL;
+            }
+            def.request.extent_bits = (uint64_t)extent_um;
         }
     }
 
     // Semantic analysis: compute _offset_ and validate assertions (response)
-    if ((response != NULL) && ((def.assert_count > 0) || def.response.has_extent_expr)) {
-        dsdl_bls_t* offset = dsdl_bls_new_single(self, 0);
+    if ((response != NULL) && ((def.assert_count > 0) || (def.print_count > 0) || def.response.has_extent_expr ||
+                               (response->field_count > 0) || (def.response_const_count > 0))) {
+        dsdl_bls_t* offset       = dsdl_bls_new_single(self, 0);
+        dsdl_bls_t* final_offset = NULL;
+        size_t      next_const   = 0U;
+
+        eval_ctx.constant_names  = def.response_const_names;
+        eval_ctx.constant_values = def.response_const_values;
+        eval_ctx.constant_count  = 0U;
 
         if (def.response.is_union && (response->field_count > 0)) {
-            const uint_least8_t tag_bits    = dsdl_ceil_log2(response->field_count);
+            const uint_least8_t tag_bits    = dsdl_union_tag_bits(response->field_count);
             dsdl_bls_t* const   tag_bls     = dsdl_bls_new_single(self, tag_bits);
             dsdl_bls_t*         children[2] = { offset, tag_bls };
             offset                          = dsdl_bls_new_concat(self, 2, children);
         }
 
         for (size_t i = 0; i < response->field_count; i++) {
+            eval_ctx.offset_is_defined = (!def.response.is_union) || (i > 0U);
+            while ((next_const < def.response_const_count) && (def.response_const_field_idx[next_const] == i)) {
+                eval_ctx.offset = offset;
+                if (!dsdl_eval_constant_value(self,
+                                              &eval_ctx,
+                                              &def.response_const_types[next_const],
+                                              &def.response_const_values[next_const],
+                                              false)) {
+                    dsdl_parsed_def_deinit(&def);
+                    dsdl_free_str(self, file_content.str);
+                    dsdl_composite_cleanup(self, composite);
+                    dsdl_free(self, block);
+                    return NULL;
+                }
+                eval_ctx.constant_count = next_const + 1U;
+                next_const++;
+            }
+
             for (size_t a = 0; a < def.assert_count; a++) {
                 if (def.assert_in_response[a] && (def.assert_field_idx[a] == i)) {
                     DSDL_TRACE(self,
@@ -6729,12 +8097,93 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_
                     }
                 }
             }
+            for (size_t p = 0; p < def.print_count; p++) {
+                if (def.print_in_response[p] && (def.print_field_idx[p] == i)) {
+                    eval_ctx.offset = offset;
+                    if (!dsdl_resolve_value(&def.print_exprs[p])) {
+                        dsdl_parsed_def_deinit(&def);
+                        dsdl_free_str(self, file_content.str);
+                        dsdl_composite_cleanup(self, composite);
+                        dsdl_free(self, block);
+                        return NULL;
+                    }
+                }
+            }
+
+            eval_ctx.offset            = offset;
+            eval_ctx.offset_is_defined = true;
+            if (!dsdl_eval_array_size_expr(self, &eval_ctx, &def.response_field_types[i])) {
+                dsdl_parsed_def_deinit(&def);
+                dsdl_free_str(self, file_content.str);
+                dsdl_composite_cleanup(self, composite);
+                dsdl_free(self, block);
+                return NULL;
+            }
+            if (response->field_types[i] == NULL) {
+                response->field_types[i] = dsdl_create_type_descriptor(
+                  self, &def.response_field_types[i], type_ref.namespace_part, def.is_deprecated);
+                if (response->field_types[i] == NULL) {
+                    dsdl_parsed_def_deinit(&def);
+                    dsdl_free_str(self, file_content.str);
+                    dsdl_composite_cleanup(self, composite);
+                    dsdl_free(self, block);
+                    return NULL;
+                }
+            }
 
             if (!def.response.is_union) {
-                dsdl_bls_t* const field_bls   = dsdl_type_bls(self, response->field_types[i]);
+                const uint_least8_t alignment = dsdl_type_alignment_bits(response->field_types[i]);
+                if (alignment > 1U) {
+                    offset = dsdl_bls_new_pad(self, offset, alignment);
+                }
+                dsdl_bls_t* const field_bls   = dsdl_type_bls_field(self, response->field_types[i]);
                 dsdl_bls_t*       children[2] = { offset, field_bls };
                 offset                        = dsdl_bls_new_concat(self, 2, children);
             }
+        }
+
+        if (!def.response.is_union) {
+            final_offset = offset;
+        } else {
+            if (response->field_count > 0U) {
+                dsdl_bls_t** variants = (dsdl_bls_t**)dsdl_alloc(self, response->field_count * sizeof(dsdl_bls_t*));
+                if (variants == NULL) {
+                    dsdl_parsed_def_deinit(&def);
+                    dsdl_free_str(self, file_content.str);
+                    dsdl_composite_cleanup(self, composite);
+                    dsdl_free(self, block);
+                    return NULL;
+                }
+                for (size_t i = 0; i < response->field_count; i++) {
+                    variants[i] = dsdl_type_bls_field(self, response->field_types[i]);
+                }
+                dsdl_bls_t* const variants_bls = dsdl_bls_new_unite(self, response->field_count, variants);
+                dsdl_free(self, variants);
+
+                dsdl_bls_t* children[2] = { offset, variants_bls };
+                final_offset            = dsdl_bls_new_concat(self, 2, children);
+            } else {
+                final_offset = offset;
+            }
+        }
+
+        eval_ctx.offset            = final_offset;
+        eval_ctx.offset_is_defined = true;
+        while ((next_const < def.response_const_count) &&
+               (def.response_const_field_idx[next_const] == response->field_count)) {
+            if (!dsdl_eval_constant_value(self,
+                                          &eval_ctx,
+                                          &def.response_const_types[next_const],
+                                          &def.response_const_values[next_const],
+                                          false)) {
+                dsdl_parsed_def_deinit(&def);
+                dsdl_free_str(self, file_content.str);
+                dsdl_composite_cleanup(self, composite);
+                dsdl_free(self, block);
+                return NULL;
+            }
+            eval_ctx.constant_count = next_const + 1U;
+            next_const++;
         }
 
         for (size_t a = 0; a < def.assert_count; a++) {
@@ -6742,10 +8191,22 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_
                 DSDL_TRACE(self,
                            "Final response assertion %zu, offset min=%" PRIu64 " max=%" PRIu64,
                            a,
-                           dsdl_bls_min(offset),
-                           dsdl_bls_max(offset));
-                if (!dsdl_eval_assertion(self, &eval_ctx, &def.assert_exprs[a], offset)) {
+                           dsdl_bls_min(final_offset),
+                           dsdl_bls_max(final_offset));
+                if (!dsdl_eval_assertion(self, &eval_ctx, &def.assert_exprs[a], final_offset)) {
                     DSDL_TRACE(self, "Final response assertion %zu FAILED", a);
+                    dsdl_parsed_def_deinit(&def);
+                    dsdl_free_str(self, file_content.str);
+                    dsdl_composite_cleanup(self, composite);
+                    dsdl_free(self, block);
+                    return NULL;
+                }
+            }
+        }
+        for (size_t p = 0; p < def.print_count; p++) {
+            if (def.print_in_response[p] && (def.print_field_idx[p] == response->field_count)) {
+                eval_ctx.offset = final_offset;
+                if (!dsdl_resolve_value(&def.print_exprs[p])) {
                     dsdl_parsed_def_deinit(&def);
                     dsdl_free_str(self, file_content.str);
                     dsdl_composite_cleanup(self, composite);
@@ -6756,11 +8217,10 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_
         }
 
         if (def.response.has_extent_expr) {
-            eval_ctx.offset = offset;
+            eval_ctx.offset = final_offset;
             if (!dsdl_resolve_value(&def.response.extent_expr) ||
                 (def.response.extent_expr.kind != dsdl_value_rational) ||
-                !dsdl_rational_is_int(def.response.extent_expr.as.rational) ||
-                (def.response.extent_expr.as.rational.num < 0)) {
+                !dsdl_rational_is_int(def.response.extent_expr.as.rational)) {
                 DSDL_TRACE(self, "Response extent expression evaluation FAILED");
                 dsdl_parsed_def_deinit(&def);
                 dsdl_free_str(self, file_content.str);
@@ -6768,7 +8228,17 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_
                 dsdl_free(self, block);
                 return NULL;
             }
-            def.response.extent_bits = (uint64_t)def.response.extent_expr.as.rational.num;
+            uintmax_t extent_um = 0U;
+            if (!dsdl_rational_to_uintmax(def.response.extent_expr.as.rational, &extent_um) ||
+                (extent_um > UINT64_MAX)) {
+                DSDL_TRACE(self, "Response extent expression value out of range");
+                dsdl_parsed_def_deinit(&def);
+                dsdl_free_str(self, file_content.str);
+                dsdl_composite_cleanup(self, composite);
+                dsdl_free(self, block);
+                return NULL;
+            }
+            def.response.extent_bits = (uint64_t)extent_um;
         }
     }
 
@@ -6837,6 +8307,111 @@ const dsdl_type_composite_t* dsdl_read(dsdl_t* const self, const wkv_str_t type_
         }
     }
 
+    dsdl_extend_bls_to_extent(self, composite);
+    if (response != NULL) {
+        dsdl_extend_bls_to_extent(self, response);
+    }
+
+    // Finalize deferred constants using the final _offset_.
+    if (def.const_count > 0U) {
+        eval_ctx.constant_names  = def.const_names;
+        eval_ctx.constant_values = def.const_values;
+        eval_ctx.constant_count  = def.const_count;
+
+        bool has_deferred = false;
+        for (size_t i = 0; i < def.const_count; i++) {
+            if (def.const_values[i].kind == dsdl_value_deferred) {
+                has_deferred = true;
+                break;
+            }
+        }
+        if (has_deferred) {
+            dsdl_bls_t* offset_bls = dsdl_type_bls(self, &composite->type);
+            if (offset_bls == NULL) {
+                dsdl_parsed_def_deinit(&def);
+                dsdl_free_str(self, file_content.str);
+                dsdl_composite_cleanup(self, composite);
+                dsdl_free(self, block);
+                return NULL;
+            }
+            if (offset_bls->kind == dsdl_bls_pad) {
+                offset_bls = offset_bls->data.pad.child;
+            }
+            eval_ctx.offset         = offset_bls;
+            eval_ctx.constant_count = 0U;
+            for (size_t i = 0; i < def.const_count; i++) {
+                if (!dsdl_eval_constant_value(self, &eval_ctx, &def.const_types[i], &def.const_values[i], false)) {
+                    dsdl_parsed_def_deinit(&def);
+                    dsdl_free_str(self, file_content.str);
+                    dsdl_composite_cleanup(self, composite);
+                    dsdl_free(self, block);
+                    return NULL;
+                }
+                eval_ctx.constant_count = i + 1U;
+            }
+        }
+
+        for (size_t i = 0; i < def.const_count; i++) {
+            if (!dsdl_value_clone(self, &def.const_values[i], &composite->constant_values[i])) {
+                dsdl_parsed_def_deinit(&def);
+                dsdl_free_str(self, file_content.str);
+                dsdl_composite_cleanup(self, composite);
+                dsdl_free(self, block);
+                return NULL;
+            }
+        }
+    }
+
+    if ((response != NULL) && (def.response_const_count > 0U)) {
+        eval_ctx.constant_names  = def.response_const_names;
+        eval_ctx.constant_values = def.response_const_values;
+        eval_ctx.constant_count  = def.response_const_count;
+
+        bool has_deferred = false;
+        for (size_t i = 0; i < def.response_const_count; i++) {
+            if (def.response_const_values[i].kind == dsdl_value_deferred) {
+                has_deferred = true;
+                break;
+            }
+        }
+        if (has_deferred) {
+            dsdl_bls_t* offset_bls = dsdl_type_bls(self, &response->type);
+            if (offset_bls == NULL) {
+                dsdl_parsed_def_deinit(&def);
+                dsdl_free_str(self, file_content.str);
+                dsdl_composite_cleanup(self, composite);
+                dsdl_free(self, block);
+                return NULL;
+            }
+            if (offset_bls->kind == dsdl_bls_pad) {
+                offset_bls = offset_bls->data.pad.child;
+            }
+            eval_ctx.offset         = offset_bls;
+            eval_ctx.constant_count = 0U;
+            for (size_t i = 0; i < def.response_const_count; i++) {
+                if (!dsdl_eval_constant_value(
+                      self, &eval_ctx, &def.response_const_types[i], &def.response_const_values[i], false)) {
+                    dsdl_parsed_def_deinit(&def);
+                    dsdl_free_str(self, file_content.str);
+                    dsdl_composite_cleanup(self, composite);
+                    dsdl_free(self, block);
+                    return NULL;
+                }
+                eval_ctx.constant_count = i + 1U;
+            }
+        }
+
+        for (size_t i = 0; i < def.response_const_count; i++) {
+            if (!dsdl_value_clone(self, &def.response_const_values[i], &response->constant_values[i])) {
+                dsdl_parsed_def_deinit(&def);
+                dsdl_free_str(self, file_content.str);
+                dsdl_composite_cleanup(self, composite);
+                dsdl_free(self, block);
+                return NULL;
+            }
+        }
+    }
+
     // Cache the result using type_name as key
     wkv_node_t* const cache_node = wkv_set(&self->types, type_name);
     if (cache_node == NULL) {
@@ -6873,16 +8448,54 @@ static uint_least8_t dsdl_ceil_log2(const uint64_t n)
     return result;
 }
 
+/// Round up to the next power of two, min 8 (byte-aligned).
+static uint_least8_t dsdl_pow2_ceil_min8(uint_least8_t bits)
+{
+    if (bits < 8U) {
+        bits = 8U;
+    }
+    uint_least8_t result = 1U;
+    while (result < bits) {
+        result = (uint_least8_t)(result << 1U);
+    }
+    return result;
+}
+
 /// Calculate the bit width of the length prefix for a variable-length array.
-/// For capacity C (max elements), prefix is ceil(log2(C + 1)) bits.
-static uint_least8_t dsdl_array_length_prefix_bits(const uint64_t capacity) { return dsdl_ceil_log2(capacity + 1); }
+/// For capacity C (max elements), prefix is byte-aligned power-of-two bits.
+static uint_least8_t dsdl_array_length_prefix_bits(const uint64_t capacity)
+{
+    return dsdl_pow2_ceil_min8(dsdl_ceil_log2(capacity + 1U));
+}
 
 /// Calculate the bit width of the union tag for a union with N alternatives.
-/// Tag is ceil(log2(N)) bits.
-static uint_least8_t dsdl_union_tag_bits(const size_t field_count) { return dsdl_ceil_log2(field_count); }
+/// Tag is byte-aligned power-of-two bits.
+static uint_least8_t dsdl_union_tag_bits(const size_t field_count)
+{
+    return dsdl_pow2_ceil_min8(dsdl_ceil_log2((uint64_t)field_count));
+}
+
+/// Calculate alignment requirement (in bits) for a type.
+static uint_least8_t dsdl_type_alignment_bits(const dsdl_type_t* const type_ptr)
+{
+    if (type_ptr == NULL) {
+        return 1U;
+    }
+
+    const dsdl_type_t kind = *type_ptr;
+    if (dsdl_type_is_composite(kind)) {
+        return 8U;
+    }
+    if (dsdl_type_is_array(kind)) {
+        const dsdl_type_array_t* const arr = (const dsdl_type_array_t*)type_ptr;
+        return dsdl_type_alignment_bits(arr->member_type);
+    }
+    return 1U;
+}
 
 /// Forward declaration for recursive type size calculation.
 static uint64_t dsdl_type_max_bits(const dsdl_type_t* type_ptr);
+static uint64_t dsdl_type_max_bits_field(const dsdl_type_t* type_ptr);
 
 /// Calculate the maximum serialized size in bits for a composite type.
 static uint64_t dsdl_composite_max_bits(const dsdl_type_composite_t* const composite)
@@ -6893,27 +8506,42 @@ static uint64_t dsdl_composite_max_bits(const dsdl_type_composite_t* const compo
 
     const bool is_union = (composite->type == DSDL_COMPOSITE_UNION);
 
+    uint64_t max_bits = 0;
     if (is_union) {
-        // Union: tag bits + max of all field bit sizes (no padding for sealed types)
+        // Union: tag bits + max variant size, padded to composite alignment.
         const uint64_t tag_bits = dsdl_union_tag_bits(composite->field_count);
 
         uint64_t max_field_bits = 0;
         for (size_t i = 0; i < composite->field_count; i++) {
-            const uint64_t field_bits = dsdl_type_max_bits(composite->field_types[i]);
+            const uint64_t field_bits = dsdl_type_max_bits_field(composite->field_types[i]);
             if (field_bits > max_field_bits) {
                 max_field_bits = field_bits;
             }
         }
 
-        return tag_bits + max_field_bits;
+        max_bits = dsdl_align_up(tag_bits + max_field_bits, 8U);
     } else {
-        // Struct: sum of all field bit sizes (no padding between fields for sealed types)
+        // Struct: sum with inter-field padding to satisfy alignment, plus final padding.
         uint64_t total_bits = 0;
         for (size_t i = 0; i < composite->field_count; i++) {
-            total_bits += dsdl_type_max_bits(composite->field_types[i]);
+            const dsdl_type_t*  field_type = composite->field_types[i];
+            const uint_least8_t alignment  = dsdl_type_alignment_bits(field_type);
+            if (alignment > 1U) {
+                total_bits = dsdl_align_up(total_bits, alignment);
+            }
+            total_bits += dsdl_type_max_bits_field(field_type);
         }
-        return total_bits;
+        max_bits = dsdl_align_up(total_bits, 8U);
     }
+
+    if ((!composite->sealed) && (composite->extent > 0U)) {
+        const uint64_t extent_bits = composite->extent * 8U;
+        if (extent_bits > max_bits) {
+            max_bits = extent_bits;
+        }
+    }
+
+    return max_bits;
 }
 
 /// Calculate the native storage size in bytes for a single value of the given type.
@@ -7017,7 +8645,7 @@ static uint64_t dsdl_type_max_bits(const dsdl_type_t* type_ptr)
     // Array types
     if (dsdl_type_is_array(kind)) {
         const dsdl_type_array_t* arr          = (const dsdl_type_array_t*)type_ptr;
-        const uint64_t           element_bits = dsdl_type_max_bits(arr->member_type);
+        const uint64_t           element_bits = dsdl_type_max_bits_field(arr->member_type);
         const uint64_t           total_bits   = arr->capacity * element_bits;
 
         if (kind == DSDL_ARRAY_VARIABLE) {
@@ -7037,6 +8665,23 @@ static uint64_t dsdl_type_max_bits(const dsdl_type_t* type_ptr)
     }
 
     return 0; // Unknown type
+}
+
+/// Maximum serialized size in bits for a type when used as a field.
+/// Adds delimiter header size for delimited composites.
+static uint64_t dsdl_type_max_bits_field(const dsdl_type_t* const type_ptr)
+{
+    if (type_ptr == NULL) {
+        return 0;
+    }
+    uint64_t bits = dsdl_type_max_bits(type_ptr);
+    if (dsdl_type_is_composite(*type_ptr)) {
+        const dsdl_type_composite_t* const composite = (const dsdl_type_composite_t*)type_ptr;
+        if (!composite->sealed) {
+            bits += 32U; // Delimiter header when nested
+        }
+    }
+    return bits;
 }
 
 /// Compute the symbolic bit length set for any type.
@@ -7082,7 +8727,7 @@ static dsdl_bls_t* dsdl_type_bls(dsdl_t* const self, dsdl_type_t* type_ptr)
                    (kind == DSDL_ARRAY_VARIABLE));
 
         // Compute and store bls
-        dsdl_bls_t* const elem_bls = dsdl_type_bls(self, arr->member_type);
+        dsdl_bls_t* const elem_bls = dsdl_type_bls_field(self, arr->member_type);
         if (elem_bls == NULL) {
             return NULL;
         }
@@ -7133,7 +8778,7 @@ static dsdl_bls_t* dsdl_type_bls(dsdl_t* const self, dsdl_type_t* type_ptr)
                 return NULL;
             }
             for (size_t i = 0; i < composite->field_count; i++) {
-                variants[i] = dsdl_type_bls(self, composite->field_types[i]);
+                variants[i] = dsdl_type_bls_field(self, composite->field_types[i]);
             }
             dsdl_bls_t* const variants_bls = dsdl_bls_new_unite(self, composite->field_count, variants);
             dsdl_free(self, variants);
@@ -7145,21 +8790,91 @@ static dsdl_bls_t* dsdl_type_bls(dsdl_t* const self, dsdl_type_t* type_ptr)
                 composite->bls = dsdl_bls_new_single(self, 0);
                 return (dsdl_bls_t*)composite->bls;
             }
-            // Struct: concatenation of all field bit length sets
-            dsdl_bls_t** fields = (dsdl_bls_t**)dsdl_alloc(self, composite->field_count * sizeof(dsdl_bls_t*));
-            if (fields == NULL) {
+            // Struct: concatenate fields with alignment padding.
+            dsdl_bls_t* offset = dsdl_bls_new_single(self, 0);
+            if (offset == NULL) {
                 return NULL;
             }
             for (size_t i = 0; i < composite->field_count; i++) {
-                fields[i] = dsdl_type_bls(self, composite->field_types[i]);
+                const dsdl_type_t* const field_type = composite->field_types[i];
+                const uint_least8_t      alignment  = dsdl_type_alignment_bits(field_type);
+                if (alignment > 1U) {
+                    offset = dsdl_bls_new_pad(self, offset, alignment);
+                    if (offset == NULL) {
+                        return NULL;
+                    }
+                }
+
+                dsdl_bls_t* const field_bls = dsdl_type_bls_field(self, composite->field_types[i]);
+                if (field_bls == NULL) {
+                    return NULL;
+                }
+                dsdl_bls_t* children[2] = { offset, field_bls };
+                offset                  = dsdl_bls_new_concat(self, 2, children);
+                if (offset == NULL) {
+                    return NULL;
+                }
             }
-            composite->bls = dsdl_bls_new_concat(self, composite->field_count, fields);
-            dsdl_free(self, fields);
+            composite->bls = offset;
+        }
+        composite->bls = dsdl_bls_new_pad(self, composite->bls, 8);
+        if ((!composite->sealed) && (composite->extent > 0U) && (composite->bls != NULL)) {
+            const uint64_t extent_bits = composite->extent * 8U;
+            const uint64_t max_bits    = dsdl_bls_max(composite->bls);
+            if (extent_bits > max_bits) {
+                const uint64_t    pad_bits    = extent_bits - max_bits;
+                const uint64_t    pad_bytes   = pad_bits / 8U;
+                dsdl_bls_t* const pad_unit    = dsdl_bls_new_single(self, 8U);
+                dsdl_bls_t* const pad_range   = dsdl_bls_new_repeat_range(self, pad_unit, pad_bytes);
+                dsdl_bls_t*       children[2] = { composite->bls, pad_range };
+                composite->bls                = dsdl_bls_new_concat(self, 2, children);
+            }
         }
         return (dsdl_bls_t*)composite->bls;
     }
 
     return dsdl_bls_new_single(self, 0);
+}
+
+/// Bit length set for a type when used as a field.
+/// Adds delimiter header for delimited composites.
+static dsdl_bls_t* dsdl_type_bls_field(dsdl_t* const self, dsdl_type_t* const type_ptr)
+{
+    dsdl_bls_t* const bls = dsdl_type_bls(self, type_ptr);
+    if ((bls == NULL) || (type_ptr == NULL)) {
+        return bls;
+    }
+    if (dsdl_type_is_composite(*type_ptr)) {
+        const dsdl_type_composite_t* const composite = (const dsdl_type_composite_t*)type_ptr;
+        if (!composite->sealed) {
+            dsdl_bls_t* const header      = dsdl_bls_new_single(self, 32U);
+            dsdl_bls_t*       children[2] = { header, bls };
+            return dsdl_bls_new_concat(self, 2, children);
+        }
+    }
+    return bls;
+}
+
+static void dsdl_extend_bls_to_extent(dsdl_t* const self, dsdl_type_composite_t* const composite)
+{
+    if ((self == NULL) || (composite == NULL) || composite->sealed || (composite->extent == 0U) ||
+        (composite->bls == NULL)) {
+        return;
+    }
+    const uint64_t extent_bits = composite->extent * 8U;
+    const uint64_t max_bits    = dsdl_bls_max((dsdl_bls_t*)composite->bls);
+    if (extent_bits <= max_bits) {
+        return;
+    }
+    const uint64_t pad_bits  = extent_bits - max_bits;
+    const uint64_t pad_bytes = pad_bits / 8U;
+    if (pad_bytes == 0U) {
+        return;
+    }
+    dsdl_bls_t* const pad_unit    = dsdl_bls_new_single(self, 8U);
+    dsdl_bls_t* const pad_range   = dsdl_bls_new_repeat_range(self, pad_unit, pad_bytes);
+    dsdl_bls_t*       children[2] = { (dsdl_bls_t*)composite->bls, pad_range };
+    composite->bls                = dsdl_bls_new_concat(self, 2, children);
 }
 
 uint64_t dsdl_serialized_footprint(const dsdl_type_composite_t* const type)
@@ -7642,7 +9357,14 @@ static void dsdl_serialize_composite_content(dsdl_bitbuf_t* const               
         // The values array contains only non-void fields, so we track a separate value_index
         size_t value_index = 0;
         for (size_t i = 0; i < composite->field_count; i++) {
-            const dsdl_type_t* field_type = composite->field_types[i];
+            const dsdl_type_t*  field_type = composite->field_types[i];
+            const uint_least8_t alignment  = dsdl_type_alignment_bits(field_type);
+            if (alignment > 1U) {
+                dsdl_bitbuf_align_write(buf);
+                if (buf->error) {
+                    return;
+                }
+            }
 
             if (dsdl_type_is_void(*field_type)) {
                 // Void field: serialize zero bits, don't consume from values array
@@ -7668,6 +9390,11 @@ static void dsdl_serialize_composite(dsdl_bitbuf_t* const               buf,
 
     // Serialize the content
     dsdl_serialize_composite_content(buf, composite, value);
+    if (buf->error) {
+        return;
+    }
+    // Composite alignment is 8 bits.
+    dsdl_bitbuf_align_write(buf);
 }
 
 /// Deserialize composite content (without delimiter header).
@@ -7714,7 +9441,14 @@ static void dsdl_deserialize_composite_content(dsdl_bitbuf_t* const             
         // The values array contains only non-void fields, so we track a separate value_index
         size_t value_index = 0;
         for (size_t i = 0; i < composite->field_count; i++) {
-            const dsdl_type_t* field_type = composite->field_types[i];
+            const dsdl_type_t*  field_type = composite->field_types[i];
+            const uint_least8_t alignment  = dsdl_type_alignment_bits(field_type);
+            if (alignment > 1U) {
+                dsdl_bitbuf_align_read(buf);
+                if (buf->error) {
+                    return;
+                }
+            }
 
             if (dsdl_type_is_void(*field_type)) {
                 // Void field: skip bits, don't consume from values array
@@ -7739,6 +9473,11 @@ static void dsdl_deserialize_composite(dsdl_bitbuf_t* const               buf,
 
     // Deserialize the content
     dsdl_deserialize_composite_content(buf, composite, value);
+    if (buf->error) {
+        return;
+    }
+    // Composite alignment is 8 bits.
+    dsdl_bitbuf_align_read(buf);
 }
 
 /// Serialize any type (primitive, array, or composite).
@@ -7817,6 +9556,10 @@ static void dsdl_serialize_type(dsdl_bitbuf_t* const buf, const dsdl_type_t* con
         if (composite->sealed) {
             // Sealed composite: serialize content directly (bit-packed)
             dsdl_serialize_composite_content(buf, composite, value);
+            if (buf->error) {
+                return;
+            }
+            dsdl_bitbuf_align_write(buf);
         } else {
             // Delimited composite: byte-align, write 32-bit delimiter, then byte-aligned content
             dsdl_bitbuf_align_write(buf);
@@ -7960,6 +9703,10 @@ static void dsdl_deserialize_type(dsdl_bitbuf_t* const buf, const dsdl_type_t* c
         if (composite->sealed) {
             // Sealed composite: deserialize content directly (bit-packed)
             dsdl_deserialize_composite_content(buf, composite, value);
+            if (buf->error) {
+                return;
+            }
+            dsdl_bitbuf_align_read(buf);
         } else {
             // Delimited composite: byte-align, read 32-bit delimiter, then deserialize content
             dsdl_bitbuf_align_read(buf);

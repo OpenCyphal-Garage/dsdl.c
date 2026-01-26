@@ -519,17 +519,14 @@ void test_serialize_variable_array_struct(void)
     uint8_t buffer[32] = { 0 };
     size_t  size       = dsdl_serialize(inner, &sval, sizeof(buffer), buffer);
 
-    // Expected: 3 bits length prefix + 3 * 32 bits = 99 bits = 13 bytes
+    // Expected: 8 bits length prefix + 3 * 32 bits = 104 bits = 13 bytes
     TEST_ASSERT_EQUAL_size_t(13, size);
 
-    // Length prefix: 3 encoded in 3 bits at bits 0-2
-    // First element starts at bit 3
-    // The first byte should have: bits 0-2 = 3 (length), bits 3-7 = low 5 bits of 0x11111111
-    // 0x11111111 in binary: 00010001 00010001 00010001 00010001
-    // Low 5 bits of 0x11 = 10001
-    // So byte 0 = 011 (length=3) | 10001 (low 5 bits of first element byte) << 3
-    // = 0b10001011 = 0x8B
-    TEST_ASSERT_EQUAL_UINT8(0x8B, buffer[0]);
+    // Length prefix: 3 encoded in 8 bits at byte 0. First element starts at byte 1.
+    TEST_ASSERT_EQUAL_UINT8(0x03, buffer[0]);
+    TEST_ASSERT_EQUAL_UINT8(0x11, buffer[1]);
+    TEST_ASSERT_EQUAL_UINT8(0x22, buffer[5]);
+    TEST_ASSERT_EQUAL_UINT8(0x33, buffer[9]);
 
     teardown_dsdl();
 }
@@ -566,10 +563,10 @@ void test_serialize_nested_struct(void)
     size_t  size       = dsdl_serialize(outer, &outer_sval, sizeof(buffer), buffer);
 
     // Expected size:
-    // float32[<=8] with 2 elements: 4 prefix bits + 2*32 = 68 bits
-    // Inner.1.0 (uint32[<=5] with 1 element): 3 prefix bits + 1*32 = 35 bits
-    // Total: 68 + 35 = 103 bits = 13 bytes
-    TEST_ASSERT_EQUAL_size_t(13, size);
+    // float32[<=8] with 2 elements: 8 prefix bits + 2*32 = 72 bits
+    // Inner.1.0 (uint32[<=5] with 1 element): 8 prefix bits + 1*32 = 40 bits
+    // Total: 72 + 40 = 112 bits = 14 bytes
+    TEST_ASSERT_EQUAL_size_t(14, size);
 
     teardown_dsdl();
 }
@@ -634,7 +631,7 @@ void test_roundtrip_variable_array(void)
     // Serialize
     uint8_t buffer[32] = { 0 };
     size_t  size       = dsdl_serialize(inner, &orig_sval, sizeof(buffer), buffer);
-    // 3 prefix bits + 3*32 = 99 bits = 13 bytes
+    // 8 prefix bits + 3*32 = 104 bits = 13 bytes
     TEST_ASSERT_EQUAL_size_t(13, size);
 
     // Deserialize
@@ -720,7 +717,7 @@ void test_deserialize_array_prefix_exceeds_capacity_fails(void)
     const dsdl_type_composite_t* inner = dsdl_read(&g_dsdl, wkv_key("mymsgs.Inner.1.0"));
     TEST_ASSERT_NOT_NULL(inner);
 
-    // Prefix bits for capacity 5: ceil(log2(6)) = 3. Encode count = 6 (0b110).
+    // Prefix bits for capacity 5: 8 (byte-aligned). Encode count = 6.
     uint8_t buffer[1] = { 0x06 };
 
     uint32_t                    elements[5]  = { 0 };
@@ -790,7 +787,7 @@ void test_deserialize_union_invalid_tag_fails(void)
         .field_types = field_types,
     };
 
-    // Tag bits = 2, encode invalid tag 3 (0b11) in low bits.
+    // Tag bits = 8, encode invalid tag 3.
     uint8_t buffer[1] = { 0x03 };
 
     uint8_t            value = 0;
@@ -893,10 +890,10 @@ void test_roundtrip_nested_struct(void)
     // Serialize
     uint8_t buffer[64] = { 0 };
     size_t  size       = dsdl_serialize(outer, &orig_outer_sval, sizeof(buffer), buffer);
-    // float32[<=8] with 3 elements: 4 + 96 = 100 bits
-    // Inner (uint32[<=5] with 2 elements): 3 + 64 = 67 bits
-    // Total: 167 bits = 21 bytes
-    TEST_ASSERT_EQUAL_size_t(21, size);
+    // float32[<=8] with 3 elements: 8 + 96 = 104 bits
+    // Inner (uint32[<=5] with 2 elements): 8 + 64 = 72 bits
+    // Total: 176 bits = 22 bytes
+    TEST_ASSERT_EQUAL_size_t(22, size);
 
     // Deserialize
     float                       result_outer_elements[8] = { 0 };
@@ -912,7 +909,7 @@ void test_roundtrip_nested_struct(void)
     dsdl_value_struct_t result_outer_sval   = { .values = result_outer_ptrs };
 
     size_t consumed = dsdl_deserialize(outer, &result_outer_sval, size, buffer);
-    TEST_ASSERT_EQUAL_size_t(21, consumed);
+    TEST_ASSERT_EQUAL_size_t(22, consumed);
 
     // Verify outer array
     TEST_ASSERT_EQUAL_size_t(3, result_outer_items.count);
@@ -936,7 +933,7 @@ void test_serialize_union(void)
 {
     // Create a simple union type manually for testing
     // Union with 2 fields: uint8 a, uint32 b
-    // Tag requires ceil(log2(2)) = 1 bit
+    // Tag is byte-aligned (8 bits)
 
     // Allocate type descriptor
     static dsdl_type_t field_a_type = DSDL_UINT(8);
@@ -967,14 +964,12 @@ void test_serialize_union(void)
         uint8_t buffer[8] = { 0 };
         size_t  size      = dsdl_serialize(&union_type, &uval, sizeof(buffer), buffer);
 
-        // 1 tag bit + 8 value bits = 9 bits = 2 bytes
+        // 8 tag bits + 8 value bits = 16 bits = 2 bytes
         TEST_ASSERT_EQUAL_size_t(2, size);
 
-        // Tag 0 (bit 0) + value 0xAB (bits 1-8)
-        // Byte 0: bit0=tag(0), bits1-7=0xAB[0:6] = 0b01010110 = 0x56
-        // Byte 1: bit0=0xAB[7] = 1
-        TEST_ASSERT_EQUAL_UINT8(0x56, buffer[0]); // 0xAB << 1 = 0x156, low byte = 0x56
-        TEST_ASSERT_EQUAL_UINT8(0x01, buffer[1]); // High bit of 0xAB
+        // Tag 0 in byte 0, value 0xAB in byte 1.
+        TEST_ASSERT_EQUAL_UINT8(0x00, buffer[0]);
+        TEST_ASSERT_EQUAL_UINT8(0xAB, buffer[1]);
 
         // Deserialize
         uint8_t            result_value = 0;
@@ -994,7 +989,7 @@ void test_serialize_union(void)
         uint8_t buffer[8] = { 0 };
         size_t  size      = dsdl_serialize(&union_type, &uval, sizeof(buffer), buffer);
 
-        // 1 tag bit + 32 value bits = 33 bits = 5 bytes
+        // 8 tag bits + 32 value bits = 40 bits = 5 bytes
         TEST_ASSERT_EQUAL_size_t(5, size);
 
         // Deserialize
