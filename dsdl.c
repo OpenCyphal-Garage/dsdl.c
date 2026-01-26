@@ -6486,8 +6486,6 @@ void dsdl_destroy(dsdl_t* const self)
     }
 
     // Free all type definitions stored in the types WKV
-    // TODO: iterate and free each composite type
-
     // Free WKV internal allocations
     while (!wkv_is_empty(&self->types)) {
         wkv_node_t* const node = wkv_at(&self->types, 0);

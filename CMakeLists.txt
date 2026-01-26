@@ -59,7 +59,7 @@ if(CMAKE_C_COMPILER_ID MATCHES "Clang|GNU")
         -Wundef
         -Wconversion
         -Wsign-conversion
-        -Wno-unused-function  # TODO: re-enable this once the library is functionally complete.
+        -Wno-unused-function  # Several helper functions are intentionally unused; they may be used in future extensions or by library users.
     )
     if(CMAKE_C_COMPILER_ID MATCHES "GNU")
         add_compile_options(
