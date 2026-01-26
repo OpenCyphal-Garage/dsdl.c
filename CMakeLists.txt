@@ -23,6 +23,7 @@ option(DSDL_BUILD_TESTS     "Build the test suite"           ON)
 option(DSDL_ENABLE_COVERAGE "Enable code coverage (GCC/Clang)" OFF)
 option(DSDL_ENABLE_SANITIZERS "Enable ASan/UBSan"            OFF)
 option(DSDL_BUILD_TOOLS     "Build standalone tools"         ON)
+option(DSDL_BUILD_EXAMPLES  "Build example programs"         ON)
 option(DSDL_BUILD_X32_TESTS "Build 32-bit test variants (requires gcc-multilib)" ON)
 
 # ------------------------------------------------------------------------------
@@ -121,7 +122,12 @@ if(DSDL_BUILD_TESTS)
     add_subdirectory(tests)
 endif()
 
+# Examples
 # ------------------------------------------------------------------------------
+if(DSDL_BUILD_EXAMPLES)
+    add_subdirectory(examples)
+endif()
+
 # Tools
 # ------------------------------------------------------------------------------
 if(DSDL_BUILD_TOOLS)
@@ -165,5 +171,6 @@ message(STATUS "  C++ standard:    ${CMAKE_CXX_STANDARD}")
 message(STATUS "  Build tests:     ${DSDL_BUILD_TESTS}")
 message(STATUS "  Coverage:        ${DSDL_ENABLE_COVERAGE}")
 message(STATUS "  Sanitizers:      ${DSDL_ENABLE_SANITIZERS}")
+message(STATUS "  Build examples:  ${DSDL_BUILD_EXAMPLES}")
 message(STATUS "  Build tools:     ${DSDL_BUILD_TOOLS}")
 message(STATUS "")
