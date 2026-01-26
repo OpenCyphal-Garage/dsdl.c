@@ -13,12 +13,12 @@
 /// Example:
 ///   ./load_multi_namespace test_dsdl_root_namespaces/0 test_dsdl_root_namespaces/1 mymsgs.Simple.1.0
 
+#include <dsdl.h>
+
 #include <dirent.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-#include <dsdl.h>
 
 // ============================================================================
 // Memory allocator callback

@@ -15,12 +15,12 @@
 /// Example:
 ///   ./serialize_to_json test_dsdl_root_namespaces/0
 
+#include <dsdl.h>
+
 #include <dirent.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-#include <dsdl.h>
 
 // ============================================================================
 // Memory allocator callback

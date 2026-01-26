@@ -354,7 +354,10 @@ struct dsdl_t
 ///
 /// @param self         Pointer to state structure (caller-allocated)
 /// @param realloc_func Memory allocator callback (required)
-void dsdl_new(dsdl_t* self, void* (*realloc_func)(dsdl_t*, void*, size_t));
+void dsdl_new(dsdl_t* self,
+              void* (*realloc_func)(dsdl_t*, void*, size_t),
+              wkv_str_t (*read)(dsdl_t*, wkv_str_t),
+              wkv_str_t* (*list)(dsdl_t*, wkv_str_t));
 
 /// Destroy parser state and free all allocated memory.
 ///

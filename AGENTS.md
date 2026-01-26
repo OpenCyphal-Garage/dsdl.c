@@ -1,84 +1,19 @@
-# Cyphal DSDL parser in C
+# Instructions for agents
 
-This is a compact C implementation of a Cyphal DSDL parser. Please read the Specification in the specs folder, peruse the reference implementations -- Nunavut (focus on C and Python language support only) and PyDSDL (the main reference implementation).
-
-A crude draft of the API design is proposed in `dsdl.h`.
+Please read the README, the Cyphal Specification (focus on the DSDL section), and peruse the reference implementations.
 
 Directory `test_dsdl_root_namespaces` contains `0/` and `1/`, each with root namespaces (some split across both) for testing.
 
-The core purpose is to allow very basic C applications, including some embedded ones, to load DSDL definitions at runtime, without relying on compile-time code generation. To simplify integration with constrained environments, the reliance on the C library is reduced to the bare minimum -- we do not use stdio or heap; the memory allocation facilities are provided by the user via a single realloc call.
-
-The library will need to perform extensive name lookups; for that purpose it will leverage `lib/wkv.h`.
-
-The entire implementation will be contained in a single C file named `dsdl.c`.
-
-The implementation will be carried out in multiple steps roughly as follows (to be refined):
-
-0. A test suite based on the ThrowTheSwitch Unity framework, or any other framework, needs to be set up, alongside a CMake-based build system. It is expected that some tests may need to access the internals of `dsdl.c`, which can be achieved by `#include <dsdl.c>`, similar to how it's done in libcanard/libudpard test suites. There must be at least one API-level test written in C++20, to make sure that the header is compatible with C++20+. All behaviors tested in the PyDSDL test suite must be tested for dsdl.c as well. Code coverage is needed.
-
-1. A PEG parser needs to be implemented in C. It can be done from scratch, or using a simple third-party library or tool, whichever is easier, as long as no massive external dependencies are introduced. Considering that the grammar is very simple, it makes sense to make a simple ad-hoc parser directly in `dsdl.c`. Since this is a PEG grammar, the parser should be a PEG parser, bypassing the tokenizer. The test namespaces will be used to validate the parser.
-
-2. Once the parser is done, serialization and deserialization logic needs to be implemented per the Specification. It will need to be cross-validated against Nunavut-generated C serialization code for every data type in the test namespaces, with randomly seeded field values.
-
-The plan will need to be refined into finer-grained steps.
-
-**See [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md) for the detailed implementation plan.**
-
-Feel free to add git submodules or install whatever software is needed to accomplish the task.
-
-The project organiztion should roughly follow that of libcanard: https://github.com/OpenCyphal/libcanard/; with clang-tidy and clang-format set up.
-
-## Language Requirements
-
-- **C99+**: The library code must be compatible with C99 and later standards.
-- **C++20+**: The public header (`dsdl.h`) must compile cleanly with C++20 and later.
+During development, please monitor CI status (e.g., using the `gh` app or whatever you prefer).
 
 ## Style
 
-Follow the Zubax Style Guide per `specs/CODING_CONVENTIONS.md`. Run Clang-Format regularly.
+Follow the Zubax Style Guide per `specs/CODING_CONVENTIONS.md`. Use Clang-Format.
+
+The header inclusion order is: own headers first (`dsdl.h`), then third-party libraries (if any), then standard library.
 
 The code must be strictly C99-compliant, possibly with optional features enabled at compile time if a newer version of C is detected, and portable between all standard-compliant compilers (no compiler-specific features can be used; in particular, no `__attribute__` declarations are allowed).
 
-**AGAIN:** COMPILER EXTENSIONS AND PLATFORM ASSUMPTIONS ARE NOT ALLOWED. Assume only standard C99.
-
 The code must not make assumptions about the execution platform (pointer width, endianness, baremetal or not, etc.).
 
-## Remaining tasks
-
-### ~~Address Alignment Cast Warnings in dsdl.c~~ ✅ DONE (2026-01-26)
-**Status**: FIXED
-
-Added `dsdl_align_ptr()` helper function and alignment padding to ensure proper pointer alignment before casts. All x64 and x86 tests pass.
-
-### Improve Code Coverage
-**Target**: 99+% line coverage for dsdl.c only
-
-**Current status (2026-01-26)**: 77% (4455/5741 lines in dsdl.c)
-
-Tests added:
-- `test_error_paths.c`: OOM, buffer, validation errors
-- `test_main.c`: Public API, footprint, error parameter tests  
-- `test_serialization.c`: Float NaN/Inf, exact buffer, array capacity
-- `test_parser.c`: Error recovery tests (12 new)
-
-**To check coverage**:
-```bash
-cmake -S . -B build-cov -DDSDL_ENABLE_COVERAGE=ON
-cmake --build build-cov && ctest --test-dir build-cov
-cmake --build build-cov --target coverage
-```
-
-### ~~Add Examples Directory~~ ✅ DONE (2026-01-26)  
-**Status**: COMPLETE
-
-Created `examples/` with:
-- `load_multi_namespace.c` - Multi-namespace loading demo
-- `serialize_to_json.c` - Serialization + JSON demo
-
-Usage: `./build/examples/load_multi_namespace <ns1> <ns2> [type]`
-
-### Identify and fix memory leaks
-There probably are some memory leaks that need fixing.
-
-### Cleanup code
-Identify unused entities and eliminate them. Simplify what can be simplified. Eliminate redundancies.
+**AGAIN:** COMPILER EXTENSIONS AND PLATFORM ASSUMPTIONS ARE NOT ALLOWED. Assume only standard C99.

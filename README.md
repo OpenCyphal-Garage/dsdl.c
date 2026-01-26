@@ -202,8 +202,17 @@ ctest --test-dir build --output-on-failure
 Run specific test:
 
 ```bash
-./build/tests/test_dsdl_x64
+build/tests/test_dsdl_x64
 ```
+
+The following standalone tools live under `tools/` and use the public API; they are used for verification:
+
+```sh
+build/tools/dsdl_to_dsdl -r test_dsdl_root_namespaces/0 -r test_dsdl_root_namespaces/1 validation.Expressions.0.1
+build/tools/dsdl_to_json -r test_dsdl_root_namespaces/0 -r test_dsdl_root_namespaces/1 validation.Expressions.0.1
+```
+
+`dsdl_to_dsdl` emits normalized DSDL using constant types from the public API.
 
 ## Code Coverage
 
