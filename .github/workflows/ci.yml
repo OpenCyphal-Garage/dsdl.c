@@ -27,10 +27,17 @@ jobs:
         sudo apt-get install -y \
           cmake \
           build-essential \
-          clang-format \
           clang-tidy \
           python3 \
-          python3-pip
+          python3-pip \
+          wget \
+          gnupg
+        # Install clang-format 19 from LLVM for LeftWithLastLine support
+        wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc
+        echo "deb http://apt.llvm.org/noble/ llvm-toolchain-noble-19 main" | sudo tee /etc/apt/sources.list.d/llvm.list
+        sudo apt-get update
+        sudo apt-get install -y clang-format-19
+        sudo ln -sf /usr/bin/clang-format-19 /usr/bin/clang-format
         if [ "${{ matrix.arch }}" = "x32" ]; then
           sudo apt-get install -y gcc-multilib g++-multilib
         fi
