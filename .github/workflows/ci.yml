@@ -41,7 +41,8 @@ jobs:
         cmake -S . -B build \
           -DCMAKE_BUILD_TYPE=Debug \
           -DDSDL_BUILD_TESTS=ON \
-          -DDSDL_BUILD_TOOLS=ON
+          -DDSDL_BUILD_TOOLS=ON \
+          ${{ matrix.arch == 'x64' && '-DDSDL_BUILD_X32_TESTS=OFF' || '' }}
           
     - name: Build
       run: cmake --build build -j$(nproc)
@@ -52,12 +53,12 @@ jobs:
     - name: Check clang-format
       run: |
         clang-format --version
-        find . -name "*.c" -o -name "*.h" | \
-          grep -v "build/" | \
-          grep -v "tests/unity/" | \
-          grep -v "lib/" | \
-          xargs clang-format --dry-run --Werror
-      continue-on-error: true
+        find . \( -name "*.c" -o -name "*.h" \) \
+          -not -path "./build/*" \
+          -not -path "./tests/unity/*" \
+          -not -path "./lib/*" \
+          -not -path "./reference_implementations/*" \
+          | xargs clang-format --dry-run --Werror
 
   coverage:
     name: Code Coverage
@@ -75,6 +76,8 @@ jobs:
         sudo apt-get install -y \
           cmake \
           build-essential \
+          gcc-multilib \
+          g++-multilib \
           python3 \
           python3-pip \
           lcov
