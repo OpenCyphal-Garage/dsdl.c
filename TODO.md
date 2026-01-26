@@ -1,12 +1,12 @@
 # Remaining tasks
 
-## Provide invocation examples for the examples in the readme
+## Improve Code Coverage
 
-Something that the user could copy-paste to check out the examples.
+Target: 99+% line coverage for dsdl.c only
 
-## Identify and fix memory leaks
+## Configure CI to fail if test coverage is too low
 
-There probably are some memory leaks that need fixing.
+CI must require 99% coverage.
 
 ## Cleanup code
 
@@ -16,6 +16,6 @@ There probably are some memory leaks that need fixing.
 - Simplify what can be simplified.
 - Eliminate redundancies.
 
-## Improve Code Coverage
+## Identify and fix memory leaks
 
-Target: 99+% line coverage for dsdl.c only
+There probably are some memory leaks that need fixing.

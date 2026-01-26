@@ -25,18 +25,7 @@ Features:
 
 To use the library, simply add `dsdl.c` to your build and add `dsdl.h` to your include paths. Also, add [`wkv.h`](https://github.com/pavel-kirienko/wild_key_value) to your include paths -- a single-header key-value container with pattern matching.
 
-See the `examples/` directory for additional examples. Build them with CMake, then run:
-
-```sh
-# Load a type from multiple namespaces and print its structure
-build/examples/load_multi_namespace \
-    test_dsdl_root_namespaces/0 \
-    test_dsdl_root_namespaces/1 \
-    mymsgs.Simple.1.0
-
-# Serialize a simple type to binary and print hex dump
-build/examples/serialize_to_json test_dsdl_root_namespaces/0
-```
+See the `examples/` directory for additional examples.
 
 ### Basic Example
 
