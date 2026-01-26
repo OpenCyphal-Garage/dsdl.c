@@ -89,3 +89,9 @@ Add `examples/` with one or two very simple executables showing how to read DSDL
 3. Create `examples/serialize_to_json.c` - Serialization + JSON conversion demo
 4. Enable `DSDL_CONFIG_TRACE` with stderr logging
 5. Ensure README examples are up to date with new API (`dsdl_error_t* err` parameter)
+
+### Identify and fix memory leaks
+There probably are some memory leaks that need fixing.
+
+### Cleanup code
+Identify unused entities and eliminate them. Simplify what can be simplified. Eliminate redundancies.

@@ -233,8 +233,9 @@ void test_dsdl_serialized_footprint_primitive_uint8(void)
     const dsdl_type_composite_t* simple = dsdl_read(&g_dsdl, wkv_key("mymsgs.Simple.1.0"));
     TEST_ASSERT_NOT_NULL(simple);
 
-    uint64_t footprint = dsdl_serialized_footprint(simple);
-    TEST_ASSERT_GREATER_THAN_UINT64(0, footprint);
+    // Simple.1.0: int32 a (4 bytes) + float16 b (2 bytes) + bool c (1 bit, padded to 1 byte) = 7 bytes
+    // Actually: 32 + 16 + 1 = 49 bits = 7 bytes (ceil(49/8))
+    TEST_ASSERT_EQUAL_size_t(7, (size_t)dsdl_serialized_footprint(simple));
 
     teardown_dsdl();
 }
@@ -247,8 +248,9 @@ void test_dsdl_serialized_footprint_array(void)
     const dsdl_type_composite_t* inner = dsdl_read(&g_dsdl, wkv_key("mymsgs.Inner.1.0"));
     TEST_ASSERT_NOT_NULL(inner);
 
-    uint64_t footprint = dsdl_serialized_footprint(inner);
-    TEST_ASSERT_GREATER_THAN_UINT64(0, footprint);
+    // Inner.1.0: uint32[<=5] items
+    // Max size: 8-bit count + 5 * 32 bits = 8 + 160 = 168 bits = 21 bytes
+    TEST_ASSERT_EQUAL_size_t(21, (size_t)dsdl_serialized_footprint(inner));
 
     teardown_dsdl();
 }

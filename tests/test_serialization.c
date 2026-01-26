@@ -1240,7 +1240,7 @@ static void test_serialize_exact_buffer_size(void)
     TEST_ASSERT_NOT_NULL(simple);
 
     // Get footprint (should be 7 bytes for 49 bits)
-    size_t footprint = dsdl_serialized_footprint(simple);
+    size_t footprint = (size_t)dsdl_serialized_footprint(simple);
     TEST_ASSERT_EQUAL_size_t(7, footprint);
 
     // Create field values
