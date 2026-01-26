@@ -32,6 +32,8 @@
 modules.order
 Module.symvers
 *.old
+.cache/
+.sisyphus/
 dkms.conf
 **/.idea/*
 !**/.idea/dictionaries

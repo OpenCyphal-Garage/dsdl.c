@@ -71,8 +71,9 @@ at runtime and provides serialization/deserialization.
 
 ## Phase 5: Polish & Documentation
 
-- Public error codes (if needed) and API polish.
-- Doxygen and usage examples.
+- Add proper error codes; currently we only return success/failure which is not good.
+- API polish.
+- Write README with simple snippets showing how to read DSDL files, serialize, deserialize, and convert to JSON.
 
 
 ## Success Criteria
