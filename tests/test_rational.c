@@ -365,6 +365,235 @@ void test_rational_cmp_large_denominator(void)
 }
 
 // ============================================================================
+// Overflow fallback tests (lines 906-916)
+// ============================================================================
+
+void test_rational_cmp_overflow_fallback_positive(void)
+{
+    dsdl_rational_t a;
+    dsdl_rational_t b;
+
+    a.num.limb_count = 5U;
+    a.num.limbs[0]   = 999999999U;
+    a.num.limbs[1]   = 999999999U;
+    a.num.limbs[2]   = 999999999U;
+    a.num.limbs[3]   = 999999999U;
+    a.num.limbs[4]   = 999999999U;
+    a.num.negative   = false;
+
+    a.den.limb_count = 1U;
+    a.den.limbs[0]   = 1U;
+
+    b.num.limb_count = 5U;
+    b.num.limbs[0]   = 100000000U;
+    b.num.limbs[1]   = 100000000U;
+    b.num.limbs[2]   = 100000000U;
+    b.num.limbs[3]   = 100000000U;
+    b.num.limbs[4]   = 100000000U;
+    b.num.negative   = false;
+
+    b.den.limb_count = 1U;
+    b.den.limbs[0]   = 1U;
+
+    int cmp = dsdl_rational_cmp(a, b);
+    TEST_ASSERT_TRUE(cmp > 0);
+}
+
+void test_rational_cmp_overflow_fallback_negative(void)
+{
+    dsdl_rational_t a;
+    dsdl_rational_t b;
+
+    a.num.limb_count = 5U;
+    a.num.limbs[0]   = 123456789U;
+    a.num.limbs[1]   = 987654321U;
+    a.num.limbs[2]   = 111111111U;
+    a.num.limbs[3]   = 222222222U;
+    a.num.limbs[4]   = 333333333U;
+    a.num.negative   = true;
+
+    a.den.limb_count = 5U;
+    a.den.limbs[0]   = 100000000U;
+    a.den.limbs[1]   = 200000000U;
+    a.den.limbs[2]   = 300000000U;
+    a.den.limbs[3]   = 400000000U;
+    a.den.limbs[4]   = 500000000U;
+
+    b.num.limb_count = 5U;
+    b.num.limbs[0]   = 111111111U;
+    b.num.limbs[1]   = 222222222U;
+    b.num.limbs[2]   = 333333333U;
+    b.num.limbs[3]   = 444444444U;
+    b.num.limbs[4]   = 555555555U;
+    b.num.negative   = false;
+
+    b.den.limb_count = 5U;
+    b.den.limbs[0]   = 100000000U;
+    b.den.limbs[1]   = 100000000U;
+    b.den.limbs[2]   = 100000000U;
+    b.den.limbs[3]   = 100000000U;
+    b.den.limbs[4]   = 100000000U;
+
+    int cmp = dsdl_rational_cmp(a, b);
+    TEST_ASSERT_TRUE(cmp < 0);
+}
+
+void test_rational_cmp_overflow_fallback_equal(void)
+{
+    dsdl_rational_t a;
+    dsdl_rational_t b;
+
+    a.num.limb_count = 5U;
+    a.num.limbs[0]   = 123456789U;
+    a.num.limbs[1]   = 987654321U;
+    a.num.limbs[2]   = 111111111U;
+    a.num.limbs[3]   = 222222222U;
+    a.num.limbs[4]   = 333333333U;
+    a.num.negative   = false;
+
+    a.den.limb_count = 5U;
+    a.den.limbs[0]   = 100000000U;
+    a.den.limbs[1]   = 200000000U;
+    a.den.limbs[2]   = 300000000U;
+    a.den.limbs[3]   = 400000000U;
+    a.den.limbs[4]   = 500000000U;
+
+    b.num.limb_count = 5U;
+    b.num.limbs[0]   = 123456789U;
+    b.num.limbs[1]   = 987654321U;
+    b.num.limbs[2]   = 111111111U;
+    b.num.limbs[3]   = 222222222U;
+    b.num.limbs[4]   = 333333333U;
+    b.num.negative   = false;
+
+    b.den.limb_count = 5U;
+    b.den.limbs[0]   = 100000000U;
+    b.den.limbs[1]   = 200000000U;
+    b.den.limbs[2]   = 300000000U;
+    b.den.limbs[3]   = 400000000U;
+    b.den.limbs[4]   = 500000000U;
+
+    int cmp = dsdl_rational_cmp(a, b);
+    TEST_ASSERT_EQUAL_INT(0, cmp);
+}
+
+// ============================================================================
+// dsdl_rational_is_nan edge case tests
+// ============================================================================
+
+void test_rational_is_nan_zero_denominator(void)
+{
+    dsdl_rational_t r;
+    TEST_ASSERT_TRUE(dsdl_bigint_from_intmax(&r.num, 42));
+    TEST_ASSERT_TRUE(dsdl_bigint_from_uintmax(&r.den, 0U));
+
+    TEST_ASSERT_TRUE(dsdl_rational_is_nan(r));
+}
+
+void test_rational_is_nan_valid_rational(void)
+{
+    dsdl_rational_t r = make_rational(1, 2);
+    TEST_ASSERT_FALSE(dsdl_rational_is_nan(r));
+}
+
+void test_rational_is_nan_zero_numerator(void)
+{
+    dsdl_rational_t r = make_rational(0, 1);
+    TEST_ASSERT_FALSE(dsdl_rational_is_nan(r));
+}
+
+void test_rational_is_nan_large_denominator(void)
+{
+    dsdl_rational_t r = make_rational(1, UINTMAX_MAX);
+    TEST_ASSERT_FALSE(dsdl_rational_is_nan(r));
+}
+
+// ============================================================================
+// dsdl_rational_from_double edge case tests
+// ============================================================================
+
+void test_rational_from_double_zero(void)
+{
+    dsdl_rational_t r = dsdl_rational_from_double(0.0);
+    assert_bigint_eq_intmax(0, r.num);
+    assert_bigint_eq_uintmax(1, r.den);
+}
+
+void test_rational_from_double_negative_zero(void)
+{
+    dsdl_rational_t r = dsdl_rational_from_double(-0.0);
+    assert_bigint_eq_intmax(0, r.num);
+    assert_bigint_eq_uintmax(1, r.den);
+}
+
+void test_rational_from_double_one(void)
+{
+    dsdl_rational_t r = dsdl_rational_from_double(1.0);
+    assert_bigint_eq_intmax(1, r.num);
+    assert_bigint_eq_uintmax(1, r.den);
+}
+
+void test_rational_from_double_negative_one(void)
+{
+    dsdl_rational_t r = dsdl_rational_from_double(-1.0);
+    assert_bigint_eq_intmax(-1, r.num);
+    assert_bigint_eq_uintmax(1, r.den);
+}
+
+void test_rational_from_double_half(void)
+{
+    dsdl_rational_t r = dsdl_rational_from_double(0.5);
+    assert_bigint_eq_intmax(1, r.num);
+    assert_bigint_eq_uintmax(2, r.den);
+}
+
+void test_rational_from_double_very_small(void)
+{
+    double          x = 1.0e-50;
+    dsdl_rational_t r = dsdl_rational_from_double(x);
+
+    TEST_ASSERT_FALSE(dsdl_rational_is_nan(r));
+    TEST_ASSERT_FALSE(r.num.negative);
+    TEST_ASSERT_FALSE(dsdl_bigint_is_zero(&r.num));
+}
+
+void test_rational_from_double_infinity(void)
+{
+    dsdl_rational_t r = dsdl_rational_from_double((double)INFINITY);
+    TEST_ASSERT_TRUE(dsdl_rational_is_nan(r));
+}
+
+void test_rational_from_double_negative_infinity(void)
+{
+    dsdl_rational_t r = dsdl_rational_from_double(-(double)INFINITY);
+    TEST_ASSERT_TRUE(dsdl_rational_is_nan(r));
+}
+
+void test_rational_from_double_nan(void)
+{
+    dsdl_rational_t r = dsdl_rational_from_double((double)NAN);
+    TEST_ASSERT_TRUE(dsdl_rational_is_nan(r));
+}
+
+void test_rational_from_double_large_positive(void)
+{
+    double          x = 1.0e50;
+    dsdl_rational_t r = dsdl_rational_from_double(x);
+
+    TEST_ASSERT_FALSE(dsdl_rational_is_nan(r));
+    TEST_ASSERT_FALSE(r.num.negative);
+}
+
+void test_rational_from_double_large_negative(void)
+{
+    double          x = -1.0e50;
+    dsdl_rational_t r = dsdl_rational_from_double(x);
+
+    TEST_ASSERT_FALSE(dsdl_rational_is_nan(r));
+    TEST_ASSERT_TRUE(r.num.negative);
+}
+
+// ============================================================================
 // Main
 // ============================================================================
 
@@ -393,6 +622,27 @@ int main(void)
     RUN_TEST(test_rational_div_large_denominator);
     RUN_TEST(test_rational_add_large_denominator);
     RUN_TEST(test_rational_cmp_large_denominator);
+
+    RUN_TEST(test_rational_cmp_overflow_fallback_positive);
+    RUN_TEST(test_rational_cmp_overflow_fallback_negative);
+    RUN_TEST(test_rational_cmp_overflow_fallback_equal);
+
+    RUN_TEST(test_rational_is_nan_zero_denominator);
+    RUN_TEST(test_rational_is_nan_valid_rational);
+    RUN_TEST(test_rational_is_nan_zero_numerator);
+    RUN_TEST(test_rational_is_nan_large_denominator);
+
+    RUN_TEST(test_rational_from_double_zero);
+    RUN_TEST(test_rational_from_double_negative_zero);
+    RUN_TEST(test_rational_from_double_one);
+    RUN_TEST(test_rational_from_double_negative_one);
+    RUN_TEST(test_rational_from_double_half);
+    RUN_TEST(test_rational_from_double_very_small);
+    RUN_TEST(test_rational_from_double_infinity);
+    RUN_TEST(test_rational_from_double_negative_infinity);
+    RUN_TEST(test_rational_from_double_nan);
+    RUN_TEST(test_rational_from_double_large_positive);
+    RUN_TEST(test_rational_from_double_large_negative);
 
     return UNITY_END();
 }
