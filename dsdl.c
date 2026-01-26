@@ -9018,8 +9018,10 @@ static uint64_t dsdl_bitbuf_read(dsdl_bitbuf_t* const buf, uint64_t bits)
     if (buf->error) {
         return 0;
     }
+    // Implicit zero extension per Cyphal spec 3.7.1.1
+    // If reading past buffer end, advance offset and return zeros
     if ((buf->offset_bits + bits) > buf->capacity_bits) {
-        buf->error = true;
+        buf->offset_bits += bits;
         return 0;
     }
 
@@ -9067,10 +9069,8 @@ static void dsdl_bitbuf_align_read(dsdl_bitbuf_t* const buf)
     const uint64_t remainder = buf->offset_bits % 8;
     if (remainder != 0) {
         const uint64_t advance = 8 - remainder;
-        if ((buf->offset_bits + advance) > buf->capacity_bits) {
-            buf->error = true;
-            return;
-        }
+        // Implicit zero extension per Cyphal spec 3.7.1.1
+        // Always advance offset, even if past buffer end
         buf->offset_bits += advance;
     }
 }
@@ -9826,9 +9826,13 @@ static void dsdl_deserialize_type(dsdl_bitbuf_t* const buf, const dsdl_type_t* c
 size_t dsdl_serialize(const dsdl_type_composite_t* const type,
                       const void* const                  value,
                       const size_t                       output_size,
-                      void* const                        output)
+                      void* const                        output,
+                      dsdl_error_t*                      err)
 {
     if ((type == NULL) || (value == NULL) || (output == NULL) || (output_size == 0)) {
+        if (err != NULL) {
+            *err = dsdl_error_representation;
+        }
         return SIZE_MAX;
     }
 
@@ -9846,12 +9850,22 @@ size_t dsdl_serialize(const dsdl_type_composite_t* const type,
     dsdl_serialize_composite(&buf, type, value);
 
     if (buf.error) {
+        if (err != NULL) {
+            *err = buf.error;
+        }
         return SIZE_MAX;
+    }
+
+    if (err != NULL) {
+        *err = dsdl_error_none;
     }
 
     // Return bytes written (rounded up)
     const uint64_t bytes_written = (buf.offset_bits + 7U) / 8U;
     if (bytes_written > SIZE_MAX) {
+        if (err != NULL) {
+            *err = dsdl_error_buffer_too_small;
+        }
         return SIZE_MAX;
     }
     return (size_t)bytes_written;
@@ -9860,9 +9874,13 @@ size_t dsdl_serialize(const dsdl_type_composite_t* const type,
 size_t dsdl_deserialize(const dsdl_type_composite_t* const type,
                         void* const                        value,
                         const size_t                       input_size,
-                        const void* const                  input)
+                        const void* const                  input,
+                        dsdl_error_t*                      err)
 {
     if ((type == NULL) || (value == NULL) || (input == NULL) || (input_size == 0)) {
+        if (err != NULL) {
+            *err = dsdl_error_representation;
+        }
         return SIZE_MAX;
     }
 
@@ -9878,10 +9896,21 @@ size_t dsdl_deserialize(const dsdl_type_composite_t* const type,
 
     // Return SIZE_MAX on error, otherwise bytes consumed (rounded up)
     if (buf.error) {
+        if (err != NULL) {
+            *err = buf.error;
+        }
         return SIZE_MAX;
     }
+
+    if (err != NULL) {
+        *err = dsdl_error_none;
+    }
+
     const uint64_t bytes_read = (buf.offset_bits + 7U) / 8U;
     if (bytes_read > SIZE_MAX) {
+        if (err != NULL) {
+            *err = dsdl_error_buffer_too_small;
+        }
         return SIZE_MAX;
     }
     return (size_t)bytes_read;

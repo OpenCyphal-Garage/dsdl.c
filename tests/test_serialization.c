@@ -235,10 +235,12 @@ void test_bitbuf_read_overflow_fails(void)
     uint8_t       buffer[2] = { 0xAB, 0xCD };
     dsdl_bitbuf_t buf       = { buffer, 16, 0, false };
 
-    // Read more bits than available - should fail
+    // Read more bits than available - implicit zero extension per Cyphal spec
+    // Should return 0 and advance offset, NOT set error
     buf.offset_bits = 8;
     TEST_ASSERT_EQUAL_UINT32(0, (uint32_t)dsdl_bitbuf_read(&buf, 16));
-    TEST_ASSERT_TRUE(buf.error);
+    TEST_ASSERT_FALSE(buf.error);
+    TEST_ASSERT_EQUAL_UINT64(24, buf.offset_bits);
 }
 
 // ============================================================================
@@ -453,7 +455,7 @@ void test_serialize_simple_struct(void)
 
     // Serialize
     uint8_t buffer[16] = { 0 };
-    size_t  size       = dsdl_serialize(simple, &sval, sizeof(buffer), buffer);
+    size_t  size       = dsdl_serialize(simple, &sval, sizeof(buffer), buffer, NULL);
 
     // Expected: 32 + 16 + 1 = 49 bits = 7 bytes
     TEST_ASSERT_EQUAL_size_t(7, size);
@@ -478,7 +480,7 @@ void test_serialize_simple_struct(void)
     void*               result_ptrs[] = { &result_a, &result_b, &result_c };
     dsdl_value_struct_t result_sval   = { .values = result_ptrs };
 
-    size_t consumed = dsdl_deserialize(simple, &result_sval, size, buffer);
+    size_t consumed = dsdl_deserialize(simple, &result_sval, size, buffer, NULL);
     TEST_ASSERT_EQUAL_size_t(7, consumed);
     TEST_ASSERT_EQUAL_INT32(0x12345678, result_a);
     TEST_ASSERT_FLOAT_WITHIN(0.001f, 1.0f, result_b);
@@ -517,7 +519,7 @@ void test_serialize_variable_array_struct(void)
 
     // Serialize
     uint8_t buffer[32] = { 0 };
-    size_t  size       = dsdl_serialize(inner, &sval, sizeof(buffer), buffer);
+    size_t  size       = dsdl_serialize(inner, &sval, sizeof(buffer), buffer, NULL);
 
     // Expected: 8 bits length prefix + 3 * 32 bits = 104 bits = 13 bytes
     TEST_ASSERT_EQUAL_size_t(13, size);
@@ -560,7 +562,7 @@ void test_serialize_nested_struct(void)
 
     // Serialize
     uint8_t buffer[64] = { 0 };
-    size_t  size       = dsdl_serialize(outer, &outer_sval, sizeof(buffer), buffer);
+    size_t  size       = dsdl_serialize(outer, &outer_sval, sizeof(buffer), buffer, NULL);
 
     // Expected size:
     // float32[<=8] with 2 elements: 8 prefix bits + 2*32 = 72 bits
@@ -591,7 +593,7 @@ void test_roundtrip_simple_struct(void)
 
     // Serialize
     uint8_t buffer[16] = { 0 };
-    size_t  size       = dsdl_serialize(simple, &orig_sval, sizeof(buffer), buffer);
+    size_t  size       = dsdl_serialize(simple, &orig_sval, sizeof(buffer), buffer, NULL);
     TEST_ASSERT_EQUAL_size_t(7, size);
 
     // Deserialize into new values
@@ -601,7 +603,7 @@ void test_roundtrip_simple_struct(void)
     void*               result_ptrs[] = { &result_a, &result_b, &result_c };
     dsdl_value_struct_t result_sval   = { .values = result_ptrs };
 
-    size_t consumed = dsdl_deserialize(simple, &result_sval, size, buffer);
+    size_t consumed = dsdl_deserialize(simple, &result_sval, size, buffer, NULL);
     TEST_ASSERT_EQUAL_size_t(7, consumed);
 
     // Verify roundtrip (float16 has limited precision)
@@ -630,7 +632,7 @@ void test_roundtrip_variable_array(void)
 
     // Serialize
     uint8_t buffer[32] = { 0 };
-    size_t  size       = dsdl_serialize(inner, &orig_sval, sizeof(buffer), buffer);
+    size_t  size       = dsdl_serialize(inner, &orig_sval, sizeof(buffer), buffer, NULL);
     // 8 prefix bits + 3*32 = 104 bits = 13 bytes
     TEST_ASSERT_EQUAL_size_t(13, size);
 
@@ -641,7 +643,7 @@ void test_roundtrip_variable_array(void)
     void*               result_ptrs[] = { &result_array };
     dsdl_value_struct_t result_sval   = { .values = result_ptrs };
 
-    size_t consumed = dsdl_deserialize(inner, &result_sval, size, buffer);
+    size_t consumed = dsdl_deserialize(inner, &result_sval, size, buffer, NULL);
     TEST_ASSERT_EQUAL_size_t(13, consumed);
 
     // Verify
@@ -670,7 +672,7 @@ void test_deserialize_array_overflow_fails(void)
     dsdl_value_struct_t orig_sval   = { .values = orig_ptrs };
 
     uint8_t buffer[32] = { 0 };
-    size_t  size       = dsdl_serialize(inner, &orig_sval, sizeof(buffer), buffer);
+    size_t  size       = dsdl_serialize(inner, &orig_sval, sizeof(buffer), buffer, NULL);
     TEST_ASSERT_EQUAL_size_t(13, size);
 
     // Try to deserialize into a buffer that can only hold 2 elements - should fail
@@ -680,7 +682,7 @@ void test_deserialize_array_overflow_fails(void)
     void*               small_ptrs[] = { &small_array };
     dsdl_value_struct_t small_sval   = { .values = small_ptrs };
 
-    size_t consumed = dsdl_deserialize(inner, &small_sval, size, buffer);
+    size_t consumed = dsdl_deserialize(inner, &small_sval, size, buffer, NULL);
     TEST_ASSERT_EQUAL_size_t(SIZE_MAX, consumed); // Should fail
 
     teardown_dsdl();
@@ -702,7 +704,7 @@ void test_serialize_array_overflow_fails(void)
     dsdl_value_struct_t sval         = { .values = field_ptrs };
 
     uint8_t buffer[64] = { 0 };
-    size_t  size       = dsdl_serialize(inner, &sval, sizeof(buffer), buffer);
+    size_t  size       = dsdl_serialize(inner, &sval, sizeof(buffer), buffer, NULL);
     TEST_ASSERT_EQUAL_size_t(SIZE_MAX, size);
 
     teardown_dsdl();
@@ -725,7 +727,7 @@ void test_deserialize_array_prefix_exceeds_capacity_fails(void)
     void*                       field_ptrs[] = { &array_val };
     dsdl_value_struct_t         sval         = { .values = field_ptrs };
 
-    size_t consumed = dsdl_deserialize(inner, &sval, sizeof(buffer), buffer);
+    size_t consumed = dsdl_deserialize(inner, &sval, sizeof(buffer), buffer, NULL);
     TEST_ASSERT_EQUAL_size_t(SIZE_MAX, consumed);
 
     teardown_dsdl();
@@ -759,7 +761,7 @@ void test_serialize_union_invalid_tag_fails(void)
     dsdl_value_union_t uval  = { .tag = 3, .value = &value }; // Invalid tag for 3 fields
 
     uint8_t buffer[8] = { 0 };
-    size_t  size      = dsdl_serialize(&union_type, &uval, sizeof(buffer), buffer);
+    size_t  size      = dsdl_serialize(&union_type, &uval, sizeof(buffer), buffer, NULL);
     TEST_ASSERT_EQUAL_size_t(SIZE_MAX, size);
 }
 
@@ -793,7 +795,7 @@ void test_deserialize_union_invalid_tag_fails(void)
     uint8_t            value = 0;
     dsdl_value_union_t uval  = { .tag = 0, .value = &value };
 
-    size_t consumed = dsdl_deserialize(&union_type, &uval, sizeof(buffer), buffer);
+    size_t consumed = dsdl_deserialize(&union_type, &uval, sizeof(buffer), buffer, NULL);
     TEST_ASSERT_EQUAL_size_t(SIZE_MAX, consumed);
 }
 
@@ -820,13 +822,13 @@ void test_serialize_unsigned_saturates(void)
     dsdl_value_struct_t sval         = { .values = field_ptrs };
 
     uint8_t buffer[4] = { 0 };
-    size_t  size      = dsdl_serialize(&struct_type, &sval, sizeof(buffer), buffer);
+    size_t  size      = dsdl_serialize(&struct_type, &sval, sizeof(buffer), buffer, NULL);
     TEST_ASSERT_TRUE(size != SIZE_MAX);
 
     uint_least8_t       out_value  = 0;
     void*               out_ptrs[] = { &out_value };
     dsdl_value_struct_t out_sval   = { .values = out_ptrs };
-    size_t              consumed   = dsdl_deserialize(&struct_type, &out_sval, size, buffer);
+    size_t              consumed   = dsdl_deserialize(&struct_type, &out_sval, size, buffer, NULL);
     TEST_ASSERT_TRUE(consumed != SIZE_MAX);
     TEST_ASSERT_EQUAL_UINT8(127, out_value);
 }
@@ -854,13 +856,13 @@ void test_serialize_signed_saturates(void)
     dsdl_value_struct_t sval         = { .values = field_ptrs };
 
     uint8_t buffer[4] = { 0 };
-    size_t  size      = dsdl_serialize(&struct_type, &sval, sizeof(buffer), buffer);
+    size_t  size      = dsdl_serialize(&struct_type, &sval, sizeof(buffer), buffer, NULL);
     TEST_ASSERT_TRUE(size != SIZE_MAX);
 
     int_least8_t        out_value  = 0;
     void*               out_ptrs[] = { &out_value };
     dsdl_value_struct_t out_sval   = { .values = out_ptrs };
-    size_t              consumed   = dsdl_deserialize(&struct_type, &out_sval, size, buffer);
+    size_t              consumed   = dsdl_deserialize(&struct_type, &out_sval, size, buffer, NULL);
     TEST_ASSERT_TRUE(consumed != SIZE_MAX);
     TEST_ASSERT_EQUAL_INT8(15, out_value);
 }
@@ -889,7 +891,7 @@ void test_roundtrip_nested_struct(void)
 
     // Serialize
     uint8_t buffer[64] = { 0 };
-    size_t  size       = dsdl_serialize(outer, &orig_outer_sval, sizeof(buffer), buffer);
+    size_t  size       = dsdl_serialize(outer, &orig_outer_sval, sizeof(buffer), buffer, NULL);
     // float32[<=8] with 3 elements: 8 + 96 = 104 bits
     // Inner (uint32[<=5] with 2 elements): 8 + 64 = 72 bits
     // Total: 176 bits = 22 bytes
@@ -908,7 +910,7 @@ void test_roundtrip_nested_struct(void)
     void*               result_outer_ptrs[] = { &result_outer_items, &result_inner_sval };
     dsdl_value_struct_t result_outer_sval   = { .values = result_outer_ptrs };
 
-    size_t consumed = dsdl_deserialize(outer, &result_outer_sval, size, buffer);
+    size_t consumed = dsdl_deserialize(outer, &result_outer_sval, size, buffer, NULL);
     TEST_ASSERT_EQUAL_size_t(22, consumed);
 
     // Verify outer array
@@ -962,7 +964,7 @@ void test_serialize_union(void)
         dsdl_value_union_t uval    = { .tag = 0, .value = &value_0 };
 
         uint8_t buffer[8] = { 0 };
-        size_t  size      = dsdl_serialize(&union_type, &uval, sizeof(buffer), buffer);
+        size_t  size      = dsdl_serialize(&union_type, &uval, sizeof(buffer), buffer, NULL);
 
         // 8 tag bits + 8 value bits = 16 bits = 2 bytes
         TEST_ASSERT_EQUAL_size_t(2, size);
@@ -975,7 +977,7 @@ void test_serialize_union(void)
         uint8_t            result_value = 0;
         dsdl_value_union_t result_uval  = { .tag = 99, .value = &result_value };
 
-        size_t consumed = dsdl_deserialize(&union_type, &result_uval, size, buffer);
+        size_t consumed = dsdl_deserialize(&union_type, &result_uval, size, buffer, NULL);
         TEST_ASSERT_EQUAL_size_t(2, consumed);
         TEST_ASSERT_EQUAL_size_t(0, result_uval.tag);
         TEST_ASSERT_EQUAL_UINT8(0xAB, result_value);
@@ -987,7 +989,7 @@ void test_serialize_union(void)
         dsdl_value_union_t uval    = { .tag = 1, .value = &value_1 };
 
         uint8_t buffer[8] = { 0 };
-        size_t  size      = dsdl_serialize(&union_type, &uval, sizeof(buffer), buffer);
+        size_t  size      = dsdl_serialize(&union_type, &uval, sizeof(buffer), buffer, NULL);
 
         // 8 tag bits + 32 value bits = 40 bits = 5 bytes
         TEST_ASSERT_EQUAL_size_t(5, size);
@@ -996,7 +998,7 @@ void test_serialize_union(void)
         uint32_t           result_value = 0;
         dsdl_value_union_t result_uval  = { .tag = 99, .value = &result_value };
 
-        size_t consumed = dsdl_deserialize(&union_type, &result_uval, size, buffer);
+        size_t consumed = dsdl_deserialize(&union_type, &result_uval, size, buffer, NULL);
         TEST_ASSERT_EQUAL_size_t(5, consumed);
         TEST_ASSERT_EQUAL_size_t(1, result_uval.tag);
         TEST_ASSERT_EQUAL_UINT32(0x12345678, result_value);
