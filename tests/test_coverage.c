@@ -1477,6 +1477,245 @@ static void test_serialize_bit_alignment(void)
 }
 
 /* ============================================================================
+ * Category 1.8: Buffer size serialization tests (10 functions)
+ * ============================================================================ */
+
+static void test_serialize_buffer_size_0(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("validation.Simple.0.1"));
+    TEST_ASSERT_NOT_NULL(type);
+
+    uint_least8_t       a        = 1;
+    uint_least8_t       b        = 2;
+    uint_least16_t      c        = 3;
+    void*               fields[] = { &a, &b, &c };
+    dsdl_value_struct_t value    = { .values = fields };
+
+    uint8_t      buffer[1];
+    dsdl_error_t err    = dsdl_error_none;
+    size_t       result = dsdl_serialize(type, &value, 0, buffer, &err);
+    TEST_ASSERT_EQUAL(SIZE_MAX, result);
+
+    teardown_dsdl();
+}
+
+static void test_serialize_buffer_size_1(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("validation.Simple.0.1"));
+    TEST_ASSERT_NOT_NULL(type);
+
+    uint_least8_t       a        = 1;
+    uint_least8_t       b        = 2;
+    uint_least16_t      c        = 3;
+    void*               fields[] = { &a, &b, &c };
+    dsdl_value_struct_t value    = { .values = fields };
+
+    uint8_t      buffer[1];
+    dsdl_error_t err    = dsdl_error_none;
+    size_t       result = dsdl_serialize(type, &value, 1, buffer, &err);
+    TEST_ASSERT_EQUAL(SIZE_MAX, result);
+
+    teardown_dsdl();
+}
+
+static void test_serialize_buffer_size_2(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("validation.Simple.0.1"));
+    TEST_ASSERT_NOT_NULL(type);
+
+    uint_least8_t       a        = 1;
+    uint_least8_t       b        = 2;
+    uint_least16_t      c        = 3;
+    void*               fields[] = { &a, &b, &c };
+    dsdl_value_struct_t value    = { .values = fields };
+
+    uint8_t      buffer[2];
+    dsdl_error_t err    = dsdl_error_none;
+    size_t       result = dsdl_serialize(type, &value, 2, buffer, &err);
+    TEST_ASSERT_EQUAL(SIZE_MAX, result);
+
+    teardown_dsdl();
+}
+
+static void test_serialize_buffer_size_4(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("validation.Simple.0.1"));
+    TEST_ASSERT_NOT_NULL(type);
+
+    uint_least8_t       a        = 1;
+    uint_least8_t       b        = 2;
+    uint_least16_t      c        = 3;
+    void*               fields[] = { &a, &b, &c };
+    dsdl_value_struct_t value    = { .values = fields };
+
+    uint8_t      buffer[4];
+    dsdl_error_t err    = dsdl_error_none;
+    size_t       result = dsdl_serialize(type, &value, 4, buffer, &err);
+    TEST_ASSERT_EQUAL(4, result);
+    TEST_ASSERT_EQUAL(1, buffer[0]);
+    TEST_ASSERT_EQUAL(2, buffer[1]);
+    TEST_ASSERT_EQUAL(3, buffer[2]);
+    TEST_ASSERT_EQUAL(0, buffer[3]);
+
+    teardown_dsdl();
+}
+
+static void test_serialize_buffer_size_8(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("validation.Simple.0.1"));
+    TEST_ASSERT_NOT_NULL(type);
+
+    uint_least8_t       a        = 10;
+    uint_least8_t       b        = 20;
+    uint_least16_t      c        = 30;
+    void*               fields[] = { &a, &b, &c };
+    dsdl_value_struct_t value    = { .values = fields };
+
+    uint8_t      buffer[8];
+    dsdl_error_t err    = dsdl_error_none;
+    size_t       result = dsdl_serialize(type, &value, 8, buffer, &err);
+    TEST_ASSERT_EQUAL(4, result);
+    TEST_ASSERT_EQUAL(10, buffer[0]);
+    TEST_ASSERT_EQUAL(20, buffer[1]);
+
+    teardown_dsdl();
+}
+
+static void test_serialize_buffer_size_16(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("validation.Simple.0.1"));
+    TEST_ASSERT_NOT_NULL(type);
+
+    uint_least8_t       a        = 100;
+    uint_least8_t       b        = 101;
+    uint_least16_t      c        = 102;
+    void*               fields[] = { &a, &b, &c };
+    dsdl_value_struct_t value    = { .values = fields };
+
+    uint8_t      buffer[16];
+    dsdl_error_t err    = dsdl_error_none;
+    size_t       result = dsdl_serialize(type, &value, 16, buffer, &err);
+    TEST_ASSERT_EQUAL(4, result);
+    TEST_ASSERT_EQUAL(100, buffer[0]);
+    TEST_ASSERT_EQUAL(101, buffer[1]);
+
+    teardown_dsdl();
+}
+
+static void test_serialize_buffer_size_exact_minus_1(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("validation.Simple.0.1"));
+    TEST_ASSERT_NOT_NULL(type);
+
+    uint_least8_t       a        = 5;
+    uint_least8_t       b        = 6;
+    uint_least16_t      c        = 7;
+    void*               fields[] = { &a, &b, &c };
+    dsdl_value_struct_t value    = { .values = fields };
+
+    uint8_t      buffer[3];
+    dsdl_error_t err    = dsdl_error_none;
+    size_t       result = dsdl_serialize(type, &value, 3, buffer, &err);
+    TEST_ASSERT_EQUAL(SIZE_MAX, result);
+
+    teardown_dsdl();
+}
+
+static void test_serialize_buffer_size_exact(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("validation.Simple.0.1"));
+    TEST_ASSERT_NOT_NULL(type);
+
+    uint_least8_t       a        = 42;
+    uint_least8_t       b        = 43;
+    uint_least16_t      c        = 44;
+    void*               fields[] = { &a, &b, &c };
+    dsdl_value_struct_t value    = { .values = fields };
+
+    uint8_t      buffer[4];
+    dsdl_error_t err    = dsdl_error_none;
+    size_t       result = dsdl_serialize(type, &value, 4, buffer, &err);
+    TEST_ASSERT_EQUAL(4, result);
+    TEST_ASSERT_EQUAL(42, buffer[0]);
+    TEST_ASSERT_EQUAL(43, buffer[1]);
+    TEST_ASSERT_EQUAL(44, buffer[2]);
+
+    teardown_dsdl();
+}
+
+static void test_serialize_buffer_size_exact_plus_1(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("validation.Simple.0.1"));
+    TEST_ASSERT_NOT_NULL(type);
+
+    uint_least8_t       a        = 11;
+    uint_least8_t       b        = 12;
+    uint_least16_t      c        = 13;
+    void*               fields[] = { &a, &b, &c };
+    dsdl_value_struct_t value    = { .values = fields };
+
+    uint8_t      buffer[5];
+    dsdl_error_t err    = dsdl_error_none;
+    size_t       result = dsdl_serialize(type, &value, 5, buffer, &err);
+    TEST_ASSERT_EQUAL(4, result);
+    TEST_ASSERT_EQUAL(11, buffer[0]);
+    TEST_ASSERT_EQUAL(12, buffer[1]);
+
+    teardown_dsdl();
+}
+
+static void test_serialize_buffer_size_large(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("validation.Simple.0.1"));
+    TEST_ASSERT_NOT_NULL(type);
+
+    uint_least8_t       a        = 200;
+    uint_least8_t       b        = 201;
+    uint_least16_t      c        = 202;
+    void*               fields[] = { &a, &b, &c };
+    dsdl_value_struct_t value    = { .values = fields };
+
+    uint8_t      buffer[1024];
+    dsdl_error_t err    = dsdl_error_none;
+    size_t       result = dsdl_serialize(type, &value, 1024, buffer, &err);
+    TEST_ASSERT_EQUAL(4, result);
+    TEST_ASSERT_EQUAL(200, buffer[0]);
+    TEST_ASSERT_EQUAL(201, buffer[1]);
+
+    teardown_dsdl();
+}
+
+/* ============================================================================
  * Category 1.9: Array/String capacity tests (3 functions)
  * ============================================================================ */
 
@@ -2809,6 +3048,16 @@ int main(void)
     RUN_TEST(test_serialize_primitives);
     RUN_TEST(test_serialize_padding);
     RUN_TEST(test_serialize_bit_alignment);
+    RUN_TEST(test_serialize_buffer_size_0);
+    RUN_TEST(test_serialize_buffer_size_1);
+    RUN_TEST(test_serialize_buffer_size_2);
+    RUN_TEST(test_serialize_buffer_size_4);
+    RUN_TEST(test_serialize_buffer_size_8);
+    RUN_TEST(test_serialize_buffer_size_16);
+    RUN_TEST(test_serialize_buffer_size_exact_minus_1);
+    RUN_TEST(test_serialize_buffer_size_exact);
+    RUN_TEST(test_serialize_buffer_size_exact_plus_1);
+    RUN_TEST(test_serialize_buffer_size_large);
 
     /* Array/String capacity tests */
     RUN_TEST(test_array_capacity_exceeded);
