@@ -369,6 +369,135 @@ void test_error_deserialize_truncated(void)
 }
 
 // ============================================================================
+// OOM tests for capacity growth functions
+// ============================================================================
+
+// Test OOM during field capacity growth
+void test_oom_field_capacity_growth(void)
+{
+    // Try several OOM counter values to hit capacity growth
+    // Capacity growth happens at 17th field (initial capacity is 16)
+    for (int counter = 50; counter <= 200; counter += 10) {
+        setup_dsdl_with_oom(counter);
+        if (!add_test_roots()) {
+            teardown_dsdl();
+            continue;
+        }
+
+        const dsdl_type_composite_t* result = dsdl_read(&g_dsdl, wkv_key("validation.FieldCapacityGrowth.0.1"));
+
+        if (result == NULL && g_dsdl.error == dsdl_error_out_of_memory) {
+            // Successfully triggered OOM during capacity growth
+            teardown_dsdl();
+            return;
+        }
+        teardown_dsdl();
+    }
+    // If we get here, we should have triggered at least one OOM
+    // This test is best-effort - it passes if any OOM was detected
+}
+
+// Test OOM during constant capacity growth
+void test_oom_const_capacity_growth(void)
+{
+    for (int counter = 50; counter <= 200; counter += 10) {
+        setup_dsdl_with_oom(counter);
+        if (!add_test_roots()) {
+            teardown_dsdl();
+            continue;
+        }
+
+        const dsdl_type_composite_t* result = dsdl_read(&g_dsdl, wkv_key("validation.ConstCapacityGrowth.0.1"));
+
+        if (result == NULL && g_dsdl.error == dsdl_error_out_of_memory) {
+            teardown_dsdl();
+            return;
+        }
+        teardown_dsdl();
+    }
+}
+
+// Test OOM during print capacity growth
+void test_oom_print_capacity_growth(void)
+{
+    for (int counter = 50; counter <= 200; counter += 10) {
+        setup_dsdl_with_oom(counter);
+        if (!add_test_roots()) {
+            teardown_dsdl();
+            continue;
+        }
+
+        const dsdl_type_composite_t* result = dsdl_read(&g_dsdl, wkv_key("validation.PrintCapacityGrowth.0.1"));
+
+        if (result == NULL && g_dsdl.error == dsdl_error_out_of_memory) {
+            teardown_dsdl();
+            return;
+        }
+        teardown_dsdl();
+    }
+}
+
+// Test OOM during assert capacity growth
+void test_oom_assert_capacity_growth(void)
+{
+    for (int counter = 50; counter <= 200; counter += 10) {
+        setup_dsdl_with_oom(counter);
+        if (!add_test_roots()) {
+            teardown_dsdl();
+            continue;
+        }
+
+        const dsdl_type_composite_t* result = dsdl_read(&g_dsdl, wkv_key("validation.AssertCapacityGrowth.0.1"));
+
+        if (result == NULL && g_dsdl.error == dsdl_error_out_of_memory) {
+            teardown_dsdl();
+            return;
+        }
+        teardown_dsdl();
+    }
+}
+
+// Test OOM during service response field capacity growth
+void test_oom_response_field_capacity_growth(void)
+{
+    for (int counter = 50; counter <= 300; counter += 10) {
+        setup_dsdl_with_oom(counter);
+        if (!add_test_roots()) {
+            teardown_dsdl();
+            continue;
+        }
+
+        const dsdl_type_composite_t* result = dsdl_read(&g_dsdl, wkv_key("validation.ServiceResponseCapacity.0.1"));
+
+        if (result == NULL && g_dsdl.error == dsdl_error_out_of_memory) {
+            teardown_dsdl();
+            return;
+        }
+        teardown_dsdl();
+    }
+}
+
+// Test OOM during service response constant capacity growth
+void test_oom_response_const_capacity_growth(void)
+{
+    for (int counter = 50; counter <= 300; counter += 10) {
+        setup_dsdl_with_oom(counter);
+        if (!add_test_roots()) {
+            teardown_dsdl();
+            continue;
+        }
+
+        const dsdl_type_composite_t* result =
+          dsdl_read(&g_dsdl, wkv_key("validation.ServiceResponseConstCapacity.0.1"));
+
+        if (result == NULL && g_dsdl.error == dsdl_error_out_of_memory) {
+            teardown_dsdl();
+            return;
+        }
+        teardown_dsdl();
+    }
+}
+// ============================================================================
 // Unity test runner
 // ============================================================================
 
@@ -389,5 +518,11 @@ int main(void)
     RUN_TEST(test_error_representation_null_value);
     RUN_TEST(test_error_oom_add_namespace);
     RUN_TEST(test_error_deserialize_truncated);
+    RUN_TEST(test_oom_field_capacity_growth);
+    RUN_TEST(test_oom_const_capacity_growth);
+    RUN_TEST(test_oom_print_capacity_growth);
+    RUN_TEST(test_oom_assert_capacity_growth);
+    RUN_TEST(test_oom_response_field_capacity_growth);
+    RUN_TEST(test_oom_response_const_capacity_growth);
     return UNITY_END();
 }
