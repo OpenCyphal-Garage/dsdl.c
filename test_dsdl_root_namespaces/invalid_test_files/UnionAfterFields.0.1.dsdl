@@ -1,0 +1,6 @@
+# Test file for @union after fields error
+uint8 field1
+@union
+uint8 field2
+uint8 field3
+@sealed

@@ -1,0 +1,7 @@
+# Test file for @fixed-port-id in response error
+uint8 request
+@sealed
+---
+@fixed-port-id 123
+uint8 response
+@sealed

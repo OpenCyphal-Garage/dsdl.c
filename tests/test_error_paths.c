@@ -497,6 +497,125 @@ void test_oom_response_const_capacity_growth(void)
         teardown_dsdl();
     }
 }
+
+// ============================================================================
+// Directive validation error tests
+// ============================================================================
+
+static bool add_invalid_test_root(void)
+{
+    char      path[512];
+    const int ret = snprintf(path, sizeof(path), "%s/test_dsdl_root_namespaces/invalid_test_files", DSDL_TEST_ROOT);
+    if ((ret < 0) || (ret >= (int)sizeof(path))) {
+        return false;
+    }
+    return dsdl_add_namespace(&g_dsdl, wkv_key(path));
+}
+
+void test_error_duplicate_union_directive(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_invalid_test_root());
+
+    const dsdl_type_composite_t* result = dsdl_read(&g_dsdl, wkv_key("DuplicateUnion.0.1"));
+
+    TEST_ASSERT_NULL(result);
+    TEST_ASSERT_NOT_EQUAL(dsdl_error_none, g_dsdl.error);
+
+    teardown_dsdl();
+}
+
+void test_error_union_after_fields(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_invalid_test_root());
+
+    const dsdl_type_composite_t* result = dsdl_read(&g_dsdl, wkv_key("UnionAfterFields.0.1"));
+
+    TEST_ASSERT_NULL(result);
+    TEST_ASSERT_NOT_EQUAL(dsdl_error_none, g_dsdl.error);
+
+    teardown_dsdl();
+}
+
+void test_error_fixed_port_in_response(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_invalid_test_root());
+
+    const dsdl_type_composite_t* result = dsdl_read(&g_dsdl, wkv_key("FixedPortInResponse.0.1"));
+
+    TEST_ASSERT_NULL(result);
+    TEST_ASSERT_NOT_EQUAL(dsdl_error_none, g_dsdl.error);
+
+    teardown_dsdl();
+}
+
+void test_error_union_with_value(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_invalid_test_root());
+
+    const dsdl_type_composite_t* result = dsdl_read(&g_dsdl, wkv_key("UnionWithValue.0.1"));
+
+    TEST_ASSERT_NULL(result);
+    TEST_ASSERT_NOT_EQUAL(dsdl_error_none, g_dsdl.error);
+
+    teardown_dsdl();
+}
+
+void test_error_fixed_port_no_value(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_invalid_test_root());
+
+    const dsdl_type_composite_t* result = dsdl_read(&g_dsdl, wkv_key("FixedPortNoValue.0.1"));
+
+    TEST_ASSERT_NULL(result);
+    TEST_ASSERT_NOT_EQUAL(dsdl_error_none, g_dsdl.error);
+
+    teardown_dsdl();
+}
+
+void test_error_duplicate_fixed_port(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_invalid_test_root());
+
+    const dsdl_type_composite_t* result = dsdl_read(&g_dsdl, wkv_key("DuplicateFixedPort.0.1"));
+
+    TEST_ASSERT_NULL(result);
+    TEST_ASSERT_NOT_EQUAL(dsdl_error_none, g_dsdl.error);
+
+    teardown_dsdl();
+}
+
+void test_error_fixed_port_invalid_value(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_invalid_test_root());
+
+    const dsdl_type_composite_t* result = dsdl_read(&g_dsdl, wkv_key("FixedPortInvalidValue.0.1"));
+
+    TEST_ASSERT_NULL(result);
+    TEST_ASSERT_NOT_EQUAL(dsdl_error_none, g_dsdl.error);
+
+    teardown_dsdl();
+}
+
+void test_error_fixed_port_non_integer(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_invalid_test_root());
+
+    const dsdl_type_composite_t* result = dsdl_read(&g_dsdl, wkv_key("FixedPortNonInteger.0.1"));
+
+    TEST_ASSERT_NULL(result);
+    TEST_ASSERT_NOT_EQUAL(dsdl_error_none, g_dsdl.error);
+
+    teardown_dsdl();
+}
+
 // ============================================================================
 // Unity test runner
 // ============================================================================
@@ -524,5 +643,13 @@ int main(void)
     RUN_TEST(test_oom_assert_capacity_growth);
     RUN_TEST(test_oom_response_field_capacity_growth);
     RUN_TEST(test_oom_response_const_capacity_growth);
+    RUN_TEST(test_error_duplicate_union_directive);
+    RUN_TEST(test_error_union_after_fields);
+    RUN_TEST(test_error_fixed_port_in_response);
+    RUN_TEST(test_error_union_with_value);
+    RUN_TEST(test_error_fixed_port_no_value);
+    RUN_TEST(test_error_duplicate_fixed_port);
+    RUN_TEST(test_error_fixed_port_invalid_value);
+    RUN_TEST(test_error_fixed_port_non_integer);
     return UNITY_END();
 }

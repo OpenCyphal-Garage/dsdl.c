@@ -1,0 +1,4 @@
+# Test file for @fixed-port-id without value error (line 6371-6372)
+@fixed-port-id
+uint8 field
+@sealed
