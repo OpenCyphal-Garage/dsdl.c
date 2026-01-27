@@ -1371,6 +1371,354 @@ static void test_rational_parse_exponent_without_digits(void)
 }
 
 // ============================================================================
+// Expression evaluation helper tests
+// ============================================================================
+
+// dsdl_value_equal tests
+static void test_value_equal_null_left(void)
+{
+    dsdl_value_t val = { .kind = dsdl_value_rational };
+    TEST_ASSERT_FALSE(dsdl_value_equal(NULL, &val));
+}
+
+static void test_value_equal_null_right(void)
+{
+    dsdl_value_t val = { .kind = dsdl_value_rational };
+    TEST_ASSERT_FALSE(dsdl_value_equal(&val, NULL));
+}
+
+static void test_value_equal_different_kinds(void)
+{
+    dsdl_value_t v1 = { .kind = dsdl_value_rational };
+    dsdl_value_t v2 = { .kind = dsdl_value_bool };
+    TEST_ASSERT_FALSE(dsdl_value_equal(&v1, &v2));
+}
+
+static void test_value_equal_rational_equal(void)
+{
+    dsdl_value_t v1 = { .kind = dsdl_value_rational, .as.rational = dsdl_rational_from_int(42) };
+    dsdl_value_t v2 = { .kind = dsdl_value_rational, .as.rational = dsdl_rational_from_int(42) };
+    TEST_ASSERT_TRUE(dsdl_value_equal(&v1, &v2));
+}
+
+static void test_value_equal_rational_not_equal(void)
+{
+    dsdl_value_t v1 = { .kind = dsdl_value_rational, .as.rational = dsdl_rational_from_int(42) };
+    dsdl_value_t v2 = { .kind = dsdl_value_rational, .as.rational = dsdl_rational_from_int(43) };
+    TEST_ASSERT_FALSE(dsdl_value_equal(&v1, &v2));
+}
+
+static void test_value_equal_bool_equal(void)
+{
+    dsdl_value_t v1 = { .kind = dsdl_value_bool, .as.boolean = true };
+    dsdl_value_t v2 = { .kind = dsdl_value_bool, .as.boolean = true };
+    TEST_ASSERT_TRUE(dsdl_value_equal(&v1, &v2));
+}
+
+static void test_value_equal_bool_not_equal(void)
+{
+    dsdl_value_t v1 = { .kind = dsdl_value_bool, .as.boolean = true };
+    dsdl_value_t v2 = { .kind = dsdl_value_bool, .as.boolean = false };
+    TEST_ASSERT_FALSE(dsdl_value_equal(&v1, &v2));
+}
+
+static void test_value_equal_type_ref_equal(void)
+{
+    dsdl_value_t v1 = { .kind = dsdl_value_type, .as.type_ref = (void*)0x1234 };
+    dsdl_value_t v2 = { .kind = dsdl_value_type, .as.type_ref = (void*)0x1234 };
+    TEST_ASSERT_TRUE(dsdl_value_equal(&v1, &v2));
+}
+
+static void test_value_equal_type_ref_not_equal(void)
+{
+    dsdl_value_t v1 = { .kind = dsdl_value_type, .as.type_ref = (void*)0x1234 };
+    dsdl_value_t v2 = { .kind = dsdl_value_type, .as.type_ref = (void*)0x5678 };
+    TEST_ASSERT_FALSE(dsdl_value_equal(&v1, &v2));
+}
+
+static void test_value_equal_set_always_false(void)
+{
+    dsdl_value_t v1 = { .kind = dsdl_value_set };
+    dsdl_value_t v2 = { .kind = dsdl_value_set };
+    TEST_ASSERT_FALSE(dsdl_value_equal(&v1, &v2));
+}
+
+static void test_value_equal_deferred_always_false(void)
+{
+    dsdl_value_t v1 = { .kind = dsdl_value_deferred };
+    dsdl_value_t v2 = { .kind = dsdl_value_deferred };
+    TEST_ASSERT_FALSE(dsdl_value_equal(&v1, &v2));
+}
+
+// dsdl_set_is_homogeneous tests
+static void test_set_is_homogeneous_null_set(void)
+{
+    dsdl_value_kind_t kind = dsdl_value_rational;
+    TEST_ASSERT_FALSE(dsdl_set_is_homogeneous(NULL, &kind));
+}
+
+static void test_set_is_homogeneous_not_set(void)
+{
+    dsdl_value_t      val  = { .kind = dsdl_value_rational };
+    dsdl_value_kind_t kind = dsdl_value_rational;
+    TEST_ASSERT_FALSE(dsdl_set_is_homogeneous(&val, &kind));
+}
+
+static void test_set_is_homogeneous_empty_set(void)
+{
+    dsdl_value_t      val  = { .kind = dsdl_value_set, .as.set.count = 0, .as.set.elements = NULL };
+    dsdl_value_kind_t kind = dsdl_value_rational;
+    TEST_ASSERT_TRUE(dsdl_set_is_homogeneous(&val, &kind));
+    TEST_ASSERT_EQUAL(dsdl_value_rational, kind);
+}
+
+static void test_set_is_homogeneous_single_element(void)
+{
+    dsdl_value_t      elem = { .kind = dsdl_value_rational, .as.rational = dsdl_rational_from_int(42) };
+    dsdl_value_t      val  = { .kind = dsdl_value_set, .as.set.count = 1, .as.set.elements = &elem };
+    dsdl_value_kind_t kind = dsdl_value_rational;
+    TEST_ASSERT_TRUE(dsdl_set_is_homogeneous(&val, &kind));
+    TEST_ASSERT_EQUAL(dsdl_value_rational, kind);
+}
+
+static void test_set_is_homogeneous_multiple_same_kind(void)
+{
+    dsdl_value_t      elems[3] = { { .kind = dsdl_value_rational, .as.rational = dsdl_rational_from_int(1) },
+                                   { .kind = dsdl_value_rational, .as.rational = dsdl_rational_from_int(2) },
+                                   { .kind = dsdl_value_rational, .as.rational = dsdl_rational_from_int(3) } };
+    dsdl_value_t      val      = { .kind = dsdl_value_set, .as.set.count = 3, .as.set.elements = elems };
+    dsdl_value_kind_t kind     = dsdl_value_rational;
+    TEST_ASSERT_TRUE(dsdl_set_is_homogeneous(&val, &kind));
+    TEST_ASSERT_EQUAL(dsdl_value_rational, kind);
+}
+
+static void test_set_is_homogeneous_mixed_kinds(void)
+{
+    dsdl_value_t      elems[2] = { { .kind = dsdl_value_rational, .as.rational = dsdl_rational_from_int(1) },
+                                   { .kind = dsdl_value_bool, .as.boolean = true } };
+    dsdl_value_t      val      = { .kind = dsdl_value_set, .as.set.count = 2, .as.set.elements = elems };
+    dsdl_value_kind_t kind     = dsdl_value_rational;
+    TEST_ASSERT_FALSE(dsdl_set_is_homogeneous(&val, &kind));
+}
+
+static void test_set_is_homogeneous_with_deferred(void)
+{
+    dsdl_value_t      elems[2] = { { .kind = dsdl_value_rational, .as.rational = dsdl_rational_from_int(1) },
+                                   { .kind = dsdl_value_deferred } };
+    dsdl_value_t      val      = { .kind = dsdl_value_set, .as.set.count = 2, .as.set.elements = elems };
+    dsdl_value_kind_t kind     = dsdl_value_rational;
+    TEST_ASSERT_FALSE(dsdl_set_is_homogeneous(&val, &kind));
+}
+
+// dsdl_set_contains tests
+static void test_set_contains_null_set(void)
+{
+    dsdl_value_t needle = { .kind = dsdl_value_rational };
+    TEST_ASSERT_FALSE(dsdl_set_contains(NULL, &needle));
+}
+
+static void test_set_contains_null_needle(void)
+{
+    dsdl_value_t val = { .kind = dsdl_value_set };
+    TEST_ASSERT_FALSE(dsdl_set_contains(&val, NULL));
+}
+
+static void test_set_contains_not_set(void)
+{
+    dsdl_value_t val    = { .kind = dsdl_value_rational };
+    dsdl_value_t needle = { .kind = dsdl_value_rational };
+    TEST_ASSERT_FALSE(dsdl_set_contains(&val, &needle));
+}
+
+static void test_set_contains_empty_set(void)
+{
+    dsdl_value_t val    = { .kind = dsdl_value_set, .as.set.count = 0, .as.set.elements = NULL };
+    dsdl_value_t needle = { .kind = dsdl_value_rational, .as.rational = dsdl_rational_from_int(42) };
+    TEST_ASSERT_FALSE(dsdl_set_contains(&val, &needle));
+}
+
+static void test_set_contains_found(void)
+{
+    dsdl_value_t elem   = { .kind = dsdl_value_rational, .as.rational = dsdl_rational_from_int(42) };
+    dsdl_value_t val    = { .kind = dsdl_value_set, .as.set.count = 1, .as.set.elements = &elem };
+    dsdl_value_t needle = { .kind = dsdl_value_rational, .as.rational = dsdl_rational_from_int(42) };
+    TEST_ASSERT_TRUE(dsdl_set_contains(&val, &needle));
+}
+
+static void test_set_contains_not_found(void)
+{
+    dsdl_value_t elem   = { .kind = dsdl_value_rational, .as.rational = dsdl_rational_from_int(42) };
+    dsdl_value_t val    = { .kind = dsdl_value_set, .as.set.count = 1, .as.set.elements = &elem };
+    dsdl_value_t needle = { .kind = dsdl_value_rational, .as.rational = dsdl_rational_from_int(43) };
+    TEST_ASSERT_FALSE(dsdl_set_contains(&val, &needle));
+}
+
+// dsdl_set_is_subset tests
+static void test_set_is_subset_null_left(void)
+{
+    dsdl_value_t val = { .kind = dsdl_value_set };
+    TEST_ASSERT_FALSE(dsdl_set_is_subset(NULL, &val));
+}
+
+static void test_set_is_subset_null_right(void)
+{
+    dsdl_value_t val = { .kind = dsdl_value_set };
+    TEST_ASSERT_FALSE(dsdl_set_is_subset(&val, NULL));
+}
+
+static void test_set_is_subset_left_not_set(void)
+{
+    dsdl_value_t val1 = { .kind = dsdl_value_rational };
+    dsdl_value_t val2 = { .kind = dsdl_value_set };
+    TEST_ASSERT_FALSE(dsdl_set_is_subset(&val1, &val2));
+}
+
+static void test_set_is_subset_right_not_set(void)
+{
+    dsdl_value_t val1 = { .kind = dsdl_value_set };
+    dsdl_value_t val2 = { .kind = dsdl_value_rational };
+    TEST_ASSERT_FALSE(dsdl_set_is_subset(&val1, &val2));
+}
+
+static void test_set_is_subset_empty_is_subset_of_empty(void)
+{
+    dsdl_value_t val1 = { .kind = dsdl_value_set, .as.set.count = 0, .as.set.elements = NULL };
+    dsdl_value_t val2 = { .kind = dsdl_value_set, .as.set.count = 0, .as.set.elements = NULL };
+    TEST_ASSERT_TRUE(dsdl_set_is_subset(&val1, &val2));
+}
+
+static void test_set_is_subset_empty_is_subset_of_nonempty(void)
+{
+    dsdl_value_t elem = { .kind = dsdl_value_rational, .as.rational = dsdl_rational_from_int(42) };
+    dsdl_value_t val1 = { .kind = dsdl_value_set, .as.set.count = 0, .as.set.elements = NULL };
+    dsdl_value_t val2 = { .kind = dsdl_value_set, .as.set.count = 1, .as.set.elements = &elem };
+    TEST_ASSERT_TRUE(dsdl_set_is_subset(&val1, &val2));
+}
+
+static void test_set_is_subset_true(void)
+{
+    dsdl_value_t elems1[1] = { { .kind = dsdl_value_rational, .as.rational = dsdl_rational_from_int(42) } };
+    dsdl_value_t elems2[2] = { { .kind = dsdl_value_rational, .as.rational = dsdl_rational_from_int(42) },
+                               { .kind = dsdl_value_rational, .as.rational = dsdl_rational_from_int(43) } };
+    dsdl_value_t val1      = { .kind = dsdl_value_set, .as.set.count = 1, .as.set.elements = elems1 };
+    dsdl_value_t val2      = { .kind = dsdl_value_set, .as.set.count = 2, .as.set.elements = elems2 };
+    TEST_ASSERT_TRUE(dsdl_set_is_subset(&val1, &val2));
+}
+
+static void test_set_is_subset_false(void)
+{
+    dsdl_value_t elems1[1] = { { .kind = dsdl_value_rational, .as.rational = dsdl_rational_from_int(99) } };
+    dsdl_value_t elems2[2] = { { .kind = dsdl_value_rational, .as.rational = dsdl_rational_from_int(42) },
+                               { .kind = dsdl_value_rational, .as.rational = dsdl_rational_from_int(43) } };
+    dsdl_value_t val1      = { .kind = dsdl_value_set, .as.set.count = 1, .as.set.elements = elems1 };
+    dsdl_value_t val2      = { .kind = dsdl_value_set, .as.set.count = 2, .as.set.elements = elems2 };
+    TEST_ASSERT_FALSE(dsdl_set_is_subset(&val1, &val2));
+}
+
+// dsdl_set_attribute tests
+static void test_set_attribute_null_set(void)
+{
+    dsdl_value_t out;
+    TEST_ASSERT_FALSE(dsdl_set_attribute(NULL, dsdl_attr_count, &out));
+}
+
+static void test_set_attribute_null_out(void)
+{
+    dsdl_value_t val = { .kind = dsdl_value_set };
+    TEST_ASSERT_FALSE(dsdl_set_attribute(&val, dsdl_attr_count, NULL));
+}
+
+static void test_set_attribute_not_set(void)
+{
+    dsdl_value_t val = { .kind = dsdl_value_rational };
+    dsdl_value_t out;
+    TEST_ASSERT_FALSE(dsdl_set_attribute(&val, dsdl_attr_count, &out));
+}
+
+static void test_set_attribute_count_empty(void)
+{
+    dsdl_value_t val       = { .kind = dsdl_value_set, .as.set.count = 0, .as.set.elements = NULL };
+    dsdl_value_t out       = { 0 };
+    intmax_t     count_val = 0;
+    TEST_ASSERT_TRUE(dsdl_set_attribute(&val, dsdl_attr_count, &out));
+    TEST_ASSERT_EQUAL(dsdl_value_rational, out.kind);
+    TEST_ASSERT_TRUE(dsdl_rational_to_intmax(out.as.rational, &count_val));
+    TEST_ASSERT_EQUAL(0, count_val);
+}
+
+static void test_set_attribute_count_nonempty(void)
+{
+    dsdl_value_t elem = { .kind = dsdl_value_rational, .as.rational = dsdl_rational_from_int(42) };
+    dsdl_value_t val  = { .kind = dsdl_value_set, .as.set.count = 1, .as.set.elements = &elem };
+    dsdl_value_t out;
+    TEST_ASSERT_TRUE(dsdl_set_attribute(&val, dsdl_attr_count, &out));
+    TEST_ASSERT_EQUAL(dsdl_value_rational, out.kind);
+}
+
+static void test_set_attribute_min_empty_set(void)
+{
+    dsdl_value_t val = { .kind = dsdl_value_set, .as.set.count = 0, .as.set.elements = NULL };
+    dsdl_value_t out;
+    TEST_ASSERT_FALSE(dsdl_set_attribute(&val, dsdl_attr_min, &out));
+}
+
+static void test_set_attribute_max_empty_set(void)
+{
+    dsdl_value_t val = { .kind = dsdl_value_set, .as.set.count = 0, .as.set.elements = NULL };
+    dsdl_value_t out;
+    TEST_ASSERT_FALSE(dsdl_set_attribute(&val, dsdl_attr_max, &out));
+}
+
+static void test_set_attribute_min_single_element(void)
+{
+    dsdl_value_t elem = { .kind = dsdl_value_rational, .as.rational = dsdl_rational_from_int(42) };
+    dsdl_value_t val  = { .kind = dsdl_value_set, .as.set.count = 1, .as.set.elements = &elem };
+    dsdl_value_t out;
+    TEST_ASSERT_TRUE(dsdl_set_attribute(&val, dsdl_attr_min, &out));
+    TEST_ASSERT_EQUAL(dsdl_value_rational, out.kind);
+}
+
+static void test_set_attribute_max_single_element(void)
+{
+    dsdl_value_t elem = { .kind = dsdl_value_rational, .as.rational = dsdl_rational_from_int(42) };
+    dsdl_value_t val  = { .kind = dsdl_value_set, .as.set.count = 1, .as.set.elements = &elem };
+    dsdl_value_t out;
+    TEST_ASSERT_TRUE(dsdl_set_attribute(&val, dsdl_attr_max, &out));
+    TEST_ASSERT_EQUAL(dsdl_value_rational, out.kind);
+}
+
+static void test_set_attribute_min_multiple_elements(void)
+{
+    dsdl_value_t elems[3] = { { .kind = dsdl_value_rational, .as.rational = dsdl_rational_from_int(5) },
+                              { .kind = dsdl_value_rational, .as.rational = dsdl_rational_from_int(2) },
+                              { .kind = dsdl_value_rational, .as.rational = dsdl_rational_from_int(8) } };
+    dsdl_value_t val      = { .kind = dsdl_value_set, .as.set.count = 3, .as.set.elements = elems };
+    dsdl_value_t out;
+    TEST_ASSERT_TRUE(dsdl_set_attribute(&val, dsdl_attr_min, &out));
+    TEST_ASSERT_EQUAL(dsdl_value_rational, out.kind);
+}
+
+static void test_set_attribute_max_multiple_elements(void)
+{
+    dsdl_value_t elems[3] = { { .kind = dsdl_value_rational, .as.rational = dsdl_rational_from_int(5) },
+                              { .kind = dsdl_value_rational, .as.rational = dsdl_rational_from_int(2) },
+                              { .kind = dsdl_value_rational, .as.rational = dsdl_rational_from_int(8) } };
+    dsdl_value_t val      = { .kind = dsdl_value_set, .as.set.count = 3, .as.set.elements = elems };
+    dsdl_value_t out;
+    TEST_ASSERT_TRUE(dsdl_set_attribute(&val, dsdl_attr_max, &out));
+    TEST_ASSERT_EQUAL(dsdl_value_rational, out.kind);
+}
+
+static void test_set_attribute_invalid_attr(void)
+{
+    dsdl_value_t elem = { .kind = dsdl_value_rational, .as.rational = dsdl_rational_from_int(42) };
+    dsdl_value_t val  = { .kind = dsdl_value_set, .as.set.count = 1, .as.set.elements = &elem };
+    dsdl_value_t out;
+    // Use an invalid attribute kind (assuming dsdl_attr_count is not min/max/count)
+    TEST_ASSERT_FALSE(dsdl_set_attribute(&val, (dsdl_attr_kind_t)999, &out));
+}
+
+// ============================================================================
 // Main
 // ============================================================================
 
@@ -1501,6 +1849,52 @@ int main(void)
     RUN_TEST(test_rational_parse_exponent_multiplication_overflow);
     RUN_TEST(test_rational_parse_no_digits_after_point);
     RUN_TEST(test_rational_parse_exponent_without_digits);
+
+    // Expression evaluation helper tests
+    RUN_TEST(test_value_equal_null_left);
+    RUN_TEST(test_value_equal_null_right);
+    RUN_TEST(test_value_equal_different_kinds);
+    RUN_TEST(test_value_equal_rational_equal);
+    RUN_TEST(test_value_equal_rational_not_equal);
+    RUN_TEST(test_value_equal_bool_equal);
+    RUN_TEST(test_value_equal_bool_not_equal);
+    RUN_TEST(test_value_equal_type_ref_equal);
+    RUN_TEST(test_value_equal_type_ref_not_equal);
+    RUN_TEST(test_value_equal_set_always_false);
+    RUN_TEST(test_value_equal_deferred_always_false);
+    RUN_TEST(test_set_is_homogeneous_null_set);
+    RUN_TEST(test_set_is_homogeneous_not_set);
+    RUN_TEST(test_set_is_homogeneous_empty_set);
+    RUN_TEST(test_set_is_homogeneous_single_element);
+    RUN_TEST(test_set_is_homogeneous_multiple_same_kind);
+    RUN_TEST(test_set_is_homogeneous_mixed_kinds);
+    RUN_TEST(test_set_is_homogeneous_with_deferred);
+    RUN_TEST(test_set_contains_null_set);
+    RUN_TEST(test_set_contains_null_needle);
+    RUN_TEST(test_set_contains_not_set);
+    RUN_TEST(test_set_contains_empty_set);
+    RUN_TEST(test_set_contains_found);
+    RUN_TEST(test_set_contains_not_found);
+    RUN_TEST(test_set_is_subset_null_left);
+    RUN_TEST(test_set_is_subset_null_right);
+    RUN_TEST(test_set_is_subset_left_not_set);
+    RUN_TEST(test_set_is_subset_right_not_set);
+    RUN_TEST(test_set_is_subset_empty_is_subset_of_empty);
+    RUN_TEST(test_set_is_subset_empty_is_subset_of_nonempty);
+    RUN_TEST(test_set_is_subset_true);
+    RUN_TEST(test_set_is_subset_false);
+    RUN_TEST(test_set_attribute_null_set);
+    RUN_TEST(test_set_attribute_null_out);
+    RUN_TEST(test_set_attribute_not_set);
+    RUN_TEST(test_set_attribute_count_empty);
+    RUN_TEST(test_set_attribute_count_nonempty);
+    RUN_TEST(test_set_attribute_min_empty_set);
+    RUN_TEST(test_set_attribute_max_empty_set);
+    RUN_TEST(test_set_attribute_min_single_element);
+    RUN_TEST(test_set_attribute_max_single_element);
+    RUN_TEST(test_set_attribute_min_multiple_elements);
+    RUN_TEST(test_set_attribute_max_multiple_elements);
+    RUN_TEST(test_set_attribute_invalid_attr);
 
     return UNITY_END();
 }
