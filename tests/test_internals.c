@@ -1944,6 +1944,561 @@ static void test_closure_clone_offset_null_out(void)
     TEST_ASSERT_FALSE(dsdl_closure_clone_offset(&closure, NULL));
 }
 
+static void test_closure_clone_binary_add(void)
+{
+    dsdl_t dsdl;
+    dsdl_new(&dsdl, test_realloc, NULL, NULL);
+
+    dsdl_value_t left  = { .kind        = dsdl_value_rational,
+                           .flags       = 0,
+                           .as.rational = { .num = { .limbs = { 2 }, .limb_count = 1, .negative = false },
+                                            .den = { .limbs = { 1 }, .limb_count = 1, .negative = false } } };
+    dsdl_value_t right = { .kind        = dsdl_value_rational,
+                           .flags       = 0,
+                           .as.rational = { .num = { .limbs = { 3 }, .limb_count = 1, .negative = false },
+                                            .den = { .limbs = { 1 }, .limb_count = 1, .negative = false } } };
+    dsdl_value_t closure;
+    TEST_ASSERT_TRUE(dsdl_make_binary_closure(&dsdl, dsdl_op_add, &left, &right, &closure));
+
+    dsdl_closure_t cloned;
+    TEST_ASSERT_TRUE(dsdl_closure_clone_binary(&closure.as.deferred, &cloned));
+    TEST_ASSERT_NOT_NULL(cloned.context);
+
+    const dsdl_closure_binary_ctx_t* ctx = (const dsdl_closure_binary_ctx_t*)cloned.context;
+    TEST_ASSERT_EQUAL(dsdl_op_add, ctx->op);
+
+    dsdl_value_dispose(&dsdl, &closure);
+    if (cloned.cleanup != NULL) {
+        cloned.cleanup(&cloned);
+    }
+    dsdl_destroy(&dsdl);
+}
+
+static void test_closure_clone_binary_sub(void)
+{
+    dsdl_t dsdl;
+    dsdl_new(&dsdl, test_realloc, NULL, NULL);
+
+    dsdl_value_t left  = { .kind        = dsdl_value_rational,
+                           .flags       = 0,
+                           .as.rational = { .num = { .limbs = { 5 }, .limb_count = 1, .negative = false },
+                                            .den = { .limbs = { 1 }, .limb_count = 1, .negative = false } } };
+    dsdl_value_t right = { .kind        = dsdl_value_rational,
+                           .flags       = 0,
+                           .as.rational = { .num = { .limbs = { 3 }, .limb_count = 1, .negative = false },
+                                            .den = { .limbs = { 1 }, .limb_count = 1, .negative = false } } };
+    dsdl_value_t closure;
+    TEST_ASSERT_TRUE(dsdl_make_binary_closure(&dsdl, dsdl_op_sub, &left, &right, &closure));
+
+    dsdl_closure_t cloned;
+    TEST_ASSERT_TRUE(dsdl_closure_clone_binary(&closure.as.deferred, &cloned));
+
+    const dsdl_closure_binary_ctx_t* ctx = (const dsdl_closure_binary_ctx_t*)cloned.context;
+    TEST_ASSERT_EQUAL(dsdl_op_sub, ctx->op);
+
+    dsdl_value_dispose(&dsdl, &closure);
+    if (cloned.cleanup != NULL) {
+        cloned.cleanup(&cloned);
+    }
+    dsdl_destroy(&dsdl);
+}
+
+static void test_closure_clone_binary_mul(void)
+{
+    dsdl_t dsdl;
+    dsdl_new(&dsdl, test_realloc, NULL, NULL);
+
+    dsdl_value_t left  = { .kind        = dsdl_value_rational,
+                           .flags       = 0,
+                           .as.rational = { .num = { .limbs = { 4 }, .limb_count = 1, .negative = false },
+                                            .den = { .limbs = { 1 }, .limb_count = 1, .negative = false } } };
+    dsdl_value_t right = { .kind        = dsdl_value_rational,
+                           .flags       = 0,
+                           .as.rational = { .num = { .limbs = { 3 }, .limb_count = 1, .negative = false },
+                                            .den = { .limbs = { 1 }, .limb_count = 1, .negative = false } } };
+    dsdl_value_t closure;
+    TEST_ASSERT_TRUE(dsdl_make_binary_closure(&dsdl, dsdl_op_mul, &left, &right, &closure));
+
+    dsdl_closure_t cloned;
+    TEST_ASSERT_TRUE(dsdl_closure_clone_binary(&closure.as.deferred, &cloned));
+
+    const dsdl_closure_binary_ctx_t* ctx = (const dsdl_closure_binary_ctx_t*)cloned.context;
+    TEST_ASSERT_EQUAL(dsdl_op_mul, ctx->op);
+
+    dsdl_value_dispose(&dsdl, &closure);
+    if (cloned.cleanup != NULL) {
+        cloned.cleanup(&cloned);
+    }
+    dsdl_destroy(&dsdl);
+}
+
+static void test_closure_clone_binary_div(void)
+{
+    dsdl_t dsdl;
+    dsdl_new(&dsdl, test_realloc, NULL, NULL);
+
+    dsdl_value_t left  = { .kind        = dsdl_value_rational,
+                           .flags       = 0,
+                           .as.rational = { .num = { .limbs = { 10 }, .limb_count = 1, .negative = false },
+                                            .den = { .limbs = { 1 }, .limb_count = 1, .negative = false } } };
+    dsdl_value_t right = { .kind        = dsdl_value_rational,
+                           .flags       = 0,
+                           .as.rational = { .num = { .limbs = { 2 }, .limb_count = 1, .negative = false },
+                                            .den = { .limbs = { 1 }, .limb_count = 1, .negative = false } } };
+    dsdl_value_t closure;
+    TEST_ASSERT_TRUE(dsdl_make_binary_closure(&dsdl, dsdl_op_div, &left, &right, &closure));
+
+    dsdl_closure_t cloned;
+    TEST_ASSERT_TRUE(dsdl_closure_clone_binary(&closure.as.deferred, &cloned));
+
+    const dsdl_closure_binary_ctx_t* ctx = (const dsdl_closure_binary_ctx_t*)cloned.context;
+    TEST_ASSERT_EQUAL(dsdl_op_div, ctx->op);
+
+    dsdl_value_dispose(&dsdl, &closure);
+    if (cloned.cleanup != NULL) {
+        cloned.cleanup(&cloned);
+    }
+    dsdl_destroy(&dsdl);
+}
+
+static void test_closure_clone_binary_mod(void)
+{
+    dsdl_t dsdl;
+    dsdl_new(&dsdl, test_realloc, NULL, NULL);
+
+    dsdl_value_t left  = { .kind        = dsdl_value_rational,
+                           .flags       = 0,
+                           .as.rational = { .num = { .limbs = { 10 }, .limb_count = 1, .negative = false },
+                                            .den = { .limbs = { 1 }, .limb_count = 1, .negative = false } } };
+    dsdl_value_t right = { .kind        = dsdl_value_rational,
+                           .flags       = 0,
+                           .as.rational = { .num = { .limbs = { 3 }, .limb_count = 1, .negative = false },
+                                            .den = { .limbs = { 1 }, .limb_count = 1, .negative = false } } };
+    dsdl_value_t closure;
+    TEST_ASSERT_TRUE(dsdl_make_binary_closure(&dsdl, dsdl_op_mod, &left, &right, &closure));
+
+    dsdl_closure_t cloned;
+    TEST_ASSERT_TRUE(dsdl_closure_clone_binary(&closure.as.deferred, &cloned));
+
+    const dsdl_closure_binary_ctx_t* ctx = (const dsdl_closure_binary_ctx_t*)cloned.context;
+    TEST_ASSERT_EQUAL(dsdl_op_mod, ctx->op);
+
+    dsdl_value_dispose(&dsdl, &closure);
+    if (cloned.cleanup != NULL) {
+        cloned.cleanup(&cloned);
+    }
+    dsdl_destroy(&dsdl);
+}
+
+static void test_closure_clone_binary_pow(void)
+{
+    dsdl_t dsdl;
+    dsdl_new(&dsdl, test_realloc, NULL, NULL);
+
+    dsdl_value_t left  = { .kind        = dsdl_value_rational,
+                           .flags       = 0,
+                           .as.rational = { .num = { .limbs = { 2 }, .limb_count = 1, .negative = false },
+                                            .den = { .limbs = { 1 }, .limb_count = 1, .negative = false } } };
+    dsdl_value_t right = { .kind        = dsdl_value_rational,
+                           .flags       = 0,
+                           .as.rational = { .num = { .limbs = { 3 }, .limb_count = 1, .negative = false },
+                                            .den = { .limbs = { 1 }, .limb_count = 1, .negative = false } } };
+    dsdl_value_t closure;
+    TEST_ASSERT_TRUE(dsdl_make_binary_closure(&dsdl, dsdl_op_pow, &left, &right, &closure));
+
+    dsdl_closure_t cloned;
+    TEST_ASSERT_TRUE(dsdl_closure_clone_binary(&closure.as.deferred, &cloned));
+
+    const dsdl_closure_binary_ctx_t* ctx = (const dsdl_closure_binary_ctx_t*)cloned.context;
+    TEST_ASSERT_EQUAL(dsdl_op_pow, ctx->op);
+
+    dsdl_value_dispose(&dsdl, &closure);
+    if (cloned.cleanup != NULL) {
+        cloned.cleanup(&cloned);
+    }
+    dsdl_destroy(&dsdl);
+}
+
+static void test_closure_clone_binary_eq(void)
+{
+    dsdl_t dsdl;
+    dsdl_new(&dsdl, test_realloc, NULL, NULL);
+
+    dsdl_value_t left  = { .kind        = dsdl_value_rational,
+                           .flags       = 0,
+                           .as.rational = { .num = { .limbs = { 5 }, .limb_count = 1, .negative = false },
+                                            .den = { .limbs = { 1 }, .limb_count = 1, .negative = false } } };
+    dsdl_value_t right = { .kind        = dsdl_value_rational,
+                           .flags       = 0,
+                           .as.rational = { .num = { .limbs = { 5 }, .limb_count = 1, .negative = false },
+                                            .den = { .limbs = { 1 }, .limb_count = 1, .negative = false } } };
+    dsdl_value_t closure;
+    TEST_ASSERT_TRUE(dsdl_make_binary_closure(&dsdl, dsdl_op_eq, &left, &right, &closure));
+
+    dsdl_closure_t cloned;
+    TEST_ASSERT_TRUE(dsdl_closure_clone_binary(&closure.as.deferred, &cloned));
+
+    const dsdl_closure_binary_ctx_t* ctx = (const dsdl_closure_binary_ctx_t*)cloned.context;
+    TEST_ASSERT_EQUAL(dsdl_op_eq, ctx->op);
+
+    dsdl_value_dispose(&dsdl, &closure);
+    if (cloned.cleanup != NULL) {
+        cloned.cleanup(&cloned);
+    }
+    dsdl_destroy(&dsdl);
+}
+
+static void test_closure_clone_binary_ne(void)
+{
+    dsdl_t dsdl;
+    dsdl_new(&dsdl, test_realloc, NULL, NULL);
+
+    dsdl_value_t left  = { .kind        = dsdl_value_rational,
+                           .flags       = 0,
+                           .as.rational = { .num = { .limbs = { 5 }, .limb_count = 1, .negative = false },
+                                            .den = { .limbs = { 1 }, .limb_count = 1, .negative = false } } };
+    dsdl_value_t right = { .kind        = dsdl_value_rational,
+                           .flags       = 0,
+                           .as.rational = { .num = { .limbs = { 3 }, .limb_count = 1, .negative = false },
+                                            .den = { .limbs = { 1 }, .limb_count = 1, .negative = false } } };
+    dsdl_value_t closure;
+    TEST_ASSERT_TRUE(dsdl_make_binary_closure(&dsdl, dsdl_op_ne, &left, &right, &closure));
+
+    dsdl_closure_t cloned;
+    TEST_ASSERT_TRUE(dsdl_closure_clone_binary(&closure.as.deferred, &cloned));
+
+    const dsdl_closure_binary_ctx_t* ctx = (const dsdl_closure_binary_ctx_t*)cloned.context;
+    TEST_ASSERT_EQUAL(dsdl_op_ne, ctx->op);
+
+    dsdl_value_dispose(&dsdl, &closure);
+    if (cloned.cleanup != NULL) {
+        cloned.cleanup(&cloned);
+    }
+    dsdl_destroy(&dsdl);
+}
+
+static void test_closure_clone_binary_lt(void)
+{
+    dsdl_t dsdl;
+    dsdl_new(&dsdl, test_realloc, NULL, NULL);
+
+    dsdl_value_t left  = { .kind        = dsdl_value_rational,
+                           .flags       = 0,
+                           .as.rational = { .num = { .limbs = { 3 }, .limb_count = 1, .negative = false },
+                                            .den = { .limbs = { 1 }, .limb_count = 1, .negative = false } } };
+    dsdl_value_t right = { .kind        = dsdl_value_rational,
+                           .flags       = 0,
+                           .as.rational = { .num = { .limbs = { 5 }, .limb_count = 1, .negative = false },
+                                            .den = { .limbs = { 1 }, .limb_count = 1, .negative = false } } };
+    dsdl_value_t closure;
+    TEST_ASSERT_TRUE(dsdl_make_binary_closure(&dsdl, dsdl_op_lt, &left, &right, &closure));
+
+    dsdl_closure_t cloned;
+    TEST_ASSERT_TRUE(dsdl_closure_clone_binary(&closure.as.deferred, &cloned));
+
+    const dsdl_closure_binary_ctx_t* ctx = (const dsdl_closure_binary_ctx_t*)cloned.context;
+    TEST_ASSERT_EQUAL(dsdl_op_lt, ctx->op);
+
+    dsdl_value_dispose(&dsdl, &closure);
+    if (cloned.cleanup != NULL) {
+        cloned.cleanup(&cloned);
+    }
+    dsdl_destroy(&dsdl);
+}
+
+static void test_closure_clone_binary_le(void)
+{
+    dsdl_t dsdl;
+    dsdl_new(&dsdl, test_realloc, NULL, NULL);
+
+    dsdl_value_t left  = { .kind        = dsdl_value_rational,
+                           .flags       = 0,
+                           .as.rational = { .num = { .limbs = { 3 }, .limb_count = 1, .negative = false },
+                                            .den = { .limbs = { 1 }, .limb_count = 1, .negative = false } } };
+    dsdl_value_t right = { .kind        = dsdl_value_rational,
+                           .flags       = 0,
+                           .as.rational = { .num = { .limbs = { 5 }, .limb_count = 1, .negative = false },
+                                            .den = { .limbs = { 1 }, .limb_count = 1, .negative = false } } };
+    dsdl_value_t closure;
+    TEST_ASSERT_TRUE(dsdl_make_binary_closure(&dsdl, dsdl_op_le, &left, &right, &closure));
+
+    dsdl_closure_t cloned;
+    TEST_ASSERT_TRUE(dsdl_closure_clone_binary(&closure.as.deferred, &cloned));
+
+    const dsdl_closure_binary_ctx_t* ctx = (const dsdl_closure_binary_ctx_t*)cloned.context;
+    TEST_ASSERT_EQUAL(dsdl_op_le, ctx->op);
+
+    dsdl_value_dispose(&dsdl, &closure);
+    if (cloned.cleanup != NULL) {
+        cloned.cleanup(&cloned);
+    }
+    dsdl_destroy(&dsdl);
+}
+
+static void test_closure_clone_binary_gt(void)
+{
+    dsdl_t dsdl;
+    dsdl_new(&dsdl, test_realloc, NULL, NULL);
+
+    dsdl_value_t left  = { .kind        = dsdl_value_rational,
+                           .flags       = 0,
+                           .as.rational = { .num = { .limbs = { 7 }, .limb_count = 1, .negative = false },
+                                            .den = { .limbs = { 1 }, .limb_count = 1, .negative = false } } };
+    dsdl_value_t right = { .kind        = dsdl_value_rational,
+                           .flags       = 0,
+                           .as.rational = { .num = { .limbs = { 5 }, .limb_count = 1, .negative = false },
+                                            .den = { .limbs = { 1 }, .limb_count = 1, .negative = false } } };
+    dsdl_value_t closure;
+    TEST_ASSERT_TRUE(dsdl_make_binary_closure(&dsdl, dsdl_op_gt, &left, &right, &closure));
+
+    dsdl_closure_t cloned;
+    TEST_ASSERT_TRUE(dsdl_closure_clone_binary(&closure.as.deferred, &cloned));
+
+    const dsdl_closure_binary_ctx_t* ctx = (const dsdl_closure_binary_ctx_t*)cloned.context;
+    TEST_ASSERT_EQUAL(dsdl_op_gt, ctx->op);
+
+    dsdl_value_dispose(&dsdl, &closure);
+    if (cloned.cleanup != NULL) {
+        cloned.cleanup(&cloned);
+    }
+    dsdl_destroy(&dsdl);
+}
+
+static void test_closure_clone_binary_ge(void)
+{
+    dsdl_t dsdl;
+    dsdl_new(&dsdl, test_realloc, NULL, NULL);
+
+    dsdl_value_t left  = { .kind        = dsdl_value_rational,
+                           .flags       = 0,
+                           .as.rational = { .num = { .limbs = { 7 }, .limb_count = 1, .negative = false },
+                                            .den = { .limbs = { 1 }, .limb_count = 1, .negative = false } } };
+    dsdl_value_t right = { .kind        = dsdl_value_rational,
+                           .flags       = 0,
+                           .as.rational = { .num = { .limbs = { 5 }, .limb_count = 1, .negative = false },
+                                            .den = { .limbs = { 1 }, .limb_count = 1, .negative = false } } };
+    dsdl_value_t closure;
+    TEST_ASSERT_TRUE(dsdl_make_binary_closure(&dsdl, dsdl_op_ge, &left, &right, &closure));
+
+    dsdl_closure_t cloned;
+    TEST_ASSERT_TRUE(dsdl_closure_clone_binary(&closure.as.deferred, &cloned));
+
+    const dsdl_closure_binary_ctx_t* ctx = (const dsdl_closure_binary_ctx_t*)cloned.context;
+    TEST_ASSERT_EQUAL(dsdl_op_ge, ctx->op);
+
+    dsdl_value_dispose(&dsdl, &closure);
+    if (cloned.cleanup != NULL) {
+        cloned.cleanup(&cloned);
+    }
+    dsdl_destroy(&dsdl);
+}
+
+static void test_closure_clone_binary_and(void)
+{
+    dsdl_t dsdl;
+    dsdl_new(&dsdl, test_realloc, NULL, NULL);
+
+    dsdl_value_t left  = { .kind = dsdl_value_bool, .flags = 0, .as.boolean = true };
+    dsdl_value_t right = { .kind = dsdl_value_bool, .flags = 0, .as.boolean = false };
+    dsdl_value_t closure;
+    TEST_ASSERT_TRUE(dsdl_make_binary_closure(&dsdl, dsdl_op_and, &left, &right, &closure));
+
+    dsdl_closure_t cloned;
+    TEST_ASSERT_TRUE(dsdl_closure_clone_binary(&closure.as.deferred, &cloned));
+
+    const dsdl_closure_binary_ctx_t* ctx = (const dsdl_closure_binary_ctx_t*)cloned.context;
+    TEST_ASSERT_EQUAL(dsdl_op_and, ctx->op);
+
+    dsdl_value_dispose(&dsdl, &closure);
+    if (cloned.cleanup != NULL) {
+        cloned.cleanup(&cloned);
+    }
+    dsdl_destroy(&dsdl);
+}
+
+static void test_closure_clone_binary_or(void)
+{
+    dsdl_t dsdl;
+    dsdl_new(&dsdl, test_realloc, NULL, NULL);
+
+    dsdl_value_t left  = { .kind = dsdl_value_bool, .flags = 0, .as.boolean = true };
+    dsdl_value_t right = { .kind = dsdl_value_bool, .flags = 0, .as.boolean = false };
+    dsdl_value_t closure;
+    TEST_ASSERT_TRUE(dsdl_make_binary_closure(&dsdl, dsdl_op_or, &left, &right, &closure));
+
+    dsdl_closure_t cloned;
+    TEST_ASSERT_TRUE(dsdl_closure_clone_binary(&closure.as.deferred, &cloned));
+
+    const dsdl_closure_binary_ctx_t* ctx = (const dsdl_closure_binary_ctx_t*)cloned.context;
+    TEST_ASSERT_EQUAL(dsdl_op_or, ctx->op);
+
+    dsdl_value_dispose(&dsdl, &closure);
+    if (cloned.cleanup != NULL) {
+        cloned.cleanup(&cloned);
+    }
+    dsdl_destroy(&dsdl);
+}
+
+static void test_closure_clone_binary_bit_and(void)
+{
+    dsdl_t dsdl;
+    dsdl_new(&dsdl, test_realloc, NULL, NULL);
+
+    dsdl_value_t left  = { .kind        = dsdl_value_rational,
+                           .flags       = 0,
+                           .as.rational = { .num = { .limbs = { 12 }, .limb_count = 1, .negative = false },
+                                            .den = { .limbs = { 1 }, .limb_count = 1, .negative = false } } };
+    dsdl_value_t right = { .kind        = dsdl_value_rational,
+                           .flags       = 0,
+                           .as.rational = { .num = { .limbs = { 10 }, .limb_count = 1, .negative = false },
+                                            .den = { .limbs = { 1 }, .limb_count = 1, .negative = false } } };
+    dsdl_value_t closure;
+    TEST_ASSERT_TRUE(dsdl_make_binary_closure(&dsdl, dsdl_op_bit_and, &left, &right, &closure));
+
+    dsdl_closure_t cloned;
+    TEST_ASSERT_TRUE(dsdl_closure_clone_binary(&closure.as.deferred, &cloned));
+
+    const dsdl_closure_binary_ctx_t* ctx = (const dsdl_closure_binary_ctx_t*)cloned.context;
+    TEST_ASSERT_EQUAL(dsdl_op_bit_and, ctx->op);
+
+    dsdl_value_dispose(&dsdl, &closure);
+    if (cloned.cleanup != NULL) {
+        cloned.cleanup(&cloned);
+    }
+    dsdl_destroy(&dsdl);
+}
+
+static void test_closure_clone_binary_bit_or(void)
+{
+    dsdl_t dsdl;
+    dsdl_new(&dsdl, test_realloc, NULL, NULL);
+
+    dsdl_value_t left  = { .kind        = dsdl_value_rational,
+                           .flags       = 0,
+                           .as.rational = { .num = { .limbs = { 12 }, .limb_count = 1, .negative = false },
+                                            .den = { .limbs = { 1 }, .limb_count = 1, .negative = false } } };
+    dsdl_value_t right = { .kind        = dsdl_value_rational,
+                           .flags       = 0,
+                           .as.rational = { .num = { .limbs = { 10 }, .limb_count = 1, .negative = false },
+                                            .den = { .limbs = { 1 }, .limb_count = 1, .negative = false } } };
+    dsdl_value_t closure;
+    TEST_ASSERT_TRUE(dsdl_make_binary_closure(&dsdl, dsdl_op_bit_or, &left, &right, &closure));
+
+    dsdl_closure_t cloned;
+    TEST_ASSERT_TRUE(dsdl_closure_clone_binary(&closure.as.deferred, &cloned));
+
+    const dsdl_closure_binary_ctx_t* ctx = (const dsdl_closure_binary_ctx_t*)cloned.context;
+    TEST_ASSERT_EQUAL(dsdl_op_bit_or, ctx->op);
+
+    dsdl_value_dispose(&dsdl, &closure);
+    if (cloned.cleanup != NULL) {
+        cloned.cleanup(&cloned);
+    }
+    dsdl_destroy(&dsdl);
+}
+
+static void test_closure_clone_binary_bit_xor(void)
+{
+    dsdl_t dsdl;
+    dsdl_new(&dsdl, test_realloc, NULL, NULL);
+
+    dsdl_value_t left  = { .kind        = dsdl_value_rational,
+                           .flags       = 0,
+                           .as.rational = { .num = { .limbs = { 12 }, .limb_count = 1, .negative = false },
+                                            .den = { .limbs = { 1 }, .limb_count = 1, .negative = false } } };
+    dsdl_value_t right = { .kind        = dsdl_value_rational,
+                           .flags       = 0,
+                           .as.rational = { .num = { .limbs = { 10 }, .limb_count = 1, .negative = false },
+                                            .den = { .limbs = { 1 }, .limb_count = 1, .negative = false } } };
+    dsdl_value_t closure;
+    TEST_ASSERT_TRUE(dsdl_make_binary_closure(&dsdl, dsdl_op_bit_xor, &left, &right, &closure));
+
+    dsdl_closure_t cloned;
+    TEST_ASSERT_TRUE(dsdl_closure_clone_binary(&closure.as.deferred, &cloned));
+
+    const dsdl_closure_binary_ctx_t* ctx = (const dsdl_closure_binary_ctx_t*)cloned.context;
+    TEST_ASSERT_EQUAL(dsdl_op_bit_xor, ctx->op);
+
+    dsdl_value_dispose(&dsdl, &closure);
+    if (cloned.cleanup != NULL) {
+        cloned.cleanup(&cloned);
+    }
+    dsdl_destroy(&dsdl);
+}
+
+static void test_closure_clone_unary_pos(void)
+{
+    dsdl_t dsdl;
+    dsdl_new(&dsdl, test_realloc, NULL, NULL);
+
+    dsdl_value_t operand = { .kind        = dsdl_value_rational,
+                             .flags       = 0,
+                             .as.rational = { .num = { .limbs = { 5 }, .limb_count = 1, .negative = false },
+                                              .den = { .limbs = { 1 }, .limb_count = 1, .negative = false } } };
+    dsdl_value_t closure;
+    TEST_ASSERT_TRUE(dsdl_make_unary_closure(&dsdl, dsdl_unary_pos, &operand, &closure));
+
+    dsdl_closure_t cloned;
+    TEST_ASSERT_TRUE(dsdl_closure_clone_unary(&closure.as.deferred, &cloned));
+    TEST_ASSERT_NOT_NULL(cloned.context);
+
+    const dsdl_closure_unary_ctx_t* ctx = (const dsdl_closure_unary_ctx_t*)cloned.context;
+    TEST_ASSERT_EQUAL(dsdl_unary_pos, ctx->op);
+
+    dsdl_value_dispose(&dsdl, &closure);
+    if (cloned.cleanup != NULL) {
+        cloned.cleanup(&cloned);
+    }
+    dsdl_destroy(&dsdl);
+}
+
+static void test_closure_clone_unary_neg(void)
+{
+    dsdl_t dsdl;
+    dsdl_new(&dsdl, test_realloc, NULL, NULL);
+
+    dsdl_value_t operand = { .kind        = dsdl_value_rational,
+                             .flags       = 0,
+                             .as.rational = { .num = { .limbs = { 5 }, .limb_count = 1, .negative = false },
+                                              .den = { .limbs = { 1 }, .limb_count = 1, .negative = false } } };
+    dsdl_value_t closure;
+    TEST_ASSERT_TRUE(dsdl_make_unary_closure(&dsdl, dsdl_unary_neg, &operand, &closure));
+
+    dsdl_closure_t cloned;
+    TEST_ASSERT_TRUE(dsdl_closure_clone_unary(&closure.as.deferred, &cloned));
+
+    const dsdl_closure_unary_ctx_t* ctx = (const dsdl_closure_unary_ctx_t*)cloned.context;
+    TEST_ASSERT_EQUAL(dsdl_unary_neg, ctx->op);
+
+    dsdl_value_dispose(&dsdl, &closure);
+    if (cloned.cleanup != NULL) {
+        cloned.cleanup(&cloned);
+    }
+    dsdl_destroy(&dsdl);
+}
+
+static void test_closure_clone_unary_not(void)
+{
+    dsdl_t dsdl;
+    dsdl_new(&dsdl, test_realloc, NULL, NULL);
+
+    dsdl_value_t operand = { .kind = dsdl_value_bool, .flags = 0, .as.boolean = true };
+    dsdl_value_t closure;
+    TEST_ASSERT_TRUE(dsdl_make_unary_closure(&dsdl, dsdl_unary_not, &operand, &closure));
+
+    dsdl_closure_t cloned;
+    TEST_ASSERT_TRUE(dsdl_closure_clone_unary(&closure.as.deferred, &cloned));
+
+    const dsdl_closure_unary_ctx_t* ctx = (const dsdl_closure_unary_ctx_t*)cloned.context;
+    TEST_ASSERT_EQUAL(dsdl_unary_not, ctx->op);
+
+    dsdl_value_dispose(&dsdl, &closure);
+    if (cloned.cleanup != NULL) {
+        cloned.cleanup(&cloned);
+    }
+    dsdl_destroy(&dsdl);
+}
+
 // ============================================================================
 // Main
 // ============================================================================
@@ -2159,6 +2714,26 @@ int main(void)
     RUN_TEST(test_closure_clone_type_ref_null_out);
     RUN_TEST(test_closure_clone_offset_null_self);
     RUN_TEST(test_closure_clone_offset_null_out);
+    RUN_TEST(test_closure_clone_binary_add);
+    RUN_TEST(test_closure_clone_binary_sub);
+    RUN_TEST(test_closure_clone_binary_mul);
+    RUN_TEST(test_closure_clone_binary_div);
+    RUN_TEST(test_closure_clone_binary_mod);
+    RUN_TEST(test_closure_clone_binary_pow);
+    RUN_TEST(test_closure_clone_binary_eq);
+    RUN_TEST(test_closure_clone_binary_ne);
+    RUN_TEST(test_closure_clone_binary_lt);
+    RUN_TEST(test_closure_clone_binary_le);
+    RUN_TEST(test_closure_clone_binary_gt);
+    RUN_TEST(test_closure_clone_binary_ge);
+    RUN_TEST(test_closure_clone_binary_and);
+    RUN_TEST(test_closure_clone_binary_or);
+    RUN_TEST(test_closure_clone_binary_bit_and);
+    RUN_TEST(test_closure_clone_binary_bit_or);
+    RUN_TEST(test_closure_clone_binary_bit_xor);
+    RUN_TEST(test_closure_clone_unary_pos);
+    RUN_TEST(test_closure_clone_unary_neg);
+    RUN_TEST(test_closure_clone_unary_not);
 
     return UNITY_END();
 }
