@@ -1,0 +1,4 @@
+@union
+void1 a
+void1 b
+@sealed

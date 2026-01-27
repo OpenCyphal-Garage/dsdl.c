@@ -1,0 +1,4 @@
+@union
+NonExistentType field_a
+uint8 field_b
+@sealed

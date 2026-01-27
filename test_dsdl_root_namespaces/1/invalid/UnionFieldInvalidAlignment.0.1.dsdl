@@ -1,0 +1,3 @@
+# Union with zero fields (minimum is 2)
+@union
+@sealed

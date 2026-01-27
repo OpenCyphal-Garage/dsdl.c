@@ -3663,6 +3663,108 @@ static void test_invalid_constant_division_by_zero(void)
     teardown_dsdl();
 }
 
+/* Union and struct error path tests */
+
+static void test_invalid_union_only_void_fields(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("invalid.UnionOnlyVoidFields.0.1"));
+    TEST_ASSERT_NULL(type);
+    TEST_ASSERT(g_dsdl.error != dsdl_error_none);
+    teardown_dsdl();
+}
+
+static void test_invalid_union_duplicate_field_names(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("invalid.UnionDuplicateFieldNames.0.1"));
+    TEST_ASSERT_NULL(type);
+    TEST_ASSERT(g_dsdl.error != dsdl_error_none);
+    teardown_dsdl();
+}
+
+static void test_invalid_union_discriminator_overflow(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("invalid.UnionDiscriminatorOverflow.0.1"));
+    TEST_ASSERT_NULL(type);
+    TEST_ASSERT(g_dsdl.error != dsdl_error_none);
+    teardown_dsdl();
+}
+
+static void test_invalid_struct_field_after_sealed(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("invalid.StructFieldAfterSealed.0.1"));
+    TEST_ASSERT_NULL(type);
+    TEST_ASSERT(g_dsdl.error != dsdl_error_none);
+    teardown_dsdl();
+}
+
+static void test_invalid_struct_both_sealed_and_extent(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("invalid.StructBothSealedAndExtent.0.1"));
+    TEST_ASSERT_NULL(type);
+    TEST_ASSERT(g_dsdl.error != dsdl_error_none);
+    teardown_dsdl();
+}
+
+static void test_invalid_union_field_type_not_found(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("invalid.UnionFieldTypeNotFound.0.1"));
+    TEST_ASSERT_NULL(type);
+    TEST_ASSERT(g_dsdl.error != dsdl_error_none);
+    teardown_dsdl();
+}
+
+static void test_invalid_struct_circular_field_reference(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("invalid.StructCircularFieldReference.0.1"));
+    TEST_ASSERT_NULL(type);
+    TEST_ASSERT(g_dsdl.error != dsdl_error_none);
+    teardown_dsdl();
+}
+
+static void test_invalid_union_field_invalid_alignment(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("invalid.UnionFieldInvalidAlignment.0.1"));
+    TEST_ASSERT_NULL(type);
+    TEST_ASSERT(g_dsdl.error != dsdl_error_none);
+    teardown_dsdl();
+}
+
+static void test_invalid_struct_padding_wrong_location(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("invalid.StructPaddingWrongLocation.0.1"));
+    TEST_ASSERT_NULL(type);
+    TEST_ASSERT(g_dsdl.error != dsdl_error_none);
+    teardown_dsdl();
+}
+
+static void test_invalid_union_non_integer_discriminator(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("invalid.UnionNonIntegerDiscriminator.0.1"));
+    TEST_ASSERT_NULL(type);
+    TEST_ASSERT(g_dsdl.error != dsdl_error_none);
+    teardown_dsdl();
+}
+
 /* ============================================================================
  * Main test runner
  * ============================================================================ */
@@ -4021,6 +4123,18 @@ int main(void)
     RUN_TEST(test_invalid_string_capacity_negative);
     RUN_TEST(test_invalid_field_type_invalid_bit_width);
     RUN_TEST(test_invalid_constant_division_by_zero);
+
+    /* Union and struct error path tests */
+    RUN_TEST(test_invalid_union_only_void_fields);
+    RUN_TEST(test_invalid_union_duplicate_field_names);
+    RUN_TEST(test_invalid_union_discriminator_overflow);
+    RUN_TEST(test_invalid_struct_field_after_sealed);
+    RUN_TEST(test_invalid_struct_both_sealed_and_extent);
+    RUN_TEST(test_invalid_union_field_type_not_found);
+    RUN_TEST(test_invalid_struct_circular_field_reference);
+    RUN_TEST(test_invalid_union_field_invalid_alignment);
+    RUN_TEST(test_invalid_struct_padding_wrong_location);
+    RUN_TEST(test_invalid_union_non_integer_discriminator);
 
     return UNITY_END();
 }

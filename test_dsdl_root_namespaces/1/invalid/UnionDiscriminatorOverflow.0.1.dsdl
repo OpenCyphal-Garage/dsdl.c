@@ -1,0 +1,4 @@
+# Union with only one field (minimum is 2)
+@union
+uint8 field_a
+@sealed

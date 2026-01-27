@@ -1,0 +1,3 @@
+# ERROR: @sealed with expression (should have no expression)
+uint8 field_a
+@sealed 64

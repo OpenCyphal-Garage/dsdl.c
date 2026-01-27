@@ -1,0 +1,3 @@
+StructCircularFieldReference field_self
+uint8 field_b
+@sealed

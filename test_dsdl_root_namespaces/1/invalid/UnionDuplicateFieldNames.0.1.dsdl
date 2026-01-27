@@ -1,0 +1,4 @@
+@union
+uint8 field_a
+uint8 field_a
+@sealed

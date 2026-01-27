@@ -1,0 +1,4 @@
+# ERROR: @sealed with expression (should have no expression)
+uint8 field_a
+uint8 field_b
+@sealed 128
