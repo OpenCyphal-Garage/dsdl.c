@@ -812,6 +812,205 @@ void test_error_empty_union(void)
 }
 
 // ============================================================================
+// Parser error tests for lines 6000-7000
+// ============================================================================
+
+void test_parser_duplicate_attr_name(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_invalid_test_root());
+
+    const dsdl_type_composite_t* result = dsdl_read(&g_dsdl, wkv_key("ParserDuplicateAttrName.0.1"));
+
+    TEST_ASSERT_NULL(result);
+    TEST_ASSERT_NOT_EQUAL(dsdl_error_none, g_dsdl.error);
+
+    teardown_dsdl();
+}
+
+void test_parser_standalone_byte(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_invalid_test_root());
+
+    const dsdl_type_composite_t* result = dsdl_read(&g_dsdl, wkv_key("ParserStandaloneByte.0.1"));
+
+    TEST_ASSERT_NULL(result);
+    TEST_ASSERT_NOT_EQUAL(dsdl_error_none, g_dsdl.error);
+
+    teardown_dsdl();
+}
+
+void test_parser_standalone_utf8(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_invalid_test_root());
+
+    const dsdl_type_composite_t* result = dsdl_read(&g_dsdl, wkv_key("ParserStandaloneUtf8.0.1"));
+
+    TEST_ASSERT_NULL(result);
+    TEST_ASSERT_NOT_EQUAL(dsdl_error_none, g_dsdl.error);
+
+    teardown_dsdl();
+}
+
+void test_parser_utf8_fixed_array(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_invalid_test_root());
+
+    const dsdl_type_composite_t* result = dsdl_read(&g_dsdl, wkv_key("ParserUtf8FixedArray.0.1"));
+
+    TEST_ASSERT_NULL(result);
+    TEST_ASSERT_NOT_EQUAL(dsdl_error_none, g_dsdl.error);
+
+    teardown_dsdl();
+}
+
+void test_parser_field_after_extent(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_invalid_test_root());
+
+    const dsdl_type_composite_t* result = dsdl_read(&g_dsdl, wkv_key("ParserFieldAfterExtent.0.1"));
+
+    TEST_ASSERT_NULL(result);
+    TEST_ASSERT_NOT_EQUAL(dsdl_error_none, g_dsdl.error);
+
+    teardown_dsdl();
+}
+
+void test_parser_const_after_extent(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_invalid_test_root());
+
+    const dsdl_type_composite_t* result = dsdl_read(&g_dsdl, wkv_key("ParserConstAfterExtent.0.1"));
+
+    TEST_ASSERT_NULL(result);
+    TEST_ASSERT_NOT_EQUAL(dsdl_error_none, g_dsdl.error);
+
+    teardown_dsdl();
+}
+
+void test_parser_const_duplicate_name(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_invalid_test_root());
+
+    const dsdl_type_composite_t* result = dsdl_read(&g_dsdl, wkv_key("ParserConstDuplicateName.0.1"));
+
+    TEST_ASSERT_NULL(result);
+    TEST_ASSERT_NOT_EQUAL(dsdl_error_none, g_dsdl.error);
+
+    teardown_dsdl();
+}
+
+void test_parser_const_standalone_byte(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_invalid_test_root());
+
+    const dsdl_type_composite_t* result = dsdl_read(&g_dsdl, wkv_key("ParserConstStandaloneByte.0.1"));
+
+    TEST_ASSERT_NULL(result);
+    TEST_ASSERT_NOT_EQUAL(dsdl_error_none, g_dsdl.error);
+
+    teardown_dsdl();
+}
+
+void test_parser_sealed_with_value(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_invalid_test_root());
+
+    const dsdl_type_composite_t* result = dsdl_read(&g_dsdl, wkv_key("ParserSealedWithValue.0.1"));
+
+    TEST_ASSERT_NULL(result);
+    TEST_ASSERT_NOT_EQUAL(dsdl_error_none, g_dsdl.error);
+
+    teardown_dsdl();
+}
+
+void test_parser_duplicate_sealed(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_invalid_test_root());
+
+    const dsdl_type_composite_t* result = dsdl_read(&g_dsdl, wkv_key("ParserDuplicateSealed.0.1"));
+
+    TEST_ASSERT_NULL(result);
+    TEST_ASSERT_NOT_EQUAL(dsdl_error_none, g_dsdl.error);
+
+    teardown_dsdl();
+}
+
+void test_parser_extent_no_value(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_invalid_test_root());
+
+    const dsdl_type_composite_t* result = dsdl_read(&g_dsdl, wkv_key("ParserExtentNoValue.0.1"));
+
+    TEST_ASSERT_NULL(result);
+    TEST_ASSERT_NOT_EQUAL(dsdl_error_none, g_dsdl.error);
+
+    teardown_dsdl();
+}
+
+void test_parser_deprecated_with_value(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_invalid_test_root());
+
+    const dsdl_type_composite_t* result = dsdl_read(&g_dsdl, wkv_key("ParserDeprecatedWithValue.0.1"));
+
+    TEST_ASSERT_NULL(result);
+    TEST_ASSERT_NOT_EQUAL(dsdl_error_none, g_dsdl.error);
+
+    teardown_dsdl();
+}
+
+void test_parser_deprecated_after_field(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_invalid_test_root());
+
+    const dsdl_type_composite_t* result = dsdl_read(&g_dsdl, wkv_key("ParserDeprecatedAfterField.0.1"));
+
+    TEST_ASSERT_NULL(result);
+    TEST_ASSERT_NOT_EQUAL(dsdl_error_none, g_dsdl.error);
+
+    teardown_dsdl();
+}
+
+void test_parser_assert_no_value(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_invalid_test_root());
+
+    const dsdl_type_composite_t* result = dsdl_read(&g_dsdl, wkv_key("ParserAssertNoValue.0.1"));
+
+    TEST_ASSERT_NULL(result);
+    TEST_ASSERT_NOT_EQUAL(dsdl_error_none, g_dsdl.error);
+
+    teardown_dsdl();
+}
+
+void test_parser_unknown_directive(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_invalid_test_root());
+
+    const dsdl_type_composite_t* result = dsdl_read(&g_dsdl, wkv_key("ParserUnknownDirective.0.1"));
+
+    TEST_ASSERT_NULL(result);
+    TEST_ASSERT_NOT_EQUAL(dsdl_error_none, g_dsdl.error);
+
+    teardown_dsdl();
+}
+
+// ============================================================================
 // Coverage Phase 5: Comprehensive error path tests
 // ============================================================================
 
@@ -956,5 +1155,20 @@ int main(void)
     RUN_TEST(test_error_extent_non_integer);
     RUN_TEST(test_error_fixed_port_non_int_expr);
     RUN_TEST(test_error_empty_union);
+    RUN_TEST(test_parser_duplicate_attr_name);
+    RUN_TEST(test_parser_standalone_byte);
+    RUN_TEST(test_parser_standalone_utf8);
+    RUN_TEST(test_parser_utf8_fixed_array);
+    RUN_TEST(test_parser_field_after_extent);
+    RUN_TEST(test_parser_const_after_extent);
+    RUN_TEST(test_parser_const_duplicate_name);
+    RUN_TEST(test_parser_const_standalone_byte);
+    RUN_TEST(test_parser_sealed_with_value);
+    RUN_TEST(test_parser_duplicate_sealed);
+    RUN_TEST(test_parser_extent_no_value);
+    RUN_TEST(test_parser_deprecated_with_value);
+    RUN_TEST(test_parser_deprecated_after_field);
+    RUN_TEST(test_parser_assert_no_value);
+    RUN_TEST(test_parser_unknown_directive);
     return UNITY_END();
 }

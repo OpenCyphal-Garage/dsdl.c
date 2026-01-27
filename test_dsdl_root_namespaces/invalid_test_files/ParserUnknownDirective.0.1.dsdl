@@ -1,0 +1,4 @@
+# Test unknown directive error (line 6433)
+uint8 field1
+@unknown_directive
+@sealed

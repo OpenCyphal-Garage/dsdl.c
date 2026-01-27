@@ -1,0 +1,4 @@
+# Test duplicate @sealed error (line 6314)
+uint8 field1
+@sealed
+@sealed

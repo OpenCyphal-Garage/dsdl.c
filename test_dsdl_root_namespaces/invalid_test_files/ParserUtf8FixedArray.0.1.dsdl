@@ -1,0 +1,3 @@
+# Test utf8 in fixed array error (line 6216)
+utf8[10] field1
+@sealed

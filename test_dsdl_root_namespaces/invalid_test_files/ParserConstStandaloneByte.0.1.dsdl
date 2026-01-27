@@ -1,0 +1,3 @@
+# Test standalone byte constant error (line 6264)
+byte MY_CONST = 42
+@sealed

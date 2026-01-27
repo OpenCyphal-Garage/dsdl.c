@@ -1,0 +1,4 @@
+# Test @deprecated after field error (line 6352)
+uint8 field1
+@deprecated
+@sealed

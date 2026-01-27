@@ -1,0 +1,3 @@
+# Test @sealed with value error (line 6311)
+uint8 field1
+@sealed 42

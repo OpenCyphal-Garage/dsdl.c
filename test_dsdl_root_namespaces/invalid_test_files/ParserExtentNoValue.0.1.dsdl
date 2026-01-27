@@ -1,0 +1,4 @@
+# Test @extent without value error (line 6325)
+uint8 field1
+@extent
+@sealed

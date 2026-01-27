@@ -1,0 +1,4 @@
+# Test @deprecated with value error (line 6356)
+@deprecated 42
+uint8 field1
+@sealed
