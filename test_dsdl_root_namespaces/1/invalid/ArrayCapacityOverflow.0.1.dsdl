@@ -1,0 +1,4 @@
+# Array capacity must be positive integer
+uint8 field
+uint8[<0] arr
+@sealed

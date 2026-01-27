@@ -1,0 +1,3 @@
+# Invalid: field name with space
+uint8 field name
+@sealed

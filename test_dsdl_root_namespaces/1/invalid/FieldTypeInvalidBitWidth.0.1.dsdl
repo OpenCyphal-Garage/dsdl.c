@@ -1,0 +1,3 @@
+# Invalid: missing type in field declaration
+field_name
+@sealed

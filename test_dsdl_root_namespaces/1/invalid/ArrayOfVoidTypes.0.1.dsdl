@@ -1,0 +1,3 @@
+# Array of void types (void1 doesn't exist)
+void1[10] arr
+@sealed

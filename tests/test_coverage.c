@@ -3560,6 +3560,110 @@ static void test_invalid_namespace_too_long(void)
 }
 
 /* ============================================================================
+ * Field and Constant Error Path Tests (10 new tests)
+ * ============================================================================ */
+
+static void test_invalid_field_name_underscore_prefix(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("invalid.FieldNameUnderscorePrefix.0.1"));
+    TEST_ASSERT_NULL(type);
+    TEST_ASSERT(g_dsdl.error != dsdl_error_none);
+    teardown_dsdl();
+}
+
+static void test_invalid_field_name_invalid_characters(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("invalid.FieldNameInvalidCharacters.0.1"));
+    TEST_ASSERT_NULL(type);
+    TEST_ASSERT(g_dsdl.error != dsdl_error_none);
+    teardown_dsdl();
+}
+
+static void test_invalid_constant_value_overflow(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("invalid.ConstantValueOverflow.0.1"));
+    TEST_ASSERT_NULL(type);
+    TEST_ASSERT(g_dsdl.error != dsdl_error_none);
+    teardown_dsdl();
+}
+
+static void test_invalid_constant_type_mismatch_float(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("invalid.ConstantTypeMismatch.0.1"));
+    TEST_ASSERT_NULL(type);
+    TEST_ASSERT(g_dsdl.error != dsdl_error_none);
+    teardown_dsdl();
+}
+
+static void test_invalid_string_capacity_non_integer(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("invalid.StringCapacityNonInteger.0.1"));
+    TEST_ASSERT_NULL(type);
+    TEST_ASSERT(g_dsdl.error != dsdl_error_none);
+    teardown_dsdl();
+}
+
+static void test_invalid_array_of_void_types(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("invalid.ArrayOfVoidTypes.0.1"));
+    TEST_ASSERT_NULL(type);
+    TEST_ASSERT(g_dsdl.error != dsdl_error_none);
+    teardown_dsdl();
+}
+
+static void test_invalid_array_capacity_overflow(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("invalid.ArrayCapacityOverflow.0.1"));
+    TEST_ASSERT_NULL(type);
+    TEST_ASSERT(g_dsdl.error != dsdl_error_none);
+    teardown_dsdl();
+}
+
+static void test_invalid_string_capacity_negative(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("invalid.StringCapacityNegative.0.1"));
+    TEST_ASSERT_NULL(type);
+    TEST_ASSERT(g_dsdl.error != dsdl_error_none);
+    teardown_dsdl();
+}
+
+static void test_invalid_field_type_invalid_bit_width(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("invalid.FieldTypeInvalidBitWidth.0.1"));
+    TEST_ASSERT_NULL(type);
+    TEST_ASSERT(g_dsdl.error != dsdl_error_none);
+    teardown_dsdl();
+}
+
+static void test_invalid_constant_division_by_zero(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("invalid.ConstantDivisionByZero.0.1"));
+    TEST_ASSERT_NULL(type);
+    TEST_ASSERT(g_dsdl.error != dsdl_error_none);
+    teardown_dsdl();
+}
+
+/* ============================================================================
  * Main test runner
  * ============================================================================ */
 
@@ -3905,6 +4009,18 @@ int main(void)
     RUN_TEST(test_invalid_import_non_existent);
     RUN_TEST(test_invalid_import_version_mismatch);
     RUN_TEST(test_invalid_namespace_too_long);
+
+    /* Field and constant error path tests */
+    RUN_TEST(test_invalid_field_name_underscore_prefix);
+    RUN_TEST(test_invalid_field_name_invalid_characters);
+    RUN_TEST(test_invalid_constant_value_overflow);
+    RUN_TEST(test_invalid_constant_type_mismatch_float);
+    RUN_TEST(test_invalid_string_capacity_non_integer);
+    RUN_TEST(test_invalid_array_of_void_types);
+    RUN_TEST(test_invalid_array_capacity_overflow);
+    RUN_TEST(test_invalid_string_capacity_negative);
+    RUN_TEST(test_invalid_field_type_invalid_bit_width);
+    RUN_TEST(test_invalid_constant_division_by_zero);
 
     return UNITY_END();
 }

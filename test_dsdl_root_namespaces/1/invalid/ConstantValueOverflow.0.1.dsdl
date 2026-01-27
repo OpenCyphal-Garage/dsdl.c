@@ -1,0 +1,3 @@
+# Constant value overflow (uint8 max is 255)
+uint8 MY_CONST = 256
+@sealed

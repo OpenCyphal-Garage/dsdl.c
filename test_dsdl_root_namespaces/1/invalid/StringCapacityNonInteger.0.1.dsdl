@@ -1,0 +1,4 @@
+# String capacity expression non-integer
+uint8 field
+uint8[<2.5] str
+@sealed

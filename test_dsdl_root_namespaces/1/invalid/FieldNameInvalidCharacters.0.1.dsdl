@@ -1,0 +1,3 @@
+# Field name with invalid characters (hyphen)
+uint8 field-name
+@sealed
