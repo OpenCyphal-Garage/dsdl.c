@@ -1,8 +1,10 @@
 # Remaining tasks
 
-## Improve Code Coverage
+## Refactor to remove unreachable branches and ensure full test coverage in `dsdl.c`
 
-Target: 99+% line coverage for dsdl.c only
+Review the code in `dsdl.c` and refactor it such that there are no unreachable or redundant branches. If any such unreachable code is found, replace it with defensive assertion statements checking for the impossible conditions. Do not alter the business logic unless it is proven to be incorrect.
+
+Add new tests to ensure full test coverage. Prefer tests that use the public API only. If there is any code that cannot be tested through the public API, resort to intrusive tests that `#include "dsdl.c"` directly.
 
 ## Add nested composite serialization and deserialization tests
 
