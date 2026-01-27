@@ -1972,7 +1972,9 @@ static bool dsdl_bls_expand(dsdl_t* const     dsdl,
             return total_count > 0;
         }
 
-        case dsdl_bls_pad: {
+        case dsdl_bls_pad:
+        default: {
+            assert(bls->kind == dsdl_bls_pad);
             uint64_t* child_values = NULL;
             size_t    child_count  = 0;
             if (!dsdl_bls_expand(dsdl, bls->data.pad.child, &child_values, &child_count)) {
@@ -1994,9 +1996,6 @@ static bool dsdl_bls_expand(dsdl_t* const     dsdl,
             return child_count > 0;
         }
     }
-    // DEFENSIVE: All dsdl_bls_kind_t cases handled above. This is unreachable unless a new kind is added.
-    assert(false && "dsdl_bls_expand: unhandled BLS kind");
-    return false; // Unreachable; satisfies compiler for non-assert builds.
 }
 
 static bool dsdl_value_from_bls(dsdl_t* const dsdl, dsdl_bls_t* const bls, dsdl_value_t* const out)
@@ -2203,7 +2202,9 @@ static bool dsdl_value_clone(dsdl_t* const dsdl, const dsdl_value_t* const src, 
             out->as.set.elements = elements;
             return true;
         }
-        case dsdl_value_deferred: {
+        case dsdl_value_deferred:
+        default: {
+            assert(src->kind == dsdl_value_deferred);
             if (src->as.deferred.clone == NULL) {
                 return false;
             }
@@ -2217,9 +2218,6 @@ static bool dsdl_value_clone(dsdl_t* const dsdl, const dsdl_value_t* const src, 
             return true;
         }
     }
-    // DEFENSIVE: All dsdl_value_kind_t cases handled above. This is unreachable unless a new kind is added.
-    assert(false && "dsdl_value_clone: unhandled value kind");
-    return false; // Unreachable; satisfies compiler for non-assert builds.
 }
 
 static void dsdl_value_dispose(dsdl_t* const dsdl, dsdl_value_t* const value)
@@ -3637,11 +3635,10 @@ static bool dsdl_value_equal(const dsdl_value_t* const left, const dsdl_value_t*
             return left->as.type_ref == right->as.type_ref;
         case dsdl_value_set:
         case dsdl_value_deferred:
+        default:
+            assert((left->kind == dsdl_value_set) || (left->kind == dsdl_value_deferred));
             return false;
     }
-    // DEFENSIVE: All dsdl_value_kind_t cases handled above. This is unreachable unless a new kind is added.
-    assert(false && "dsdl_value_equal: unhandled value kind");
-    return false; // Unreachable; satisfies compiler for non-assert builds.
 }
 
 static bool dsdl_set_is_homogeneous(const dsdl_value_t* const set_val, dsdl_value_kind_t* const out_kind)
