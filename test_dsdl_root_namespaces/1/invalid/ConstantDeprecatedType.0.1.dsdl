@@ -1,0 +1,8 @@
+# ERROR: Constant with deprecated type reference
+# This should trigger dsdl_create_type_descriptor failure when deprecated type is used in non-deprecated context
+
+validation.Deprecated.0.1 MY_CONST = 42
+
+uint8 field
+
+@sealed

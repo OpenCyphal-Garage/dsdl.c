@@ -1,0 +1,8 @@
+# ERROR: Constant with expression that fails to evaluate
+# This should trigger dsdl_eval_constant_value failure at line 8469
+
+uint8 MY_CONST = UndefinedIdentifier + 5
+
+uint8 field
+
+@sealed

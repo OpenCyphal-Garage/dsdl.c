@@ -1,0 +1,14 @@
+# ERROR: Service with constant of undefined type in response
+# This should trigger dsdl_create_type_descriptor failure in response constant type creation (line 7925)
+
+uint8 request_field
+
+@sealed
+
+---
+
+UndefinedType.0.1 RESPONSE_CONST = 99
+
+uint8 response_field
+
+@sealed

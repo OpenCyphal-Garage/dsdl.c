@@ -1,0 +1,12 @@
+# ERROR: Service response extent expression evaluates to non-integer
+# This should trigger the check at line 8341 in response extent handling
+
+uint8 request_field
+
+@sealed
+
+---
+
+uint8 response_field
+
+@extent 2.71828

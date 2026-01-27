@@ -1,0 +1,8 @@
+# ERROR: Constant with undefined type reference
+# This should trigger dsdl_create_type_descriptor failure in constant type creation (line 7781)
+
+UndefinedType.0.1 MY_CONST = 42
+
+uint8 field
+
+@sealed

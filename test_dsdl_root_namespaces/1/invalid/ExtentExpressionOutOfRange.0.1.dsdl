@@ -1,0 +1,6 @@
+# ERROR: Extent expression value exceeds uint64 max
+# This should trigger the check at line 8352-8353
+
+uint8 field
+
+@extent 18446744073709551616  # 2^64, exceeds uint64 max

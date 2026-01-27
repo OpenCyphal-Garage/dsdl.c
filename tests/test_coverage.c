@@ -2012,6 +2012,78 @@ static void test_invalid_field_after_extent(void)
     teardown_dsdl();
 }
 
+static void test_invalid_constant_undefined_type(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("invalid.ConstantUndefinedType.0.1"));
+    TEST_ASSERT_NULL(type);
+    teardown_dsdl();
+}
+
+static void test_invalid_extent_expression_non_integer(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("invalid.ExtentExpressionNonInteger.0.1"));
+    TEST_ASSERT_NULL(type);
+    teardown_dsdl();
+}
+
+static void test_invalid_extent_expression_out_of_range(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("invalid.ExtentExpressionOutOfRange.0.1"));
+    TEST_ASSERT_NULL(type);
+    teardown_dsdl();
+}
+
+static void test_invalid_constant_evaluation_fails(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("invalid.ConstantEvaluationFails.0.1"));
+    TEST_ASSERT_NULL(type);
+    teardown_dsdl();
+}
+
+static void test_invalid_service_constant_undefined_type(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("invalid.ServiceConstantUndefinedType.0.1"));
+    TEST_ASSERT_NULL(type);
+    teardown_dsdl();
+}
+
+static void test_invalid_service_response_extent_non_integer(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("invalid.ServiceResponseExtentNonInteger.0.1"));
+    TEST_ASSERT_NULL(type);
+    teardown_dsdl();
+}
+
+static void test_invalid_constant_deprecated_type(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("invalid.ConstantDeprecatedType.0.1"));
+    TEST_ASSERT_NULL(type);
+    teardown_dsdl();
+}
+
+static void test_invalid_service_constant_deprecated_type(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("invalid.ServiceConstantDeprecatedType.0.1"));
+    TEST_ASSERT_NULL(type);
+    teardown_dsdl();
+}
+
 static void test_invalid_sealed_with_expr(void)
 {
     setup_dsdl();
@@ -4529,6 +4601,14 @@ int main(void)
     RUN_TEST(test_invalid_extent_no_expr);
     RUN_TEST(test_invalid_extent_repeated);
     RUN_TEST(test_invalid_field_after_extent);
+    RUN_TEST(test_invalid_constant_undefined_type);
+    RUN_TEST(test_invalid_extent_expression_non_integer);
+    RUN_TEST(test_invalid_extent_expression_out_of_range);
+    RUN_TEST(test_invalid_constant_evaluation_fails);
+    RUN_TEST(test_invalid_service_constant_undefined_type);
+    RUN_TEST(test_invalid_service_response_extent_non_integer);
+    RUN_TEST(test_invalid_constant_deprecated_type);
+    RUN_TEST(test_invalid_service_constant_deprecated_type);
     RUN_TEST(test_invalid_sealed_with_expr);
     RUN_TEST(test_invalid_sealed_repeated);
     RUN_TEST(test_invalid_union_one_field);

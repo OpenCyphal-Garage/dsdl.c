@@ -1,0 +1,6 @@
+# ERROR: Extent expression evaluates to non-integer
+# This should trigger the check at line 8341 (extent_expr.kind != dsdl_value_rational)
+
+uint8 field
+
+@extent 3.14
