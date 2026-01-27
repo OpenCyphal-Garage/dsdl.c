@@ -1,0 +1,4 @@
+# @print with undefined symbol in request section
+uint8 field
+@print undefined_symbol_in_request
+@sealed

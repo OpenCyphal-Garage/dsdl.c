@@ -1,0 +1,3 @@
+# Array with invalid size expression
+uint8[<="invalid_string"] bad_array
+@sealed

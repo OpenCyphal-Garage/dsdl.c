@@ -690,6 +690,79 @@ void test_error_service_extent_out_of_range(void)
     teardown_dsdl();
 }
 
+
+// ============================================================================
+// Coverage Phase 3: OOM and parse error tests
+// ============================================================================
+
+void test_oom_union_variants_allocation(void)
+{
+    // Test OOM during union variants array allocation (lines 8061-8067)
+    for (int counter = 50; counter <= 300; counter += 10) {
+        setup_dsdl_with_oom(counter);
+        if (!add_test_roots()) {
+            teardown_dsdl();
+            continue;
+        }
+
+        const dsdl_type_composite_t* result = dsdl_read(&g_dsdl, wkv_key("validation.UnionForOomTest.0.1"));
+
+        if (result == NULL && g_dsdl.error == dsdl_error_out_of_memory) {
+            teardown_dsdl();
+            return;
+        }
+        teardown_dsdl();
+    }
+}
+
+void test_error_invalid_print_expr_request(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_invalid_test_root());
+
+    // @print with undefined symbol in request section (lines 8010-8016)
+    const dsdl_type_composite_t* result = dsdl_read(&g_dsdl, wkv_key("InvalidPrintExprRequest.0.1"));
+
+    TEST_ASSERT_NULL(result);
+    TEST_ASSERT_EQUAL(dsdl_error_parse, g_dsdl.error);
+
+    teardown_dsdl();
+}
+
+void test_error_invalid_array_size_expr(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_invalid_test_root());
+
+    // Array with invalid size expression (lines 8023-8029)
+    const dsdl_type_composite_t* result = dsdl_read(&g_dsdl, wkv_key("InvalidArraySizeExpr.0.1"));
+
+    TEST_ASSERT_NULL(result);
+    TEST_ASSERT_EQUAL(dsdl_error_parse, g_dsdl.error);
+
+    teardown_dsdl();
+}
+
+void test_oom_type_descriptor_creation(void)
+{
+    // Test OOM during type descriptor creation (lines 8034-8041)
+    for (int counter = 30; counter <= 200; counter += 5) {
+        setup_dsdl_with_oom(counter);
+        if (!add_test_roots()) {
+            teardown_dsdl();
+            continue;
+        }
+
+        const dsdl_type_composite_t* result = dsdl_read(&g_dsdl, wkv_key("mymsgs.Simple.1.0"));
+
+        if (result == NULL && g_dsdl.error == dsdl_error_out_of_memory) {
+            teardown_dsdl();
+            return;
+        }
+        teardown_dsdl();
+    }
+}
+
 // ============================================================================
 // Unity test runner
 // ============================================================================
@@ -730,5 +803,9 @@ int main(void)
     RUN_TEST(test_error_invalid_print_expr_response);
     RUN_TEST(test_error_service_invalid_response_extent);
     RUN_TEST(test_error_service_extent_out_of_range);
+    RUN_TEST(test_oom_union_variants_allocation);
+    RUN_TEST(test_error_invalid_print_expr_request);
+    RUN_TEST(test_error_invalid_array_size_expr);
+    RUN_TEST(test_oom_type_descriptor_creation);
     return UNITY_END();
 }
