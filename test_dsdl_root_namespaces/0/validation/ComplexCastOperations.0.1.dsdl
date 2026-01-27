@@ -1,0 +1,17 @@
+# Modulo and division operations testing
+# Tests modulo and division with various operands
+
+uint8 MOD_1 = (17 % 5)
+@assert MOD_1 == 2
+
+uint8 MOD_2 = (100 % 7)
+@assert MOD_2 == 2
+
+uint16 DIV_1 = (1000 / 10)
+@assert DIV_1 == 100
+
+uint16 DIV_2 = (256 / 2)
+@assert DIV_2 == 128
+
+uint8 dummy
+@sealed

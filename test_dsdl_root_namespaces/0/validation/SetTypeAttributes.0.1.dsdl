@@ -1,0 +1,17 @@
+# Set type attributes testing
+# Tests accessing attributes on set types and expressions
+
+uint16 SET_ATTR_1 = {validation.Simple.0.1._bit_length_}.count
+@assert SET_ATTR_1 == 1
+
+uint16 SET_ATTR_2 = {1, 2, 3, 4, 5}.count
+@assert SET_ATTR_2 == 5
+
+uint16 SET_ATTR_3 = {10, 20, 30}.min
+@assert SET_ATTR_3 == 10
+
+uint16 SET_ATTR_4 = {10, 20, 30}.max
+@assert SET_ATTR_4 == 30
+
+uint8 dummy
+@sealed

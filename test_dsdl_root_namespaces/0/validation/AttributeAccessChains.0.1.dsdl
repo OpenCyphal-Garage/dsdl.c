@@ -1,0 +1,17 @@
+# Bitwise operations testing
+# Tests bitwise AND, OR, XOR operations
+
+uint8 BITWISE_AND = (0xFF & 0x0F)
+@assert BITWISE_AND == 0x0F
+
+uint8 BITWISE_OR = (0xF0 | 0x0F)
+@assert BITWISE_OR == 0xFF
+
+uint8 BITWISE_XOR = (0xFF ^ 0x0F)
+@assert BITWISE_XOR == 0xF0
+
+uint16 BITWISE_COMPLEX = ((0xFF00 & 0xFFFF) | 0x00FF)
+@assert BITWISE_COMPLEX == 0xFFFF
+
+uint8 dummy
+@sealed

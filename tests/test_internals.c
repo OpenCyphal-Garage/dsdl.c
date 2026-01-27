@@ -1105,6 +1105,94 @@ static void test_rational_to_uintmax_success(void)
 }
 
 // ============================================================================
+// Phase 3: Final comprehensive coverage tests
+// ============================================================================
+
+static void test_gcd_large_primes(void)
+{
+    // Test GCD with large prime numbers
+    assert_bigint_gcd(1000000007ULL, 1000000009ULL, 1ULL);
+}
+
+static void test_gcd_power_of_two(void)
+{
+    // Test GCD with power of two
+    assert_bigint_gcd(1024ULL, 512ULL, 512ULL);
+}
+
+static void test_rational_normalize_large_fraction(void)
+{
+    // Test rational normalization with large numbers
+    dsdl_rational_t r = make_rational(1000000, 2000000);
+    r                 = dsdl_rational_normalize(r);
+    assert_bigint_eq_intmax(1, r.num);
+    assert_bigint_eq_uintmax(2, r.den);
+}
+
+static void test_rational_normalize_coprime(void)
+{
+    // Test rational normalization with coprime numbers
+    dsdl_rational_t r = make_rational(17, 19);
+    r                 = dsdl_rational_normalize(r);
+    assert_bigint_eq_intmax(17, r.num);
+    assert_bigint_eq_uintmax(19, r.den);
+}
+
+static void test_bigint_mul_large_numbers(void)
+{
+    // Test bigint multiplication with large numbers
+    dsdl_bigint_t a;
+    dsdl_bigint_t b;
+    dsdl_bigint_t result;
+    TEST_ASSERT_TRUE(dsdl_bigint_from_uintmax(&a, 1000000ULL));
+    TEST_ASSERT_TRUE(dsdl_bigint_from_uintmax(&b, 1000000ULL));
+    TEST_ASSERT_TRUE(dsdl_bigint_mul_abs(&a, &b, &result));
+    assert_bigint_eq_uintmax(1000000000000ULL, result);
+}
+
+static void test_bigint_div_large_numbers(void)
+{
+    // Test bigint division with large numbers
+    dsdl_bigint_t num;
+    dsdl_bigint_t den;
+    dsdl_bigint_t q;
+    dsdl_bigint_t r;
+    TEST_ASSERT_TRUE(dsdl_bigint_from_uintmax(&num, 1000000000ULL));
+    TEST_ASSERT_TRUE(dsdl_bigint_from_uintmax(&den, 1000ULL));
+    TEST_ASSERT_TRUE(dsdl_bigint_div_mod_abs(&num, &den, &q, &r));
+    assert_bigint_eq_uintmax(1000000ULL, q);
+}
+
+static void test_rational_add_large_fractions(void)
+{
+    // Test rational addition with large fractions
+    dsdl_rational_t a      = make_rational(999999, 1000000);
+    dsdl_rational_t b      = make_rational(1, 1000000);
+    dsdl_rational_t result = dsdl_rational_add(a, b);
+    assert_bigint_eq_intmax(1, result.num);
+    assert_bigint_eq_uintmax(1, result.den);
+}
+
+static void test_rational_sub_negative_result(void)
+{
+    // Test rational subtraction resulting in negative
+    dsdl_rational_t a      = make_rational(1, 3);
+    dsdl_rational_t b      = make_rational(2, 3);
+    dsdl_rational_t result = dsdl_rational_sub(a, b);
+    assert_bigint_eq_intmax(-1, result.num);
+    assert_bigint_eq_uintmax(3, result.den);
+}
+
+static void test_bigint_shift_large_value(void)
+{
+    // Test bigint shift with large value
+    dsdl_bigint_t result;
+    TEST_ASSERT_TRUE(dsdl_bigint_from_uintmax(&result, 0ULL));
+    TEST_ASSERT_TRUE(dsdl_bigint_shift_base_add(&result, 5));
+    assert_bigint_eq_uintmax(5ULL, result);
+}
+
+// ============================================================================
 // Main
 // ============================================================================
 
@@ -1203,6 +1291,17 @@ int main(void)
     RUN_TEST(test_bigint_div_mod_abs_small_denominator);
     RUN_TEST(test_bigint_div_mod_abs_numerator_less_than_denominator);
     RUN_TEST(test_bigint_div_mod_abs_zero_denominator);
+
+    // Phase 3: Final comprehensive coverage tests
+    RUN_TEST(test_gcd_large_primes);
+    RUN_TEST(test_gcd_power_of_two);
+    RUN_TEST(test_rational_normalize_large_fraction);
+    RUN_TEST(test_rational_normalize_coprime);
+    RUN_TEST(test_bigint_mul_large_numbers);
+    RUN_TEST(test_bigint_div_large_numbers);
+    RUN_TEST(test_rational_add_large_fractions);
+    RUN_TEST(test_rational_sub_negative_result);
+    RUN_TEST(test_bigint_shift_large_value);
 
     return UNITY_END();
 }

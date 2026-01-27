@@ -1,0 +1,17 @@
+# Complex nested expressions testing
+# Tests nested parentheses and operator precedence
+
+uint8 NESTED_EXPR_1 = ((1 + 2) * 3)
+@assert NESTED_EXPR_1 == 9
+
+uint8 NESTED_EXPR_2 = (1 + (2 * 3))
+@assert NESTED_EXPR_2 == 7
+
+uint16 NESTED_EXPR_3 = ((10 + 20) * (5 + 5))
+@assert NESTED_EXPR_3 == 300
+
+uint32 NESTED_EXPR_4 = ((100 * 2) + (50 * 4))
+@assert NESTED_EXPR_4 == 400
+
+uint8 dummy
+@sealed

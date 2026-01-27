@@ -1,0 +1,17 @@
+# Boundary value expressions testing
+# Tests expressions with maximum and minimum values
+
+uint64 MAX_UINT64 = 18446744073709551615
+@assert MAX_UINT64 == 18446744073709551615
+
+int64 MIN_INT64 = -9223372036854775808
+@assert MIN_INT64 == -9223372036854775808
+
+uint32 BOUNDARY_EXPR_1 = 4294967295
+@assert BOUNDARY_EXPR_1 == 4294967295
+
+int32 BOUNDARY_EXPR_2 = -2147483648
+@assert BOUNDARY_EXPR_2 == -2147483648
+
+uint8 dummy
+@sealed
