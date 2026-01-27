@@ -3001,6 +3001,96 @@ static void test_parser_errors_batch(void)
     teardown_dsdl();
 }
 
+static void test_invalid_missing_semicolon(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("invalid.MissingSemicolon.0.1"));
+    TEST_ASSERT_NULL(type);
+    teardown_dsdl();
+}
+
+static void test_invalid_char_in_identifier(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("invalid.InvalidCharInIdentifier.0.1"));
+    TEST_ASSERT_NULL(type);
+    teardown_dsdl();
+}
+
+static void test_invalid_unclosed_comment(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("invalid.UnclosedComment.0.1"));
+    TEST_ASSERT_NULL(type);
+    teardown_dsdl();
+}
+
+static void test_invalid_directive_syntax(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("invalid.InvalidDirectiveSyntax.0.1"));
+    TEST_ASSERT_NULL(type);
+    teardown_dsdl();
+}
+
+static void test_invalid_malformed_array_syntax(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("invalid.MalformedArraySyntax.0.1"));
+    TEST_ASSERT_NULL(type);
+    teardown_dsdl();
+}
+
+static void test_invalid_constant_expression(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("invalid.InvalidConstantExpression.0.1"));
+    TEST_ASSERT_NULL(type);
+    teardown_dsdl();
+}
+
+static void test_invalid_missing_extent_marker(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("invalid.MissingExtentMarker.0.1"));
+    TEST_ASSERT_NULL(type);
+    teardown_dsdl();
+}
+
+static void test_invalid_service_separator(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("invalid.InvalidServiceSeparator.0.1"));
+    TEST_ASSERT_NULL(type);
+    teardown_dsdl();
+}
+
+static void test_invalid_duplicate_field_names(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("invalid.DuplicateFieldNames.0.1"));
+    TEST_ASSERT_NULL(type);
+    teardown_dsdl();
+}
+
+static void test_invalid_version_format(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("invalid.InvalidVersionFormat.0.1"));
+    TEST_ASSERT_NULL(type);
+    teardown_dsdl();
+}
+
 /* ============================================================================
  * Main test runner
  * ============================================================================ */
@@ -3285,6 +3375,16 @@ int main(void)
     RUN_TEST(test_invalid_large_negative_numbers);
     RUN_TEST(test_invalid_complex_rational_ops);
     RUN_TEST(test_parser_errors_batch);
+    RUN_TEST(test_invalid_missing_semicolon);
+    RUN_TEST(test_invalid_char_in_identifier);
+    RUN_TEST(test_invalid_unclosed_comment);
+    RUN_TEST(test_invalid_directive_syntax);
+    RUN_TEST(test_invalid_malformed_array_syntax);
+    RUN_TEST(test_invalid_constant_expression);
+    RUN_TEST(test_invalid_missing_extent_marker);
+    RUN_TEST(test_invalid_service_separator);
+    RUN_TEST(test_invalid_duplicate_field_names);
+    RUN_TEST(test_invalid_version_format);
 
     return UNITY_END();
 }

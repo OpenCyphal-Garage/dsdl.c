@@ -1,0 +1,3 @@
+# ERROR: Missing type in field declaration
+uint8
+@sealed

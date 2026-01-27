@@ -1,0 +1,3 @@
+# ERROR: Malformed array syntax
+uint8[] field
+@sealed

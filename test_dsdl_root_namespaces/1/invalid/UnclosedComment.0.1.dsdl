@@ -1,0 +1,4 @@
+# ERROR: Unclosed comment block
+uint8 field
+/* This comment is never closed
+@sealed

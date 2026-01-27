@@ -1,0 +1,3 @@
+# ERROR: Invalid extent - negative value
+uint8 field
+@extent -1

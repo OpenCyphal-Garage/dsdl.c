@@ -1,0 +1,3 @@
+# ERROR: Invalid constant expression
+uint8 MY_CONST = "not_a_number"
+@sealed

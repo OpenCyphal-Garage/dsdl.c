@@ -1,0 +1,5 @@
+# ERROR: Invalid service separator (should be ---)
+uint8 request_field
+--
+uint8 response_field
+@sealed

@@ -1,0 +1,4 @@
+# ERROR: Duplicate field names
+uint8 field
+uint8 field
+@sealed
