@@ -476,6 +476,7 @@ static bool dsdl_bigint_div_mod_abs(const dsdl_bigint_t* const num,
         const uintmax_t q = num_u / den_u;
         const uintmax_t r = num_u % den_u;
         if (!dsdl_bigint_from_uintmax(quot, q) || !dsdl_bigint_from_uintmax(rem, r)) {
+            assert(false && "unreachable: division results of uintmax_t always fit in bigint");
             return false;
         }
         return true;
@@ -524,6 +525,7 @@ static bool dsdl_bigint_div_mod_abs(const dsdl_bigint_t* const num,
 
     for (uint_least8_t i = num_div->limb_count; i-- > 0U;) {
         if (!dsdl_bigint_shift_base_add(rem, num_div->limbs[i])) {
+            assert(false && "unreachable: rem < den implies shift cannot overflow");
             return false;
         }
         uint32_t qdigit = 0U;
@@ -556,6 +558,7 @@ static bool dsdl_bigint_div_mod_abs(const dsdl_bigint_t* const num,
     if (norm > 1U) {
         uint32_t rem_small = 0U;
         if (!dsdl_bigint_div_small_inplace(rem, norm, &rem_small) || (rem_small != 0U)) {
+            assert(false && "unreachable: denormalization should be exact");
             return false;
         }
     }
