@@ -1,0 +1,3 @@
+# Invalid modulo operation
+uint8[10 % 0] data
+@sealed

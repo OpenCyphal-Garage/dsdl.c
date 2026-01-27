@@ -1,0 +1,3 @@
+# Invalid logical operation
+uint8[5 && 10] data
+@sealed

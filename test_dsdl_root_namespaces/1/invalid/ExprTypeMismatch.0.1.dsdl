@@ -1,0 +1,3 @@
+# Type mismatch in expression
+uint8[10 + "string"] data
+@sealed

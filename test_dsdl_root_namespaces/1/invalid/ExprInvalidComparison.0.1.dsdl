@@ -1,0 +1,3 @@
+# Invalid comparison types
+uint8[true == 5] data
+@sealed

@@ -1,0 +1,3 @@
+# Overflow in constant expression
+uint8[true + 5] data
+@sealed

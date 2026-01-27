@@ -3091,6 +3091,108 @@ static void test_invalid_version_format(void)
     teardown_dsdl();
 }
 
+/* Expression evaluation error tests */
+
+static void test_invalid_expr_division_by_zero(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("invalid.ExprDivisionByZero.0.1"));
+    TEST_ASSERT_NULL(type);
+    TEST_ASSERT(g_dsdl.error != dsdl_error_none);
+    teardown_dsdl();
+}
+
+static void test_invalid_expr_type_mismatch(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("invalid.ExprTypeMismatch.0.1"));
+    TEST_ASSERT_NULL(type);
+    TEST_ASSERT(g_dsdl.error != dsdl_error_none);
+    teardown_dsdl();
+}
+
+static void test_invalid_expr_invalid_operator(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("invalid.ExprInvalidOperator.0.1"));
+    TEST_ASSERT_NULL(type);
+    TEST_ASSERT(g_dsdl.error != dsdl_error_none);
+    teardown_dsdl();
+}
+
+static void test_invalid_expr_overflow(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("invalid.ExprOverflow.0.1"));
+    TEST_ASSERT_NULL(type);
+    TEST_ASSERT(g_dsdl.error != dsdl_error_none);
+    teardown_dsdl();
+}
+
+static void test_invalid_expr_underflow(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("invalid.ExprUnderflow.0.1"));
+    TEST_ASSERT_NULL(type);
+    TEST_ASSERT(g_dsdl.error != dsdl_error_none);
+    teardown_dsdl();
+}
+
+static void test_invalid_expr_invalid_comparison(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("invalid.ExprInvalidComparison.0.1"));
+    TEST_ASSERT_NULL(type);
+    TEST_ASSERT(g_dsdl.error != dsdl_error_none);
+    teardown_dsdl();
+}
+
+static void test_invalid_expr_invalid_logical(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("invalid.ExprInvalidLogical.0.1"));
+    TEST_ASSERT_NULL(type);
+    TEST_ASSERT(g_dsdl.error != dsdl_error_none);
+    teardown_dsdl();
+}
+
+static void test_invalid_expr_invalid_bitwise(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("invalid.ExprInvalidBitwise.0.1"));
+    TEST_ASSERT_NULL(type);
+    TEST_ASSERT(g_dsdl.error != dsdl_error_none);
+    teardown_dsdl();
+}
+
+static void test_invalid_expr_invalid_modulo(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("invalid.ExprInvalidModulo.0.1"));
+    TEST_ASSERT_NULL(type);
+    TEST_ASSERT(g_dsdl.error != dsdl_error_none);
+    teardown_dsdl();
+}
+
+static void test_invalid_expr_invalid_power(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("invalid.ExprInvalidPower.0.1"));
+    TEST_ASSERT_NULL(type);
+    TEST_ASSERT(g_dsdl.error != dsdl_error_none);
+    teardown_dsdl();
+}
+
 /* ============================================================================
  * Main test runner
  * ============================================================================ */
@@ -3385,6 +3487,16 @@ int main(void)
     RUN_TEST(test_invalid_service_separator);
     RUN_TEST(test_invalid_duplicate_field_names);
     RUN_TEST(test_invalid_version_format);
+    RUN_TEST(test_invalid_expr_division_by_zero);
+    RUN_TEST(test_invalid_expr_type_mismatch);
+    RUN_TEST(test_invalid_expr_invalid_operator);
+    RUN_TEST(test_invalid_expr_overflow);
+    RUN_TEST(test_invalid_expr_underflow);
+    RUN_TEST(test_invalid_expr_invalid_comparison);
+    RUN_TEST(test_invalid_expr_invalid_logical);
+    RUN_TEST(test_invalid_expr_invalid_bitwise);
+    RUN_TEST(test_invalid_expr_invalid_modulo);
+    RUN_TEST(test_invalid_expr_invalid_power);
 
     return UNITY_END();
 }
