@@ -1236,6 +1236,134 @@ static void test_utf8_encode_4byte_sequences(void)
     TEST_ASSERT_FALSE(dsdl_utf8_encode(0x110000U, out, &out_len));
 }
 
+static void test_utf8_encode_boundary_1byte_to_2byte(void)
+{
+    // Test boundary between 1-byte and 2-byte sequences
+    char   out[4];
+    size_t out_len = 0;
+
+    // U+007F (last 1-byte code point)
+    TEST_ASSERT_TRUE(dsdl_utf8_encode(0x007FU, out, &out_len));
+    TEST_ASSERT_EQUAL_INT(1, out_len);
+    TEST_ASSERT_EQUAL_INT(0x7F, (unsigned char)out[0]);
+
+    // U+0080 (first 2-byte code point)
+    out_len = 0;
+    TEST_ASSERT_TRUE(dsdl_utf8_encode(0x0080U, out, &out_len));
+    TEST_ASSERT_EQUAL_INT(2, out_len);
+    TEST_ASSERT_EQUAL_INT(0xC2, (unsigned char)out[0]);
+    TEST_ASSERT_EQUAL_INT(0x80, (unsigned char)out[1]);
+}
+
+static void test_utf8_encode_boundary_2byte_to_3byte(void)
+{
+    // Test boundary between 2-byte and 3-byte sequences
+    char   out[4];
+    size_t out_len = 0;
+
+    // U+07FF (last 2-byte code point)
+    TEST_ASSERT_TRUE(dsdl_utf8_encode(0x07FFU, out, &out_len));
+    TEST_ASSERT_EQUAL_INT(2, out_len);
+    TEST_ASSERT_EQUAL_INT(0xDF, (unsigned char)out[0]);
+    TEST_ASSERT_EQUAL_INT(0xBF, (unsigned char)out[1]);
+
+    // U+0800 (first 3-byte code point)
+    out_len = 0;
+    TEST_ASSERT_TRUE(dsdl_utf8_encode(0x0800U, out, &out_len));
+    TEST_ASSERT_EQUAL_INT(3, out_len);
+    TEST_ASSERT_EQUAL_INT(0xE0, (unsigned char)out[0]);
+    TEST_ASSERT_EQUAL_INT(0xA0, (unsigned char)out[1]);
+    TEST_ASSERT_EQUAL_INT(0x80, (unsigned char)out[2]);
+}
+
+static void test_utf8_encode_boundary_3byte_to_4byte(void)
+{
+    // Test boundary between 3-byte and 4-byte sequences
+    char   out[4];
+    size_t out_len = 0;
+
+    // U+FFFF (last 3-byte code point)
+    TEST_ASSERT_TRUE(dsdl_utf8_encode(0xFFFFU, out, &out_len));
+    TEST_ASSERT_EQUAL_INT(3, out_len);
+    TEST_ASSERT_EQUAL_INT(0xEF, (unsigned char)out[0]);
+    TEST_ASSERT_EQUAL_INT(0xBF, (unsigned char)out[1]);
+    TEST_ASSERT_EQUAL_INT(0xBF, (unsigned char)out[2]);
+
+    // U+10000 (first 4-byte code point)
+    out_len = 0;
+    TEST_ASSERT_TRUE(dsdl_utf8_encode(0x10000U, out, &out_len));
+    TEST_ASSERT_EQUAL_INT(4, out_len);
+    TEST_ASSERT_EQUAL_INT(0xF0, (unsigned char)out[0]);
+    TEST_ASSERT_EQUAL_INT(0x90, (unsigned char)out[1]);
+    TEST_ASSERT_EQUAL_INT(0x80, (unsigned char)out[2]);
+    TEST_ASSERT_EQUAL_INT(0x80, (unsigned char)out[3]);
+}
+
+static void test_utf8_encode_boundary_all_ranges(void)
+{
+    // Test representative values from each range
+    char   out[4];
+    size_t out_len = 0;
+
+    // U+0000 (minimum code point)
+    TEST_ASSERT_TRUE(dsdl_utf8_encode(0x0000U, out, &out_len));
+    TEST_ASSERT_EQUAL_INT(1, out_len);
+    TEST_ASSERT_EQUAL_INT(0x00, (unsigned char)out[0]);
+
+    // U+0041 (ASCII 'A', mid-range 1-byte)
+    out_len = 0;
+    TEST_ASSERT_TRUE(dsdl_utf8_encode(0x0041U, out, &out_len));
+    TEST_ASSERT_EQUAL_INT(1, out_len);
+    TEST_ASSERT_EQUAL_INT(0x41, (unsigned char)out[0]);
+
+    // U+00FF (mid-range 2-byte)
+    out_len = 0;
+    TEST_ASSERT_TRUE(dsdl_utf8_encode(0x00FFU, out, &out_len));
+    TEST_ASSERT_EQUAL_INT(2, out_len);
+    TEST_ASSERT_EQUAL_INT(0xC3, (unsigned char)out[0]);
+    TEST_ASSERT_EQUAL_INT(0xBF, (unsigned char)out[1]);
+
+    // U+0400 (mid-range 2-byte, Cyrillic)
+    out_len = 0;
+    TEST_ASSERT_TRUE(dsdl_utf8_encode(0x0400U, out, &out_len));
+    TEST_ASSERT_EQUAL_INT(2, out_len);
+    TEST_ASSERT_EQUAL_INT(0xD0, (unsigned char)out[0]);
+    TEST_ASSERT_EQUAL_INT(0x80, (unsigned char)out[1]);
+
+    // U+1000 (mid-range 3-byte)
+    out_len = 0;
+    TEST_ASSERT_TRUE(dsdl_utf8_encode(0x1000U, out, &out_len));
+    TEST_ASSERT_EQUAL_INT(3, out_len);
+    TEST_ASSERT_EQUAL_INT(0xE1, (unsigned char)out[0]);
+    TEST_ASSERT_EQUAL_INT(0x80, (unsigned char)out[1]);
+    TEST_ASSERT_EQUAL_INT(0x80, (unsigned char)out[2]);
+
+    // U+50000 (mid-range 4-byte)
+    out_len = 0;
+    TEST_ASSERT_TRUE(dsdl_utf8_encode(0x50000U, out, &out_len));
+    TEST_ASSERT_EQUAL_INT(4, out_len);
+    TEST_ASSERT_EQUAL_INT(0xF1, (unsigned char)out[0]);
+    TEST_ASSERT_EQUAL_INT(0x90, (unsigned char)out[1]);
+    TEST_ASSERT_EQUAL_INT(0x80, (unsigned char)out[2]);
+    TEST_ASSERT_EQUAL_INT(0x80, (unsigned char)out[3]);
+}
+
+static void test_utf8_encode_surrogate_pairs_rejected(void)
+{
+    // Test that surrogate pairs (U+D800-U+DFFF) are rejected
+    char   out[4];
+    size_t out_len = 0;
+
+    // U+D800 (first surrogate)
+    TEST_ASSERT_FALSE(dsdl_utf8_encode(0xD800U, out, &out_len));
+
+    // U+DBFF (mid-range surrogate)
+    TEST_ASSERT_FALSE(dsdl_utf8_encode(0xDBFFU, out, &out_len));
+
+    // U+DFFF (last surrogate)
+    TEST_ASSERT_FALSE(dsdl_utf8_encode(0xDFFFU, out, &out_len));
+}
+
 // ============================================================================
 // String Unescaping Tests
 // ============================================================================
@@ -2612,6 +2740,11 @@ int main(void)
 
     // UTF-8 encoding tests
     RUN_TEST(test_utf8_encode_4byte_sequences);
+    RUN_TEST(test_utf8_encode_boundary_1byte_to_2byte);
+    RUN_TEST(test_utf8_encode_boundary_2byte_to_3byte);
+    RUN_TEST(test_utf8_encode_boundary_3byte_to_4byte);
+    RUN_TEST(test_utf8_encode_boundary_all_ranges);
+    RUN_TEST(test_utf8_encode_surrogate_pairs_rejected);
 
     // String unescaping tests
     RUN_TEST(test_unescape_string_null_dsdl);
