@@ -1,0 +1,34 @@
+# Service response capacity growth testing
+# Tests response field capacity growth
+
+# Request part (minimal)
+uint8 request_field
+
+@sealed
+
+---
+
+# Response part with 17+ fields to trigger response field capacity growth
+uint8 resp_01
+uint8 resp_02
+uint8 resp_03
+uint8 resp_04
+uint8 resp_05
+uint8 resp_06
+uint8 resp_07
+uint8 resp_08
+uint8 resp_09
+uint8 resp_10
+uint8 resp_11
+uint8 resp_12
+uint8 resp_13
+uint8 resp_14
+uint8 resp_15
+uint8 resp_16
+# This 17th field triggers response capacity growth
+uint8 resp_17
+uint8 resp_18
+uint8 resp_19
+uint8 resp_20
+
+@sealed

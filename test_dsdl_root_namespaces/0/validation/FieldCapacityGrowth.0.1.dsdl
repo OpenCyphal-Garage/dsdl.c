@@ -1,0 +1,26 @@
+# Field capacity growth testing
+# Initial capacity is 16, so 17+ fields trigger capacity growth
+
+uint8 field_01
+uint8 field_02
+uint8 field_03
+uint8 field_04
+uint8 field_05
+uint8 field_06
+uint8 field_07
+uint8 field_08
+uint8 field_09
+uint8 field_10
+uint8 field_11
+uint8 field_12
+uint8 field_13
+uint8 field_14
+uint8 field_15
+uint8 field_16
+# This 17th field triggers capacity growth
+uint8 field_17
+uint8 field_18
+uint8 field_19
+uint8 field_20
+
+@sealed
