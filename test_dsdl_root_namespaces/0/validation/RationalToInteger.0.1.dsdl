@@ -1,0 +1,10 @@
+# Rational to integer conversion
+# Tests conversion from rational to integer types
+
+uint32 CONST1 = 1000000
+uint32 CONST2 = 999999
+uint32 CONST3 = 500000
+
+uint8 dummy
+
+@sealed

@@ -1,0 +1,10 @@
+# Large integer addition to trigger dsdl_bigint_add_abs
+# Tests bigint addition with large numbers
+
+uint64 CONST1 = 1000000000000 + 2000000000000
+uint64 CONST2 = 9223372036854775806 + 1
+uint64 CONST3 = 5000000000000 + 4000000000000
+
+uint8 dummy
+
+@sealed

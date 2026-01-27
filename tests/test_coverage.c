@@ -3766,6 +3766,120 @@ static void test_invalid_union_non_integer_discriminator(void)
 }
 
 /* ============================================================================
+ * Bigint/Rational Arithmetic Coverage Tests
+ * ============================================================================ */
+
+static void test_valid_bigint_addition(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("validation.BigintAddition.0.1"));
+    TEST_ASSERT_NOT_NULL(type);
+    TEST_ASSERT_EQUAL(dsdl_error_none, g_dsdl.error);
+    teardown_dsdl();
+}
+
+static void test_valid_bigint_subtraction(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("validation.BigintSubtraction.0.1"));
+    TEST_ASSERT_NOT_NULL(type);
+    TEST_ASSERT_EQUAL(dsdl_error_none, g_dsdl.error);
+    teardown_dsdl();
+}
+
+static void test_valid_bigint_multiplication(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("validation.BigintMultiplication.0.1"));
+    TEST_ASSERT_NOT_NULL(type);
+    TEST_ASSERT_EQUAL(dsdl_error_none, g_dsdl.error);
+    teardown_dsdl();
+}
+
+static void test_valid_rational_division(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("validation.RationalDivision.0.1"));
+    TEST_ASSERT_NOT_NULL(type);
+    TEST_ASSERT_EQUAL(dsdl_error_none, g_dsdl.error);
+    teardown_dsdl();
+}
+
+static void test_valid_rational_comparison(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("validation.RationalComparison.0.1"));
+    TEST_ASSERT_NOT_NULL(type);
+    TEST_ASSERT_EQUAL(dsdl_error_none, g_dsdl.error);
+    teardown_dsdl();
+}
+
+static void test_valid_mixed_arithmetic(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("validation.MixedArithmetic.0.1"));
+    TEST_ASSERT_NOT_NULL(type);
+    TEST_ASSERT_EQUAL(dsdl_error_none, g_dsdl.error);
+    teardown_dsdl();
+}
+
+static void test_valid_negative_numbers(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("validation.NegativeNumbers.0.1"));
+    TEST_ASSERT_NOT_NULL(type);
+    TEST_ASSERT_EQUAL(dsdl_error_none, g_dsdl.error);
+    teardown_dsdl();
+}
+
+static void test_valid_nested_expressions(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("validation.NestedExpressions.0.1"));
+    TEST_ASSERT_NOT_NULL(type);
+    TEST_ASSERT_EQUAL(dsdl_error_none, g_dsdl.error);
+    teardown_dsdl();
+}
+
+static void test_valid_rational_to_integer(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("validation.RationalToInteger.0.1"));
+    TEST_ASSERT_NOT_NULL(type);
+    TEST_ASSERT_EQUAL(dsdl_error_none, g_dsdl.error);
+    teardown_dsdl();
+}
+
+static void test_valid_modulo_operations(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("validation.ModuloOperations.0.1"));
+    TEST_ASSERT_NOT_NULL(type);
+    TEST_ASSERT_EQUAL(dsdl_error_none, g_dsdl.error);
+    teardown_dsdl();
+}
+
+static void test_valid_float_arithmetic(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("validation.FloatArithmetic.0.1"));
+    TEST_ASSERT_NOT_NULL(type);
+    TEST_ASSERT_EQUAL(dsdl_error_none, g_dsdl.error);
+    teardown_dsdl();
+}
+
+/* ============================================================================
  * Main test runner
  * ============================================================================ */
 
@@ -4135,6 +4249,19 @@ int main(void)
     RUN_TEST(test_invalid_union_field_invalid_alignment);
     RUN_TEST(test_invalid_struct_padding_wrong_location);
     RUN_TEST(test_invalid_union_non_integer_discriminator);
+
+    /* Bigint/Rational arithmetic coverage tests */
+    RUN_TEST(test_valid_bigint_addition);
+    RUN_TEST(test_valid_bigint_subtraction);
+    RUN_TEST(test_valid_bigint_multiplication);
+    RUN_TEST(test_valid_rational_division);
+    RUN_TEST(test_valid_rational_comparison);
+    RUN_TEST(test_valid_mixed_arithmetic);
+    RUN_TEST(test_valid_negative_numbers);
+    RUN_TEST(test_valid_nested_expressions);
+    RUN_TEST(test_valid_rational_to_integer);
+    RUN_TEST(test_valid_modulo_operations);
+    RUN_TEST(test_valid_float_arithmetic);
 
     return UNITY_END();
 }

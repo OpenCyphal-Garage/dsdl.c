@@ -1,0 +1,10 @@
+# Large integer subtraction to trigger dsdl_bigint_sub_abs
+# Tests bigint subtraction with large numbers
+
+uint64 CONST1 = 9000000000000 - 1000000000000
+uint64 CONST2 = 9223372036854775807 - 1
+uint64 CONST3 = 8000000000000 - 3000000000000
+
+uint8 dummy
+
+@sealed

@@ -1,0 +1,12 @@
+# Negative number operations to trigger signed bigint paths
+# Tests signed integer arithmetic
+
+int64 CONST1 = -1000000000000 + 500000000000
+int64 CONST2 = -100 - 200
+int64 CONST3 = -1000 * 1000
+int64 CONST4 = 1000 + (-500)
+int64 CONST5 = -1000 + 500
+
+uint8 dummy
+
+@sealed

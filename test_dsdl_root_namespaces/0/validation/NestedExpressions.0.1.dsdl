@@ -1,0 +1,11 @@
+# Complex nested expressions to trigger bigint arithmetic
+# Tests operator precedence and nested operations
+
+uint64 CONST1 = (100 + 200) * 50
+uint64 CONST2 = (1000 - 100) / 2
+uint64 CONST3 = (10 + 20) * 3
+uint64 CONST4 = (100 - 50) * 2
+
+uint8 dummy
+
+@sealed

@@ -1,0 +1,15 @@
+# Float arithmetic to trigger rational operations
+# Tests floating-point arithmetic and comparisons
+
+@assert 1.5 + 2.5 == 4.0
+@assert 10.0 / 3.0 > 3.0
+@assert 10.0 / 3.0 < 4.0
+@assert 0.1 + 0.2 > 0.29
+@assert 0.1 + 0.2 < 0.31
+
+float64 CONST1 = 1.5 + 2.5
+float64 CONST2 = 10.0 / 3.0
+
+uint8 dummy
+
+@sealed

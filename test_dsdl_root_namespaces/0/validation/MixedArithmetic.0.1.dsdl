@@ -1,0 +1,13 @@
+# Mixed integer/float operations
+# Tests type coercion and mixed arithmetic
+
+@assert 1000000 + 3.14159 > 1000003.0
+@assert 500000.5 - 100 == 499900.5
+@assert 2000 * 1.5 == 3000.0
+
+uint64 CONST1 = 1000000 + 1
+uint64 CONST2 = 500000 - 100
+
+uint8 dummy
+
+@sealed

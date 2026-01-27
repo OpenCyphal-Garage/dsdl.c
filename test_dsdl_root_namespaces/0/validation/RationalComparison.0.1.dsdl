@@ -1,0 +1,11 @@
+# Rational comparison to trigger dsdl_rational_cmp
+# Tests rational comparison operations
+
+@assert (1.0 / 3.0) < (1.0 / 2.0)
+@assert (2.0 / 3.0) > (1.0 / 2.0)
+@assert (1.0 / 2.0) == (2.0 / 4.0)
+@assert (3.0 / 4.0) <= (4.0 / 5.0)
+
+uint8 dummy
+
+@sealed

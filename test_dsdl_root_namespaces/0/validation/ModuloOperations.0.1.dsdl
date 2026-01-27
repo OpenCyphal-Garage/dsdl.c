@@ -1,0 +1,10 @@
+# Modulo operations to trigger bigint arithmetic
+# Tests modulo with large numbers
+
+uint64 CONST1 = 9223372036854775807 % 1000000
+uint64 CONST2 = 1000000000000 % 999999
+uint64 CONST3 = 5000000000 % 7
+
+uint8 dummy
+
+@sealed
