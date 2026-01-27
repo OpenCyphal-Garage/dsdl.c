@@ -769,6 +769,380 @@ static void test_bls_new_unite_multiple_children(void)
 }
 
 // ============================================================================
+// BLS Expand: repeat_range edge cases
+// ============================================================================
+
+static void test_bls_expand_repeat_range_min_0_max_1(void)
+{
+    // repeat_range({8}, 0..1) = {0, 8}
+    dsdl_bls_t* const elem = dsdl_bls_new_single(&test_dsdl, 8);
+    dsdl_bls_t* const bls  = dsdl_bls_new_repeat_range(&test_dsdl, elem, 1);
+
+    uint64_t*  values = NULL;
+    size_t     count  = 0;
+    const bool result = dsdl_bls_expand(&test_dsdl, bls, &values, &count);
+
+    TEST_ASSERT_TRUE(result);
+    TEST_ASSERT_EQUAL_size_t(2, count);
+    TEST_ASSERT_EQUAL_size_t(0, values[0]);
+    TEST_ASSERT_EQUAL_size_t(8, values[1]);
+    dsdl_free(&test_dsdl, values);
+}
+
+static void test_bls_expand_repeat_range_min_0_max_255(void)
+{
+    // repeat_range({8}, 0..255) = {0, 8, 16, ..., 2040}
+    // This tests 8-bit length prefix capacity
+    dsdl_bls_t* const elem = dsdl_bls_new_single(&test_dsdl, 8);
+    dsdl_bls_t* const bls  = dsdl_bls_new_repeat_range(&test_dsdl, elem, 255);
+
+    uint64_t*  values = NULL;
+    size_t     count  = 0;
+    const bool result = dsdl_bls_expand(&test_dsdl, bls, &values, &count);
+
+    TEST_ASSERT_TRUE(result);
+    TEST_ASSERT_EQUAL_size_t(256, count); // 0..255 inclusive
+    TEST_ASSERT_EQUAL_size_t(0, values[0]);
+    TEST_ASSERT_EQUAL_size_t(8, values[1]);
+    TEST_ASSERT_EQUAL_size_t(2040, values[255]); // 255 * 8
+    dsdl_free(&test_dsdl, values);
+}
+
+static void test_bls_expand_repeat_range_min_0_max_256(void)
+{
+    // repeat_range({8}, 0..256) = {0, 8, 16, ..., 2048}
+    // This tests 16-bit length prefix capacity
+    dsdl_bls_t* const elem = dsdl_bls_new_single(&test_dsdl, 8);
+    dsdl_bls_t* const bls  = dsdl_bls_new_repeat_range(&test_dsdl, elem, 256);
+
+    uint64_t*  values = NULL;
+    size_t     count  = 0;
+    const bool result = dsdl_bls_expand(&test_dsdl, bls, &values, &count);
+
+    TEST_ASSERT_TRUE(result);
+    TEST_ASSERT_EQUAL_size_t(257, count); // 0..256 inclusive
+    TEST_ASSERT_EQUAL_size_t(0, values[0]);
+    TEST_ASSERT_EQUAL_size_t(8, values[1]);
+    TEST_ASSERT_EQUAL_size_t(2048, values[256]); // 256 * 8
+    dsdl_free(&test_dsdl, values);
+}
+
+static void test_bls_expand_repeat_range_variable_element(void)
+{
+    // repeat_range({8, 16}, 0..3) should expand to all combinations
+    // {0, 8, 16, 16, 24, 32, 24, 32, 40, 32, 40, 48}
+    // After dedup: {0, 8, 16, 24, 32, 40, 48}
+    const uint64_t    elem_values[] = { 8, 16 };
+    dsdl_bls_t* const elem          = dsdl_bls_new_set(&test_dsdl, 2, elem_values);
+    dsdl_bls_t* const bls           = dsdl_bls_new_repeat_range(&test_dsdl, elem, 3);
+
+    uint64_t*  values = NULL;
+    size_t     count  = 0;
+    const bool result = dsdl_bls_expand(&test_dsdl, bls, &values, &count);
+
+    TEST_ASSERT_TRUE(result);
+    TEST_ASSERT_EQUAL_size_t(7, count);
+    TEST_ASSERT_EQUAL_size_t(0, values[0]);
+    TEST_ASSERT_EQUAL_size_t(8, values[1]);
+    TEST_ASSERT_EQUAL_size_t(16, values[2]);
+    TEST_ASSERT_EQUAL_size_t(24, values[3]);
+    TEST_ASSERT_EQUAL_size_t(32, values[4]);
+    TEST_ASSERT_EQUAL_size_t(40, values[5]);
+    TEST_ASSERT_EQUAL_size_t(48, values[6]);
+    dsdl_free(&test_dsdl, values);
+}
+
+static void test_bls_expand_repeat_range_large_capacity(void)
+{
+    // repeat_range({16}, 0..1000) tests large capacity
+    // Result: {0, 16, 32, ..., 16000}
+    dsdl_bls_t* const elem = dsdl_bls_new_single(&test_dsdl, 16);
+    dsdl_bls_t* const bls  = dsdl_bls_new_repeat_range(&test_dsdl, elem, 1000);
+
+    uint64_t*  values = NULL;
+    size_t     count  = 0;
+    const bool result = dsdl_bls_expand(&test_dsdl, bls, &values, &count);
+
+    TEST_ASSERT_TRUE(result);
+    TEST_ASSERT_EQUAL_size_t(1001, count); // 0..1000 inclusive
+    TEST_ASSERT_EQUAL_size_t(0, values[0]);
+    TEST_ASSERT_EQUAL_size_t(16, values[1]);
+    TEST_ASSERT_EQUAL_size_t(16000, values[1000]); // 1000 * 16
+    dsdl_free(&test_dsdl, values);
+}
+
+// ============================================================================
+// BLS Expand: pad alignment edge cases
+// ============================================================================
+
+static void test_bls_expand_pad_to_8bit(void)
+{
+    // pad({10, 15, 17}, 8) = {16, 16, 24} = {16, 24}
+    const uint64_t    values[] = { 10, 15, 17 };
+    dsdl_bls_t* const inner    = dsdl_bls_new_set(&test_dsdl, 3, values);
+    dsdl_bls_t* const bls      = dsdl_bls_new_pad(&test_dsdl, inner, 8);
+
+    uint64_t*  out_values = NULL;
+    size_t     out_count  = 0;
+    const bool result     = dsdl_bls_expand(&test_dsdl, bls, &out_values, &out_count);
+
+    TEST_ASSERT_TRUE(result);
+    TEST_ASSERT_EQUAL_size_t(2, out_count);
+    TEST_ASSERT_EQUAL_size_t(16, out_values[0]);
+    TEST_ASSERT_EQUAL_size_t(24, out_values[1]);
+    dsdl_free(&test_dsdl, out_values);
+}
+
+static void test_bls_expand_pad_to_16bit(void)
+{
+    // pad({10, 20, 30}, 16) = {16, 32, 32} = {16, 32}
+    const uint64_t    values[] = { 10, 20, 30 };
+    dsdl_bls_t* const inner    = dsdl_bls_new_set(&test_dsdl, 3, values);
+    dsdl_bls_t* const bls      = dsdl_bls_new_pad(&test_dsdl, inner, 16);
+
+    uint64_t*  out_values = NULL;
+    size_t     out_count  = 0;
+    const bool result     = dsdl_bls_expand(&test_dsdl, bls, &out_values, &out_count);
+
+    TEST_ASSERT_TRUE(result);
+    TEST_ASSERT_EQUAL_size_t(2, out_count);
+    TEST_ASSERT_EQUAL_size_t(16, out_values[0]);
+    TEST_ASSERT_EQUAL_size_t(32, out_values[1]);
+    dsdl_free(&test_dsdl, out_values);
+}
+
+static void test_bls_expand_pad_to_32bit(void)
+{
+    // pad({10, 40, 70}, 32) = {32, 64, 96}
+    const uint64_t    values[] = { 10, 40, 70 };
+    dsdl_bls_t* const inner    = dsdl_bls_new_set(&test_dsdl, 3, values);
+    dsdl_bls_t* const bls      = dsdl_bls_new_pad(&test_dsdl, inner, 32);
+
+    uint64_t*  out_values = NULL;
+    size_t     out_count  = 0;
+    const bool result     = dsdl_bls_expand(&test_dsdl, bls, &out_values, &out_count);
+
+    TEST_ASSERT_TRUE(result);
+    TEST_ASSERT_EQUAL_size_t(3, out_count);
+    TEST_ASSERT_EQUAL_size_t(32, out_values[0]);
+    TEST_ASSERT_EQUAL_size_t(64, out_values[1]);
+    TEST_ASSERT_EQUAL_size_t(96, out_values[2]);
+    dsdl_free(&test_dsdl, out_values);
+}
+
+static void test_bls_expand_pad_to_64bit(void)
+{
+    // pad({50, 100, 150}, 64) = {64, 128, 192}
+    const uint64_t    values[] = { 50, 100, 150 };
+    dsdl_bls_t* const inner    = dsdl_bls_new_set(&test_dsdl, 3, values);
+    dsdl_bls_t* const bls      = dsdl_bls_new_pad(&test_dsdl, inner, 64);
+
+    uint64_t*  out_values = NULL;
+    size_t     out_count  = 0;
+    const bool result     = dsdl_bls_expand(&test_dsdl, bls, &out_values, &out_count);
+
+    TEST_ASSERT_TRUE(result);
+    TEST_ASSERT_EQUAL_size_t(3, out_count);
+    TEST_ASSERT_EQUAL_size_t(64, out_values[0]);
+    TEST_ASSERT_EQUAL_size_t(128, out_values[1]);
+    TEST_ASSERT_EQUAL_size_t(192, out_values[2]);
+    dsdl_free(&test_dsdl, out_values);
+}
+
+static void test_bls_expand_pad_already_aligned(void)
+{
+    // pad({16, 32, 48}, 8) = {16, 32, 48} (no change)
+    const uint64_t    values[] = { 16, 32, 48 };
+    dsdl_bls_t* const inner    = dsdl_bls_new_set(&test_dsdl, 3, values);
+    dsdl_bls_t* const bls      = dsdl_bls_new_pad(&test_dsdl, inner, 8);
+
+    uint64_t*  out_values = NULL;
+    size_t     out_count  = 0;
+    const bool result     = dsdl_bls_expand(&test_dsdl, bls, &out_values, &out_count);
+
+    TEST_ASSERT_TRUE(result);
+    TEST_ASSERT_EQUAL_size_t(3, out_count);
+    TEST_ASSERT_EQUAL_size_t(16, out_values[0]);
+    TEST_ASSERT_EQUAL_size_t(32, out_values[1]);
+    TEST_ASSERT_EQUAL_size_t(48, out_values[2]);
+    dsdl_free(&test_dsdl, out_values);
+}
+
+// ============================================================================
+// BLS Expand: union (unite) with many variants
+// ============================================================================
+
+static void test_bls_expand_union_2_variants(void)
+{
+    // union({8}, {16}) = {8, 16}
+    // Tests 8-bit tag (2 variants)
+    dsdl_bls_t* const v1          = dsdl_bls_new_single(&test_dsdl, 8);
+    dsdl_bls_t* const v2          = dsdl_bls_new_single(&test_dsdl, 16);
+    dsdl_bls_t*       variants[2] = { v1, v2 };
+    dsdl_bls_t* const bls         = dsdl_bls_new_unite(&test_dsdl, 2, variants);
+
+    uint64_t*  values = NULL;
+    size_t     count  = 0;
+    const bool result = dsdl_bls_expand(&test_dsdl, bls, &values, &count);
+
+    TEST_ASSERT_TRUE(result);
+    TEST_ASSERT_EQUAL_size_t(2, count);
+    TEST_ASSERT_EQUAL_size_t(8, values[0]);
+    TEST_ASSERT_EQUAL_size_t(16, values[1]);
+    dsdl_free(&test_dsdl, values);
+}
+
+static void test_bls_expand_union_255_variants(void)
+{
+    // union with 255 variants (8-bit tag max)
+    // Each variant has bit length = variant_index * 8
+    // Result: {0, 8, 16, ..., 2032}
+    dsdl_bls_t* variants[255];
+    for (size_t i = 0; i < 255; i++) {
+        variants[i] = dsdl_bls_new_single(&test_dsdl, i * 8);
+    }
+    dsdl_bls_t* const bls = dsdl_bls_new_unite(&test_dsdl, 255, variants);
+
+    uint64_t*  values = NULL;
+    size_t     count  = 0;
+    const bool result = dsdl_bls_expand(&test_dsdl, bls, &values, &count);
+
+    TEST_ASSERT_TRUE(result);
+    TEST_ASSERT_EQUAL_size_t(255, count);
+    TEST_ASSERT_EQUAL_size_t(0, values[0]);
+    TEST_ASSERT_EQUAL_size_t(8, values[1]);
+    TEST_ASSERT_EQUAL_size_t(2032, values[254]); // 254 * 8
+    dsdl_free(&test_dsdl, values);
+}
+
+static void test_bls_expand_union_256_variants(void)
+{
+    // union with 256 variants (16-bit tag)
+    // Each variant has bit length = variant_index * 8
+    // Result: {0, 8, 16, ..., 2040}
+    dsdl_bls_t* variants[256];
+    for (size_t i = 0; i < 256; i++) {
+        variants[i] = dsdl_bls_new_single(&test_dsdl, i * 8);
+    }
+    dsdl_bls_t* const bls = dsdl_bls_new_unite(&test_dsdl, 256, variants);
+
+    uint64_t*  values = NULL;
+    size_t     count  = 0;
+    const bool result = dsdl_bls_expand(&test_dsdl, bls, &values, &count);
+
+    TEST_ASSERT_TRUE(result);
+    TEST_ASSERT_EQUAL_size_t(256, count);
+    TEST_ASSERT_EQUAL_size_t(0, values[0]);
+    TEST_ASSERT_EQUAL_size_t(8, values[1]);
+    TEST_ASSERT_EQUAL_size_t(2040, values[255]); // 255 * 8
+    dsdl_free(&test_dsdl, values);
+}
+
+static void test_bls_expand_union_heterogeneous_variants(void)
+{
+    // union with variants of different sizes
+    // v1: {8, 16}, v2: {24}, v3: {32, 40}
+    // Result: {8, 16, 24, 32, 40}
+    const uint64_t    v1_values[] = { 8, 16 };
+    const uint64_t    v3_values[] = { 32, 40 };
+    dsdl_bls_t* const v1          = dsdl_bls_new_set(&test_dsdl, 2, v1_values);
+    dsdl_bls_t* const v2          = dsdl_bls_new_single(&test_dsdl, 24);
+    dsdl_bls_t* const v3          = dsdl_bls_new_set(&test_dsdl, 2, v3_values);
+    dsdl_bls_t*       variants[3] = { v1, v2, v3 };
+    dsdl_bls_t* const bls         = dsdl_bls_new_unite(&test_dsdl, 3, variants);
+
+    uint64_t*  values = NULL;
+    size_t     count  = 0;
+    const bool result = dsdl_bls_expand(&test_dsdl, bls, &values, &count);
+
+    TEST_ASSERT_TRUE(result);
+    TEST_ASSERT_EQUAL_size_t(5, count);
+    TEST_ASSERT_EQUAL_size_t(8, values[0]);
+    TEST_ASSERT_EQUAL_size_t(16, values[1]);
+    TEST_ASSERT_EQUAL_size_t(24, values[2]);
+    TEST_ASSERT_EQUAL_size_t(32, values[3]);
+    TEST_ASSERT_EQUAL_size_t(40, values[4]);
+    dsdl_free(&test_dsdl, values);
+}
+
+static void test_bls_expand_union_nested_structures(void)
+{
+    // union with nested concat structures
+    // v1: concat({8}, {16}) = {24}
+    // v2: concat({32}, {8}) = {40}
+    // Result: {24, 40}
+    dsdl_bls_t* const v1_c1          = dsdl_bls_new_single(&test_dsdl, 8);
+    dsdl_bls_t* const v1_c2          = dsdl_bls_new_single(&test_dsdl, 16);
+    dsdl_bls_t*       v1_children[2] = { v1_c1, v1_c2 };
+    dsdl_bls_t* const v1             = dsdl_bls_new_concat(&test_dsdl, 2, v1_children);
+
+    dsdl_bls_t* const v2_c1          = dsdl_bls_new_single(&test_dsdl, 32);
+    dsdl_bls_t* const v2_c2          = dsdl_bls_new_single(&test_dsdl, 8);
+    dsdl_bls_t*       v2_children[2] = { v2_c1, v2_c2 };
+    dsdl_bls_t* const v2             = dsdl_bls_new_concat(&test_dsdl, 2, v2_children);
+
+    dsdl_bls_t*       variants[2] = { v1, v2 };
+    dsdl_bls_t* const bls         = dsdl_bls_new_unite(&test_dsdl, 2, variants);
+
+    uint64_t*  values = NULL;
+    size_t     count  = 0;
+    const bool result = dsdl_bls_expand(&test_dsdl, bls, &values, &count);
+
+    TEST_ASSERT_TRUE(result);
+    TEST_ASSERT_EQUAL_size_t(2, count);
+    TEST_ASSERT_EQUAL_size_t(24, values[0]);
+    TEST_ASSERT_EQUAL_size_t(40, values[1]);
+    dsdl_free(&test_dsdl, values);
+}
+
+// ============================================================================
+// BLS Expand: complex nested cases
+// ============================================================================
+
+static void test_bls_expand_concat_with_repeat_range(void)
+{
+    // concat({16}, repeat_range({8}, 2)) = {16} + {0, 8, 16} = {16, 24, 32}
+    dsdl_bls_t* const prefix      = dsdl_bls_new_single(&test_dsdl, 16);
+    dsdl_bls_t* const elem        = dsdl_bls_new_single(&test_dsdl, 8);
+    dsdl_bls_t* const rr          = dsdl_bls_new_repeat_range(&test_dsdl, elem, 2);
+    dsdl_bls_t*       children[2] = { prefix, rr };
+    dsdl_bls_t* const bls         = dsdl_bls_new_concat(&test_dsdl, 2, children);
+
+    uint64_t*  values = NULL;
+    size_t     count  = 0;
+    const bool result = dsdl_bls_expand(&test_dsdl, bls, &values, &count);
+
+    TEST_ASSERT_TRUE(result);
+    TEST_ASSERT_EQUAL_size_t(3, count);
+    TEST_ASSERT_EQUAL_size_t(16, values[0]);
+    TEST_ASSERT_EQUAL_size_t(24, values[1]);
+    TEST_ASSERT_EQUAL_size_t(32, values[2]);
+    dsdl_free(&test_dsdl, values);
+}
+
+static void test_bls_expand_repeat_of_union(void)
+{
+    // repeat(union({8}, {16}), 2) = repeat({8, 16}, 2)
+    // = {8, 16} + {8, 16} = {16, 24, 32}
+    dsdl_bls_t* const v1          = dsdl_bls_new_single(&test_dsdl, 8);
+    dsdl_bls_t* const v2          = dsdl_bls_new_single(&test_dsdl, 16);
+    dsdl_bls_t*       variants[2] = { v1, v2 };
+    dsdl_bls_t* const union_bls   = dsdl_bls_new_unite(&test_dsdl, 2, variants);
+    dsdl_bls_t* const bls         = dsdl_bls_new_repeat(&test_dsdl, union_bls, 2);
+
+    uint64_t*  values = NULL;
+    size_t     count  = 0;
+    const bool result = dsdl_bls_expand(&test_dsdl, bls, &values, &count);
+
+    TEST_ASSERT_TRUE(result);
+    TEST_ASSERT_EQUAL_size_t(3, count);
+    TEST_ASSERT_EQUAL_size_t(16, values[0]);
+    TEST_ASSERT_EQUAL_size_t(24, values[1]);
+    TEST_ASSERT_EQUAL_size_t(32, values[2]);
+    dsdl_free(&test_dsdl, values);
+}
+
+// ============================================================================
 // Main
 // ============================================================================
 
@@ -844,6 +1218,31 @@ int main(void)
     RUN_TEST(test_bls_nested_variable_arrays);
     RUN_TEST(test_bls_large_variable_array);
     RUN_TEST(test_bls_pydsdl_example);
+
+    // BLS Expand: repeat_range edge cases
+    RUN_TEST(test_bls_expand_repeat_range_min_0_max_1);
+    RUN_TEST(test_bls_expand_repeat_range_min_0_max_255);
+    RUN_TEST(test_bls_expand_repeat_range_min_0_max_256);
+    RUN_TEST(test_bls_expand_repeat_range_variable_element);
+    RUN_TEST(test_bls_expand_repeat_range_large_capacity);
+
+    // BLS Expand: pad alignment edge cases
+    RUN_TEST(test_bls_expand_pad_to_8bit);
+    RUN_TEST(test_bls_expand_pad_to_16bit);
+    RUN_TEST(test_bls_expand_pad_to_32bit);
+    RUN_TEST(test_bls_expand_pad_to_64bit);
+    RUN_TEST(test_bls_expand_pad_already_aligned);
+
+    // BLS Expand: union (unite) with many variants
+    RUN_TEST(test_bls_expand_union_2_variants);
+    RUN_TEST(test_bls_expand_union_255_variants);
+    RUN_TEST(test_bls_expand_union_256_variants);
+    RUN_TEST(test_bls_expand_union_heterogeneous_variants);
+    RUN_TEST(test_bls_expand_union_nested_structures);
+
+    // BLS Expand: complex nested cases
+    RUN_TEST(test_bls_expand_concat_with_repeat_range);
+    RUN_TEST(test_bls_expand_repeat_of_union);
 
     return UNITY_END();
 }
