@@ -1632,82 +1632,229 @@ static void test_serialize_empty_array(void)
 }
 
 // ============================================================================
+// Deserialization edge case tests
+// ============================================================================
+
+void test_deserialize_void_fields_in_struct(void)
+{
+    setup_dsdl();
+
+    TEST_ASSERT_TRUE(add_test_roots());
+
+    const dsdl_type_composite_t* all_voids = dsdl_read(&g_dsdl, wkv_key("validation.AllVoids.0.1"));
+    TEST_ASSERT_NOT_NULL(all_voids);
+
+    TEST_ASSERT_EQUAL_size_t(64, all_voids->field_count);
+
+    dsdl_value_struct_t sval = { .values = NULL };
+
+    uint8_t buffer[512] = { 0 };
+    size_t  size        = dsdl_serialize(all_voids, &sval, sizeof(buffer), buffer, NULL);
+    TEST_ASSERT_EQUAL_size_t(260, size);
+
+    dsdl_value_struct_t result_sval = { .values = NULL };
+    size_t              consumed    = dsdl_deserialize(all_voids, &result_sval, size, buffer, NULL);
+    TEST_ASSERT_EQUAL_size_t(260, consumed);
+
+    teardown_dsdl();
+}
+
+void test_deserialize_union_with_void_variant(void)
+{
+    setup_dsdl();
+
+    TEST_ASSERT_TRUE(add_test_roots());
+
+    const dsdl_type_composite_t* union_type = dsdl_read(&g_dsdl, wkv_key("validation.Union.0.1"));
+    TEST_ASSERT_NOT_NULL(union_type);
+    TEST_ASSERT_EQUAL(DSDL_COMPOSITE_UNION, union_type->type);
+
+    uint8_t            value = 0x42;
+    dsdl_value_union_t uval  = { .tag = 0, .value = &value };
+
+    uint8_t buffer[32] = { 0 };
+    size_t  size       = dsdl_serialize(union_type, &uval, sizeof(buffer), buffer, NULL);
+    TEST_ASSERT_TRUE(size != SIZE_MAX);
+
+    uint8_t            result_value = 0;
+    dsdl_value_union_t result_uval  = { .tag = 99, .value = &result_value };
+    size_t             consumed     = dsdl_deserialize(union_type, &result_uval, size, buffer, NULL);
+    TEST_ASSERT_TRUE(consumed != SIZE_MAX);
+    TEST_ASSERT_EQUAL_size_t(0, result_uval.tag);
+    TEST_ASSERT_EQUAL_UINT8(0x42, result_value);
+
+    teardown_dsdl();
+}
+
+void test_deserialize_union_tag_at_boundary(void)
+{
+    static dsdl_type_t  field_types_storage[255];
+    static dsdl_type_t* field_types[255];
+    static wkv_str_t    field_names[255];
+
+    for (size_t i = 0; i < 255; i++) {
+        field_types_storage[i] = DSDL_UINT(8);
+        field_types[i]         = &field_types_storage[i];
+        field_names[i].len     = 1;
+        field_names[i].str     = "a";
+    }
+
+    dsdl_type_composite_t union_type = {
+        .type        = DSDL_COMPOSITE_UNION,
+        .name        = { 13, "LargeUnion255" },
+        .version     = { 1, 0 },
+        .extent      = 8,
+        .sealed      = true,
+        .field_count = 255,
+        .field_names = field_names,
+        .field_types = field_types,
+    };
+
+    {
+        uint8_t            value = 0xAB;
+        dsdl_value_union_t uval  = { .tag = 254, .value = &value };
+
+        uint8_t buffer[16] = { 0 };
+        size_t  size       = dsdl_serialize(&union_type, &uval, sizeof(buffer), buffer, NULL);
+        TEST_ASSERT_TRUE(size != SIZE_MAX);
+
+        uint8_t            result_value = 0;
+        dsdl_value_union_t result_uval  = { .tag = 99, .value = &result_value };
+        size_t             consumed     = dsdl_deserialize(&union_type, &result_uval, size, buffer, NULL);
+        TEST_ASSERT_TRUE(consumed != SIZE_MAX);
+        TEST_ASSERT_EQUAL_size_t(254, result_uval.tag);
+        TEST_ASSERT_EQUAL_UINT8(0xAB, result_value);
+    }
+
+    {
+        uint8_t buffer[16] = { 0xFF, 0xAB };
+
+        uint8_t            result_value = 0;
+        dsdl_value_union_t result_uval  = { .tag = 0, .value = &result_value };
+        size_t             consumed     = dsdl_deserialize(&union_type, &result_uval, sizeof(buffer), buffer, NULL);
+        TEST_ASSERT_EQUAL_size_t(SIZE_MAX, consumed);
+    }
+}
+
+void test_deserialize_delimited_type(void)
+{
+    setup_dsdl();
+
+    TEST_ASSERT_TRUE(add_test_roots());
+
+    const dsdl_type_composite_t* delimited = dsdl_read(&g_dsdl, wkv_key("validation.Delimited.0.1"));
+    TEST_ASSERT_NOT_NULL(delimited);
+    TEST_ASSERT_FALSE(delimited->sealed);
+
+    uint8_t field_storage[256] = { 0 };
+    void*   field_ptrs[32];
+    for (size_t i = 0; i < 32; i++) {
+        field_ptrs[i] = &field_storage[i * 8];
+    }
+    dsdl_value_struct_t sval = { .values = field_ptrs };
+
+    uint8_t buffer[512] = { 0 };
+    size_t  size        = dsdl_serialize(delimited, &sval, sizeof(buffer), buffer, NULL);
+    TEST_ASSERT_TRUE(size != SIZE_MAX);
+    TEST_ASSERT_TRUE(size >= 4);
+
+    uint8_t result_storage[256] = { 0 };
+    void*   result_ptrs[32];
+    for (size_t i = 0; i < 32; i++) {
+        result_ptrs[i] = &result_storage[i * 8];
+    }
+    dsdl_value_struct_t result_sval = { .values = result_ptrs };
+
+    size_t consumed = dsdl_deserialize(delimited, &result_sval, size, buffer, NULL);
+    TEST_ASSERT_EQUAL_size_t(size, consumed);
+
+    teardown_dsdl();
+}
+
+void test_deserialize_variable_array_at_max_capacity(void)
+{
+    setup_dsdl();
+
+    TEST_ASSERT_TRUE(add_test_roots());
+
+    const dsdl_type_composite_t* inner = dsdl_read(&g_dsdl, wkv_key("mymsgs.Inner.1.0"));
+    TEST_ASSERT_NOT_NULL(inner);
+
+    uint32_t                    elements[5] = { 0x11111111, 0x22222222, 0x33333333, 0x44444444, 0x55555555 };
+    dsdl_value_array_variable_t array_val   = { .count = 5, .members = elements };
+
+    void*               field_ptrs[] = { &array_val };
+    dsdl_value_struct_t sval         = { .values = field_ptrs };
+
+    uint8_t buffer[32] = { 0 };
+    size_t  size       = dsdl_serialize(inner, &sval, sizeof(buffer), buffer, NULL);
+    TEST_ASSERT_EQUAL_size_t(21, size);
+
+    uint32_t                    result_elements[5] = { 0 };
+    dsdl_value_array_variable_t result_array       = { .count = 5, .members = result_elements };
+
+    void*               result_ptrs[] = { &result_array };
+    dsdl_value_struct_t result_sval   = { .values = result_ptrs };
+
+    size_t consumed = dsdl_deserialize(inner, &result_sval, size, buffer, NULL);
+    TEST_ASSERT_EQUAL_size_t(21, consumed);
+    TEST_ASSERT_EQUAL_size_t(5, result_array.count);
+    TEST_ASSERT_EQUAL_UINT32(0x11111111, result_elements[0]);
+    TEST_ASSERT_EQUAL_UINT32(0x22222222, result_elements[1]);
+    TEST_ASSERT_EQUAL_UINT32(0x33333333, result_elements[2]);
+    TEST_ASSERT_EQUAL_UINT32(0x44444444, result_elements[3]);
+    TEST_ASSERT_EQUAL_UINT32(0x55555555, result_elements[4]);
+
+    teardown_dsdl();
+}
+
+void test_deserialize_union_tag_out_of_range(void)
+{
+    static dsdl_type_t field_a_type = DSDL_UINT(8);
+    static dsdl_type_t field_b_type = DSDL_UINT(16);
+    static dsdl_type_t field_c_type = DSDL_UINT(32);
+
+    static dsdl_type_t* field_types[3];
+    field_types[0] = &field_a_type;
+    field_types[1] = &field_b_type;
+    field_types[2] = &field_c_type;
+
+    static wkv_str_t field_names[3] = { { 1, "a" }, { 1, "b" }, { 1, "c" } };
+
+    dsdl_type_composite_t union_type = {
+        .type        = DSDL_COMPOSITE_UNION,
+        .name        = { 12, "ThreeUnion" },
+        .version     = { 1, 0 },
+        .extent      = 8,
+        .sealed      = true,
+        .field_count = 3,
+        .field_names = field_names,
+        .field_types = field_types,
+    };
+
+    const uint8_t invalid_tags[] = { 3, 4, 5, 10, 100, 255 };
+    for (size_t i = 0; i < sizeof(invalid_tags) / sizeof(invalid_tags[0]); i++) {
+        uint8_t buffer[16] = { invalid_tags[i], 0x00 };
+
+        uint8_t            result_value = 0;
+        dsdl_value_union_t result_uval  = { .tag = 0, .value = &result_value };
+
+        dsdl_error_t err      = dsdl_error_none;
+        size_t       consumed = dsdl_deserialize(&union_type, &result_uval, sizeof(buffer), buffer, &err);
+
+        TEST_ASSERT_EQUAL_size_t(SIZE_MAX, consumed);
+        TEST_ASSERT_NOT_EQUAL(dsdl_error_none, err);
+    }
+}
+
+// ============================================================================
 // Main
 // ============================================================================
 
 void setUp(void) {}
 void tearDown(void) {}
 
-int main(void)
-{
-    UNITY_BEGIN();
-
-    // Bit buffer tests
-    RUN_TEST(test_bitbuf_write_read_byte_aligned);
-    RUN_TEST(test_bitbuf_write_read_non_aligned);
-    RUN_TEST(test_bitbuf_write_cross_byte);
-    RUN_TEST(test_bitbuf_read_implicit_zero_extension);
-
-    // Primitive serialization tests
-    RUN_TEST(test_serialize_uint8);
-    RUN_TEST(test_serialize_uint32);
-    RUN_TEST(test_serialize_int16_negative);
-    RUN_TEST(test_serialize_bool);
-    RUN_TEST(test_serialize_float32);
-    RUN_TEST(test_serialize_cast_mode_uint);
-    RUN_TEST(test_serialize_cast_mode_int);
-    RUN_TEST(test_serialize_cast_mode_float16);
-
-    // Float16 conversion tests
-    RUN_TEST(test_float16_pack);
-    RUN_TEST(test_float16_unpack);
-    RUN_TEST(test_float16_roundtrip);
-    RUN_TEST(test_serialize_float16);
-    RUN_TEST(test_deserialize_float16);
-
-    // Float32 special value tests
-    RUN_TEST(test_serialize_float32_nan);
-    RUN_TEST(test_serialize_float32_infinity);
-    RUN_TEST(test_serialize_float32_negative_zero);
-
-    // Float64 special value tests
-    RUN_TEST(test_serialize_float64_nan);
-    RUN_TEST(test_serialize_float64_infinity);
-
-    // Exact buffer size and array boundary tests
-    RUN_TEST(test_serialize_exact_buffer_size);
-    RUN_TEST(test_serialize_array_capacity_boundary);
-    RUN_TEST(test_serialize_empty_array);
-
-    // Integration tests
-    RUN_TEST(test_serialize_simple_struct);
-    RUN_TEST(test_serialize_variable_array_struct);
-    RUN_TEST(test_serialize_nested_struct);
-
-    // Roundtrip tests
-    RUN_TEST(test_roundtrip_simple_struct);
-    RUN_TEST(test_roundtrip_variable_array);
-    RUN_TEST(test_deserialize_array_overflow_fails);
-    RUN_TEST(test_serialize_array_overflow_fails);
-    RUN_TEST(test_deserialize_array_prefix_exceeds_capacity_fails);
-    RUN_TEST(test_roundtrip_nested_struct);
-
-    // Union tests
-    RUN_TEST(test_serialize_union);
-    RUN_TEST(test_serialize_union_invalid_tag_fails);
-    RUN_TEST(test_deserialize_union_invalid_tag_fails);
-    RUN_TEST(test_serialize_unsigned_saturates);
-    RUN_TEST(test_serialize_signed_saturates);
-
-    // Edge case tests
-    RUN_TEST(test_serialize_deeply_nested_struct);
-    RUN_TEST(test_serialize_union_all_variants);
-    RUN_TEST(test_serialize_variable_array_at_capacity);
-    RUN_TEST(test_deserialize_truncated_implicit_zero_extension);
-    RUN_TEST(test_serialize_union_with_different_sizes);
-
-    return UNITY_END();
-}
+// ============================================================================
 // Complex serialization tests for coverage improvement
 // ============================================================================
 
