@@ -1,0 +1,3 @@
+# ERROR: Invalid uint type
+uint65 field
+@sealed

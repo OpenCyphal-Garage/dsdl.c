@@ -1,0 +1,3 @@
+# ERROR: Invalid float type
+float8 field
+@sealed

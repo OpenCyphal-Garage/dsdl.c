@@ -2814,6 +2814,105 @@ static void test_invalid_service_response_assert_fail(void)
     teardown_dsdl();
 }
 
+static void test_invalid_circular_dependency_a(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("invalid.CircularDependencyA.0.1"));
+    TEST_ASSERT_NULL(type);
+    teardown_dsdl();
+}
+
+static void test_invalid_circular_dependency_b(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("invalid.CircularDependencyB.0.1"));
+    TEST_ASSERT_NULL(type);
+    teardown_dsdl();
+}
+
+static void test_invalid_missing_type_reference(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("invalid.MissingTypeReference.0.1"));
+    TEST_ASSERT_NULL(type);
+    teardown_dsdl();
+}
+
+static void test_invalid_self_referencing_type(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("invalid.SelfReferencingType.0.1"));
+    TEST_ASSERT_NULL(type);
+    teardown_dsdl();
+}
+
+static void test_invalid_namespace_reference(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("invalid.InvalidNamespaceReference.0.1"));
+    TEST_ASSERT_NULL(type);
+    teardown_dsdl();
+}
+
+static void test_invalid_type_not_found_in_namespace(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("invalid.TypeNotFoundInNamespace.0.1"));
+    TEST_ASSERT_NULL(type);
+    teardown_dsdl();
+}
+
+static void test_invalid_ambiguous_type_reference(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("invalid.AmbiguousTypeReference.0.1"));
+    TEST_ASSERT_NULL(type);
+    teardown_dsdl();
+}
+
+static void test_invalid_forward_reference_without_definition(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("invalid.ForwardReferenceWithoutDefinition.0.1"));
+    TEST_ASSERT_NULL(type);
+    teardown_dsdl();
+}
+
+static void test_invalid_recursive_type_without_base_case(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("invalid.RecursiveTypeWithoutBaseCase.0.1"));
+    TEST_ASSERT_NULL(type);
+    teardown_dsdl();
+}
+
+static void test_invalid_type_composition(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("invalid.InvalidTypeComposition.0.1"));
+    TEST_ASSERT_NULL(type);
+    teardown_dsdl();
+}
+
+static void test_invalid_version_mismatch_type(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("invalid.VersionMismatchType.0.1"));
+    TEST_ASSERT_NULL(type);
+    teardown_dsdl();
+}
+
 static void test_complex_expressions(void)
 {
     setup_dsdl();
@@ -3166,6 +3265,17 @@ int main(void)
     RUN_TEST(test_service_response_print);
     RUN_TEST(test_invalid_service_response_extent_non_int);
     RUN_TEST(test_invalid_service_response_assert_fail);
+    RUN_TEST(test_invalid_circular_dependency_a);
+    RUN_TEST(test_invalid_circular_dependency_b);
+    RUN_TEST(test_invalid_missing_type_reference);
+    RUN_TEST(test_invalid_self_referencing_type);
+    RUN_TEST(test_invalid_namespace_reference);
+    RUN_TEST(test_invalid_type_not_found_in_namespace);
+    RUN_TEST(test_invalid_ambiguous_type_reference);
+    RUN_TEST(test_invalid_forward_reference_without_definition);
+    RUN_TEST(test_invalid_recursive_type_without_base_case);
+    RUN_TEST(test_invalid_type_composition);
+    RUN_TEST(test_invalid_version_mismatch_type);
     RUN_TEST(test_complex_expressions);
     RUN_TEST(test_invalid_type_comparison_mismatch);
     RUN_TEST(test_invalid_empty_string_comparison);

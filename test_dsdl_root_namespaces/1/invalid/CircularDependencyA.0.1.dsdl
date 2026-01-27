@@ -1,0 +1,4 @@
+# ERROR: Invalid extent - too small
+uint8 field1
+uint16 field2
+@extent 8

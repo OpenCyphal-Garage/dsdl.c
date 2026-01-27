@@ -1,0 +1,3 @@
+# ERROR: Invalid array capacity - non-integer
+uint8[true] array
+@sealed

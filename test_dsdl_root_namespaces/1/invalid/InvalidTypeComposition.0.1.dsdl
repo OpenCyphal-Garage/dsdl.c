@@ -1,0 +1,3 @@
+# ERROR: Invalid int type
+int65 field
+@sealed

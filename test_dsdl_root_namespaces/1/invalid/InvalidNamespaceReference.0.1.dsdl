@@ -1,0 +1,4 @@
+# ERROR: Invalid constant type
+uint8 MY_CONST = "string"
+uint8 field
+@sealed
