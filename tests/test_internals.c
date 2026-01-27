@@ -857,6 +857,254 @@ static void test_bigint_div_mod_abs_zero_denominator(void)
 }
 
 // ============================================================================
+// Value Clone Tests (lines 2170-2177, 2175-2179)
+// ============================================================================
+
+static void test_value_clone_rational(void)
+{
+    // Test cloning rational value (line 2160-2164)
+    dsdl_t dsdl;
+    dsdl.realloc = test_realloc;
+
+    dsdl_value_t src = { 0 };
+    src.kind         = dsdl_value_rational;
+    src.as.rational  = make_rational(3, 7);
+
+    dsdl_value_t dst = { 0 };
+    TEST_ASSERT_TRUE(dsdl_value_clone(&dsdl, &src, &dst));
+    TEST_ASSERT_EQUAL(dsdl_value_rational, dst.kind);
+    assert_bigint_eq_intmax(3, dst.as.rational.num);
+    assert_bigint_eq_uintmax(7, dst.as.rational.den);
+}
+
+static void test_value_clone_bool(void)
+{
+    // Test cloning bool value (line 2165-2169)
+    dsdl_t dsdl;
+    dsdl.realloc = test_realloc;
+
+    dsdl_value_t src = { 0 };
+    src.kind         = dsdl_value_bool;
+    src.as.boolean   = true;
+
+    dsdl_value_t dst = { 0 };
+    TEST_ASSERT_TRUE(dsdl_value_clone(&dsdl, &src, &dst));
+    TEST_ASSERT_EQUAL(dsdl_value_bool, dst.kind);
+    TEST_ASSERT_TRUE(dst.as.boolean);
+}
+
+static void test_value_clone_type_ref(void)
+{
+    // Test cloning type reference value (line 2170-2174)
+    dsdl_t dsdl;
+    dsdl.realloc = test_realloc;
+
+    dsdl_value_t src = { 0 };
+    src.kind         = dsdl_value_type;
+    src.as.type_ref  = (void*)(uintptr_t)42;
+
+    dsdl_value_t dst = { 0 };
+    TEST_ASSERT_TRUE(dsdl_value_clone(&dsdl, &src, &dst));
+    TEST_ASSERT_EQUAL(dsdl_value_type, dst.kind);
+    TEST_ASSERT_EQUAL_PTR((void*)(uintptr_t)42, dst.as.type_ref);
+}
+
+static void test_value_clone_string_empty(void)
+{
+    // Test cloning empty string (line 2175-2179)
+    dsdl_t dsdl;
+    dsdl.realloc = test_realloc;
+
+    dsdl_value_t src = { 0 };
+    src.kind         = dsdl_value_string;
+    src.as.string    = (wkv_str_t){ .len = 0, .str = NULL };
+
+    dsdl_value_t dst = { 0 };
+    TEST_ASSERT_TRUE(dsdl_value_clone(&dsdl, &src, &dst));
+    TEST_ASSERT_EQUAL(dsdl_value_string, dst.kind);
+    TEST_ASSERT_EQUAL(0, dst.as.string.len);
+}
+
+static void test_value_clone_string_invalid(void)
+{
+    // Test cloning invalid string (line 2176-2177: len > 0 but str == NULL)
+    dsdl_t dsdl;
+    dsdl.realloc = test_realloc;
+
+    dsdl_value_t src = { 0 };
+    src.kind         = dsdl_value_string;
+    src.as.string    = (wkv_str_t){ .len = 5, .str = NULL };
+
+    dsdl_value_t dst = { 0 };
+    TEST_ASSERT_FALSE(dsdl_value_clone(&dsdl, &src, &dst));
+}
+
+static void test_value_clone_set_empty(void)
+{
+    // Test cloning empty set (line 2180-2202)
+    dsdl_t dsdl;
+    dsdl.realloc = test_realloc;
+
+    dsdl_value_t src    = { 0 };
+    src.kind            = dsdl_value_set;
+    src.as.set.count    = 0;
+    src.as.set.elements = NULL;
+
+    dsdl_value_t dst = { 0 };
+    TEST_ASSERT_TRUE(dsdl_value_clone(&dsdl, &src, &dst));
+    TEST_ASSERT_EQUAL(dsdl_value_set, dst.kind);
+    TEST_ASSERT_EQUAL(0, dst.as.set.count);
+}
+
+static void test_value_clone_set_invalid(void)
+{
+    // Test cloning invalid set (line 2182-2183: count > 0 but elements == NULL)
+    dsdl_t dsdl;
+    dsdl.realloc = test_realloc;
+
+    dsdl_value_t src    = { 0 };
+    src.kind            = dsdl_value_set;
+    src.as.set.count    = 5;
+    src.as.set.elements = NULL; // Invalid: count > 0 but elements is NULL
+
+    dsdl_value_t dst = { 0 };
+    TEST_ASSERT_FALSE(dsdl_value_clone(&dsdl, &src, &dst));
+}
+
+// ============================================================================
+// Rational Operations Tests (lines 514-574, 803-930)
+// ============================================================================
+
+static void test_rational_cmp_equal(void)
+{
+    // Test rational comparison: equal values (line 893-930)
+    dsdl_rational_t a = dsdl_rational_from_int(5);
+    dsdl_rational_t b = dsdl_rational_from_int(5);
+    TEST_ASSERT_EQUAL(0, dsdl_rational_cmp(a, b));
+}
+
+static void test_rational_cmp_less(void)
+{
+    // Test rational comparison: a < b
+    dsdl_rational_t a = dsdl_rational_from_int(3);
+    dsdl_rational_t b = dsdl_rational_from_int(5);
+    TEST_ASSERT_TRUE(dsdl_rational_cmp(a, b) < 0);
+}
+
+static void test_rational_cmp_greater(void)
+{
+    // Test rational comparison: a > b
+    dsdl_rational_t a = dsdl_rational_from_int(7);
+    dsdl_rational_t b = dsdl_rational_from_int(5);
+    TEST_ASSERT_TRUE(dsdl_rational_cmp(a, b) > 0);
+}
+
+static void test_rational_cmp_negative_values(void)
+{
+    // Test rational comparison with negative values (line 898-902)
+    dsdl_rational_t a = dsdl_rational_from_int(-5);
+    dsdl_rational_t b = dsdl_rational_from_int(5);
+    TEST_ASSERT_TRUE(dsdl_rational_cmp(a, b) < 0);
+}
+
+static void test_rational_cmp_both_negative(void)
+{
+    // Test rational comparison: both negative
+    dsdl_rational_t a = dsdl_rational_from_int(-7);
+    dsdl_rational_t b = dsdl_rational_from_int(-5);
+    TEST_ASSERT_TRUE(dsdl_rational_cmp(a, b) < 0);
+}
+
+static void test_rational_add_basic(void)
+{
+    // Test rational addition (line 803-829)
+    dsdl_rational_t a      = dsdl_rational_from_int(2);
+    dsdl_rational_t b      = dsdl_rational_from_int(3);
+    dsdl_rational_t result = dsdl_rational_add(a, b);
+    assert_bigint_eq_intmax(5, result.num);
+    assert_bigint_eq_uintmax(1, result.den);
+}
+
+static void test_rational_add_fractions(void)
+{
+    // Test rational addition with fractions: 1/2 + 1/3 = 5/6
+    dsdl_rational_t a      = make_rational(1, 2);
+    dsdl_rational_t b      = make_rational(1, 3);
+    dsdl_rational_t result = dsdl_rational_add(a, b);
+    // After normalization, should be 5/6
+    assert_bigint_eq_intmax(5, result.num);
+    assert_bigint_eq_uintmax(6, result.den);
+}
+
+static void test_rational_sub_basic(void)
+{
+    // Test rational subtraction (line 833-836)
+    dsdl_rational_t a      = dsdl_rational_from_int(5);
+    dsdl_rational_t b      = dsdl_rational_from_int(3);
+    dsdl_rational_t result = dsdl_rational_sub(a, b);
+    assert_bigint_eq_intmax(2, result.num);
+    assert_bigint_eq_uintmax(1, result.den);
+}
+
+static void test_rational_mul_basic(void)
+{
+    // Test rational multiplication (line 840-858)
+    dsdl_rational_t a      = dsdl_rational_from_int(2);
+    dsdl_rational_t b      = dsdl_rational_from_int(3);
+    dsdl_rational_t result = dsdl_rational_mul(a, b);
+    assert_bigint_eq_intmax(6, result.num);
+    assert_bigint_eq_uintmax(1, result.den);
+}
+
+static void test_rational_mul_fractions(void)
+{
+    // Test rational multiplication with fractions: 1/2 * 2/3 = 1/3
+    dsdl_rational_t a      = make_rational(1, 2);
+    dsdl_rational_t b      = make_rational(2, 3);
+    dsdl_rational_t result = dsdl_rational_mul(a, b);
+    assert_bigint_eq_intmax(1, result.num);
+    assert_bigint_eq_uintmax(3, result.den);
+}
+
+static void test_rational_div_basic(void)
+{
+    // Test rational division (line 862-880)
+    dsdl_rational_t a      = dsdl_rational_from_int(6);
+    dsdl_rational_t b      = dsdl_rational_from_int(2);
+    dsdl_rational_t result = dsdl_rational_div(a, b);
+    assert_bigint_eq_intmax(3, result.num);
+    assert_bigint_eq_uintmax(1, result.den);
+}
+
+static void test_rational_div_fractions(void)
+{
+    // Test rational division with fractions: (1/2) / (2/3) = 3/4
+    dsdl_rational_t a      = make_rational(1, 2);
+    dsdl_rational_t b      = make_rational(2, 3);
+    dsdl_rational_t result = dsdl_rational_div(a, b);
+    assert_bigint_eq_intmax(3, result.num);
+    assert_bigint_eq_uintmax(4, result.den);
+}
+
+static void test_rational_to_intmax_success(void)
+{
+    // Test rational to intmax conversion (line 766-772)
+    dsdl_rational_t r      = dsdl_rational_from_int(42);
+    intmax_t        result = 0;
+    TEST_ASSERT_TRUE(dsdl_rational_to_intmax(r, &result));
+    assert_intmax_eq(42, result);
+}
+
+static void test_rational_to_uintmax_success(void)
+{
+    // Test rational to uintmax conversion (line 774-782)
+    dsdl_rational_t r      = dsdl_rational_from_uintmax(42);
+    uintmax_t       result = 0;
+    TEST_ASSERT_TRUE(dsdl_rational_to_uintmax(r, &result));
+    assert_uintmax_eq(42, result);
+}
+
+// ============================================================================
 // Main
 // ============================================================================
 
@@ -875,6 +1123,31 @@ int main(void)
     // Rational tests
     RUN_TEST(test_rational_is_int);
     RUN_TEST(test_rational_neg);
+
+    // Value clone tests
+    RUN_TEST(test_value_clone_rational);
+    RUN_TEST(test_value_clone_bool);
+    RUN_TEST(test_value_clone_type_ref);
+    RUN_TEST(test_value_clone_string_empty);
+    RUN_TEST(test_value_clone_string_invalid);
+    RUN_TEST(test_value_clone_set_empty);
+    RUN_TEST(test_value_clone_set_invalid);
+
+    // Rational operations tests
+    RUN_TEST(test_rational_cmp_equal);
+    RUN_TEST(test_rational_cmp_less);
+    RUN_TEST(test_rational_cmp_greater);
+    RUN_TEST(test_rational_cmp_negative_values);
+    RUN_TEST(test_rational_cmp_both_negative);
+    RUN_TEST(test_rational_add_basic);
+    RUN_TEST(test_rational_add_fractions);
+    RUN_TEST(test_rational_sub_basic);
+    RUN_TEST(test_rational_mul_basic);
+    RUN_TEST(test_rational_mul_fractions);
+    RUN_TEST(test_rational_div_basic);
+    RUN_TEST(test_rational_div_fractions);
+    RUN_TEST(test_rational_to_intmax_success);
+    RUN_TEST(test_rational_to_uintmax_success);
 
     // Memory helper tests
     RUN_TEST(test_alloc_free);
