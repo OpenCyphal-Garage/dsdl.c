@@ -2496,6 +2496,57 @@ static void test_value_clone_empty_set(void)
     teardown_dsdl();
 }
 
+static void test_service_response_assert(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("validation.ServiceResponseAssert.0.1"));
+    TEST_ASSERT_NOT_NULL(type);
+    TEST_ASSERT_NOT_NULL(type->response);
+    teardown_dsdl();
+}
+
+static void test_service_response_extent_expr(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("validation.ServiceResponseExtentExpr.0.1"));
+    TEST_ASSERT_NOT_NULL(type);
+    TEST_ASSERT_NOT_NULL(type->response);
+    TEST_ASSERT_EQUAL(64, type->response->extent);
+    teardown_dsdl();
+}
+
+static void test_service_response_print(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("validation.ServiceResponsePrint.0.1"));
+    TEST_ASSERT_NOT_NULL(type);
+    TEST_ASSERT_NOT_NULL(type->response);
+    teardown_dsdl();
+}
+
+static void test_invalid_service_response_extent_non_int(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("invalid.ServiceResponseExtentNonInt.0.1"));
+    TEST_ASSERT_NULL(type);
+    TEST_ASSERT_EQUAL(dsdl_error_parse, g_dsdl.error);
+    teardown_dsdl();
+}
+
+static void test_invalid_service_response_assert_fail(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("invalid.ServiceResponseAssertFail.0.1"));
+    TEST_ASSERT_NULL(type);
+    TEST_ASSERT_EQUAL(dsdl_error_parse, g_dsdl.error);
+    teardown_dsdl();
+}
+
 static void test_complex_expressions(void)
 {
     setup_dsdl();
@@ -2830,6 +2881,11 @@ int main(void)
     RUN_TEST(test_invalid_service_response_no_sealing_or_extent);
     RUN_TEST(test_invalid_service_response_both_sealed_and_extent);
     RUN_TEST(test_invalid_service_response_union_one_field);
+    RUN_TEST(test_service_response_assert);
+    RUN_TEST(test_service_response_extent_expr);
+    RUN_TEST(test_service_response_print);
+    RUN_TEST(test_invalid_service_response_extent_non_int);
+    RUN_TEST(test_invalid_service_response_assert_fail);
     RUN_TEST(test_complex_expressions);
     RUN_TEST(test_invalid_type_comparison_mismatch);
     RUN_TEST(test_invalid_empty_string_comparison);

@@ -1,0 +1,11 @@
+# Service with assertion in response section
+uint8 request_value
+
+@sealed
+
+---
+
+uint8 response_value
+
+@extent 64
+

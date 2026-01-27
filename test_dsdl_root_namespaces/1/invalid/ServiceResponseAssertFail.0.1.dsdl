@@ -1,0 +1,12 @@
+# Service with failing assertion in response
+uint8 request_value
+
+@sealed
+
+---
+
+uint8 response_value
+@assert false
+
+@extent 64
+

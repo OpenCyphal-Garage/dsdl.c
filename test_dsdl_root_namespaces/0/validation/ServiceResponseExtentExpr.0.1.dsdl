@@ -1,0 +1,11 @@
+# Service with extent expression in response
+uint8 request_value
+
+@sealed
+
+---
+
+uint8 response_value
+
+@extent 512
+
