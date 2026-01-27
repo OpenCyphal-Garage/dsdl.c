@@ -1,0 +1,3 @@
+# Array capacity zero
+uint8[0] field
+@sealed

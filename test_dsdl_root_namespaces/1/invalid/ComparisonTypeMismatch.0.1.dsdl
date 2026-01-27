@@ -1,0 +1,3 @@
+# Comparison between incompatible types
+uint8 field = (true == 42) ? 1 : 0
+@sealed

@@ -1,0 +1,3 @@
+# Array capacity exceeds maximum (2^32)
+uint8[4294967296] field
+@sealed

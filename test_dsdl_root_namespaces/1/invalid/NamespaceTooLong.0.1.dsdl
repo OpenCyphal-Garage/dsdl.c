@@ -1,0 +1,3 @@
+# ERROR: Namespace path exceeding maximum length (>255 chars)
+very.long.namespace.path.that.exceeds.the.maximum.allowed.length.for.identifiers.in.dsdl.specifications.and.should.cause.a.parse.error.when.attempting.to.reference.a.type.with.such.an.excessively.long.namespace.identifier.that.violates.the.constraints.imposed.by.the.cyphal.dsdl.standard.Type.0.1 field
+@sealed

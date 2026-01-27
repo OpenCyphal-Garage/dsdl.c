@@ -1,0 +1,4 @@
+# Extent smaller than field sizes
+uint64 field1
+uint64 field2
+@extent 8  # Only 8 bytes, but fields need 16

@@ -1,0 +1,3 @@
+# Set operation on non-set value
+uint8 field = 42 in 100
+@sealed

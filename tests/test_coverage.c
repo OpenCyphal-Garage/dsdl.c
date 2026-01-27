@@ -3529,6 +3529,36 @@ static void test_invalid_extent_smaller_than_fields(void)
     teardown_dsdl();
 }
 
+static void test_invalid_import_non_existent(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("invalid.ImportNonExistent.0.1"));
+    TEST_ASSERT_NULL(type);
+    TEST_ASSERT(g_dsdl.error != dsdl_error_none);
+    teardown_dsdl();
+}
+
+static void test_invalid_import_version_mismatch(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("invalid.ImportVersionMismatch.0.1"));
+    TEST_ASSERT_NULL(type);
+    TEST_ASSERT(g_dsdl.error != dsdl_error_none);
+    teardown_dsdl();
+}
+
+static void test_invalid_namespace_too_long(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("invalid.NamespaceTooLong.0.1"));
+    TEST_ASSERT_NULL(type);
+    TEST_ASSERT(g_dsdl.error != dsdl_error_none);
+    teardown_dsdl();
+}
+
 /* ============================================================================
  * Main test runner
  * ============================================================================ */
@@ -3870,6 +3900,11 @@ int main(void)
     RUN_TEST(test_invalid_unary_minus_on_bool);
     RUN_TEST(test_invalid_unary_not_on_number);
     RUN_TEST(test_invalid_extent_smaller_than_fields);
+
+    /* Namespace and import error tests */
+    RUN_TEST(test_invalid_import_non_existent);
+    RUN_TEST(test_invalid_import_version_mismatch);
+    RUN_TEST(test_invalid_namespace_too_long);
 
     return UNITY_END();
 }

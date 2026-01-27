@@ -1,0 +1,4 @@
+# Padding exceeds byte boundary
+uint8 field
+void9
+@sealed

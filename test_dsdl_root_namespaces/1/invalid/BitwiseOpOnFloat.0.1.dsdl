@@ -1,0 +1,3 @@
+# Bitwise operation on float
+uint8 field = 3.14 | 2.71
+@sealed

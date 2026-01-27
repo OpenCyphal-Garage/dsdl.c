@@ -1,0 +1,3 @@
+# Power with negative exponent on integer
+uint8 field = 2 ** -3
+@sealed

@@ -1,0 +1,3 @@
+# Logical operation on non-boolean
+uint8 field = 42 and 100
+@sealed

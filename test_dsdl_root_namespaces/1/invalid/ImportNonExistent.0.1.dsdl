@@ -1,0 +1,3 @@
+# ERROR: Import statement referencing non-existent type
+nonexistent.Type.0.1 field
+@sealed

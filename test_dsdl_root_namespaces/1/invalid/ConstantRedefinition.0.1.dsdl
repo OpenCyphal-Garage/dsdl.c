@@ -1,0 +1,5 @@
+# Constant redefinition
+uint8 MY_CONST = 42
+uint8 MY_CONST = 100
+uint8 field
+@sealed

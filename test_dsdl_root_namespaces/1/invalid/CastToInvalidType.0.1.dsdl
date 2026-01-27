@@ -1,0 +1,3 @@
+# Cast to invalid type (non-primitive)
+uint8 field = cast(validation.Simple, 42)
+@sealed
