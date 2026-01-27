@@ -1,0 +1,42 @@
+# Complex nested expressions with multiple operators and parentheses
+
+# Nested arithmetic with multiple levels
+uint32 NESTED_ARITH_1 = ((100 + 200) * (50 - 10)) / 2
+uint32 NESTED_ARITH_2 = (((10 + 20) * 30) - (40 / 2)) + 100
+uint32 NESTED_ARITH_3 = ((2 ** 8) + (3 ** 4)) * 2
+
+# Complex boolean logic
+@assert ((true && true) || (false && false))
+@assert ((true || false) && (true || true))
+@assert !((false && true) || (false && false))
+
+# Bitwise operations in nested expressions
+uint8 BITWISE_NESTED_1 = (0xFF & 0x0F) | (0xF0 & 0x0F)
+uint8 BITWISE_NESTED_2 = ((0b11110000 & 0b10101010) | 0b00001111)
+uint8 BITWISE_NESTED_3 = (0xFF ^ (0xFF & 0x0F))
+
+# Mixed arithmetic and bitwise
+uint32 MIXED_1 = ((100 + 50) & 0xFF) | ((200 - 50) & 0xFF)
+uint32 MIXED_2 = ((10 * 20) ^ (5 * 40))
+
+# Modulo in complex expressions
+uint32 MOD_COMPLEX_1 = ((1000 % 100) + (500 % 50)) * 2
+uint32 MOD_COMPLEX_2 = (1000 / 100) + (1000 % 100)
+
+# Power operations in nested expressions
+uint32 POW_NESTED_1 = (2 ** (3 + 1)) + (2 ** 2)
+uint32 POW_NESTED_2 = ((2 ** 4) * (3 ** 2)) / 2
+
+# Unary operations in complex expressions
+int32 UNARY_COMPLEX_1 = -(100 + 50)
+int32 UNARY_COMPLEX_2 = +(-(100 - 50))
+int32 UNARY_COMPLEX_3 = -((100 + 200) / 2)
+
+# Comparison chains (via assertions)
+@assert (10 < 20) && (20 < 30)
+@assert (100 > 50) && (50 > 10)
+@assert (10 <= 10) && (10 <= 20)
+@assert (20 >= 20) && (20 >= 10)
+
+uint8 dummy
+@sealed

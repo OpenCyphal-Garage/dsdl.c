@@ -1,0 +1,41 @@
+# Complex operator precedence and associativity tests
+
+# Power has highest precedence
+uint32 PREC_1 = 2 + 3 ** 2
+uint32 PREC_2 = 2 * 3 ** 2
+uint32 PREC_3 = 2 ** 3 ** 2
+
+# Multiplication/division before addition/subtraction
+uint32 PREC_4 = 2 + 3 * 4
+uint32 PREC_5 = 2 * 3 + 4
+uint32 PREC_6 = 10 - 2 * 3
+uint32 PREC_7 = 10 / 2 + 3
+
+# Bitwise operations precedence
+uint32 PREC_8 = 0xFF & 0x0F | 0xF0
+uint32 PREC_9 = 0xFF | 0x0F & 0xF0
+uint32 PREC_10 = 0xFF ^ 0x0F & 0xF0
+
+# Comparison operations
+@assert 10 < 20 && 20 < 30
+@assert 10 > 5 || 20 < 10
+@assert 10 == 10 && 20 != 10
+
+# Right associativity of power
+uint32 ASSOC_1 = 2 ** 3 ** 2
+uint32 ASSOC_2 = 2 ** (3 ** 2)
+
+# Left associativity of arithmetic
+uint32 ASSOC_3 = 100 - 50 - 10
+uint32 ASSOC_4 = (100 - 50) - 10
+uint32 ASSOC_5 = 100 / 10 / 2
+uint32 ASSOC_6 = (100 / 10) / 2
+
+# Parentheses override precedence
+uint32 PAREN_1 = (2 + 3) * 4
+uint32 PAREN_2 = 2 * (3 + 4)
+uint32 PAREN_3 = 2 ** (3 + 2)
+uint32 PAREN_4 = (2 ** 3) + 2
+
+uint8 dummy
+@sealed

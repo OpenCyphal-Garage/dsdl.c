@@ -1,0 +1,40 @@
+# Complex boolean logic with multiple operators
+
+# Boolean AND chains
+@assert true && true && true
+@assert (true && true) && (true && true)
+@assert ((true && true) && (true && true)) && true
+
+# Boolean OR chains
+@assert true || false || false
+@assert (true || false) || (false || false)
+@assert ((false || false) || (false || false)) || true
+
+# Mixed AND/OR
+@assert (true && true) || (false && false)
+@assert (true || false) && (true || true)
+@assert ((true && true) || (false && false)) && true
+
+# Boolean NOT chains
+@assert !false
+@assert !!true
+@assert !!!false
+
+# Complex boolean expressions
+@assert (true && true) || (false && true)
+@assert (true || false) && (true || false)
+@assert !((false && true) || (false && false))
+@assert !(false && (true || false))
+
+# Boolean with comparisons
+@assert (10 < 20) && (20 < 30)
+@assert (100 > 50) || (50 > 100)
+@assert (10 == 10) && (20 != 10)
+@assert (10 <= 20) && (20 >= 10)
+
+# Nested boolean logic
+@assert ((10 < 20) && (20 < 30)) || ((100 > 50) && (50 > 10))
+@assert !((10 == 20) || (30 == 40))
+
+uint8 dummy
+@sealed
