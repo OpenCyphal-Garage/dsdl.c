@@ -62,12 +62,7 @@ jobs:
     - name: Check clang-format
       run: |
         clang-format --version
-        find . \( -name "*.c" -o -name "*.h" \) \
-          -not -path "./build/*" \
-          -not -path "./tests/unity/*" \
-          -not -path "./lib/*" \
-          -not -path "./reference_implementations/*" \
-          | xargs clang-format --dry-run --Werror
+        cmake --build build --target check-format
 
   coverage:
     name: Code Coverage

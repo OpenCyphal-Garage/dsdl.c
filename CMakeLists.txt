@@ -166,6 +166,14 @@ else ()
                     -style=file
                     --verbose
                     ${format_files})
+    add_custom_target(check-format
+            COMMAND ${clang_format}
+                    --dry-run
+                    --Werror
+                    -fallback-style=none
+                    -style=file
+                    --verbose
+                    ${format_files})
 endif ()
 
 # ------------------------------------------------------------------------------
