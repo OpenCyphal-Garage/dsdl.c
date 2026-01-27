@@ -1,0 +1,43 @@
+# Complex set expressions - targets lines 3720-3741, 3768-3784
+# Tests nested set operations and complex expressions
+
+# Nested union operations
+@assert (({1} | {2}) | {3}) == {1, 2, 3}
+@assert ({1} | ({2} | {3})) == {1, 2, 3}
+
+# Nested intersection operations
+@assert (({1, 2, 3} & {2, 3, 4}) & {3, 4, 5}) == {3}
+@assert ({1, 2, 3} & ({2, 3, 4} & {3, 4, 5})) == {3}
+
+# Nested symmetric difference
+@assert (({1, 2} ^ {2, 3}) ^ {3, 4}) == {1, 4}
+@assert ({1, 2} ^ ({2, 3} ^ {3, 4})) == {1, 4}
+
+# Mixed operations
+@assert (({1, 2} | {3}) & {1, 3}) == {1, 3}
+@assert (({1, 2} & {1, 2, 3}) | {4}) == {1, 2, 4}
+
+# Set operations with subset/superset
+@assert ({1, 2} <= ({1, 2} | {3}))
+@assert (({1, 2} & {1, 2, 3}) <= {1, 2, 3})
+
+# Complex expressions with set attributes
+@assert ({1, 2, 3} | {4, 5}).count == 5
+@assert ({1, 2, 3} & {2, 3, 4}).count == 2
+@assert ({1, 2} ^ {2, 3}).count == 2
+
+# Set operations in comparisons
+@assert ({1} | {2}) != {1}
+@assert ({1, 2} & {1, 2}) == {1, 2}
+
+# Elementwise operations on sets
+@assert ({1, 2} + 1) == {2, 3}
+@assert ({2, 4} - 1) == {1, 3}
+@assert ({1, 2} * 2) == {2, 4}
+
+# Set membership in complex expressions
+@assert ({1} <= {1, 2}) && ({2} <= {1, 2})
+@assert !({1} <= {2, 3}) || ({3} <= {2, 3})
+
+uint8 dummy
+@sealed

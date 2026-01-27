@@ -1,0 +1,27 @@
+# Type reference comparisons - targets lines 3632-3638
+# Tests type equality and comparison in expressions
+
+# Type reference equality
+@assert Simple.0.1._bit_length_ == Simple.0.1._bit_length_
+
+# Type extent comparison
+@assert Simple.0.1._extent_ == Simple.0.1._extent_
+
+# Type bit length from different types (should be different)
+@assert Simple.0.1._bit_length_ != Empty.0.1._bit_length_
+
+# Type extent from different types
+@assert Simple.0.1._extent_ != Empty.0.1._extent_
+
+# Type attributes in comparisons
+@assert Simple.0.1._bit_length_.min >= 0
+@assert Simple.0.1._extent_ >= 0
+
+# Type attributes in subset checks
+@assert Simple.0.1._bit_length_ <= Simple.0.1._bit_length_
+
+# Type attributes with set operations
+@assert (Simple.0.1._bit_length_ | {0}).count >= 1
+
+uint8 dummy
+@sealed

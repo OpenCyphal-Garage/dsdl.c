@@ -1,0 +1,31 @@
+# Set operations with single elements - targets lines 3700-3741
+# Tests set operations that may result in empty sets
+
+# Single element set operations
+@assert {1} == {1}
+@assert {1} <= {1}
+@assert {1} >= {1}
+
+# Union of disjoint sets
+@assert ({1} | {2}) == {1, 2}
+@assert ({1} | {2, 3}) == {1, 2, 3}
+
+# Intersection of disjoint sets
+@assert ({1, 2} & {2, 3}) == {2}
+@assert ({1, 2, 3} & {2, 3, 4}) == {2, 3}
+
+# Symmetric difference operations
+@assert ({1, 2} ^ {2, 3}) == {1, 3}
+@assert ({1, 2, 3} ^ {2, 3, 4}) == {1, 4}
+
+# Set subset relationships
+@assert {1} <= {1, 2}
+@assert {1, 2} <= {1, 2, 3}
+@assert !({1, 2} <= {1})
+
+# Set superset relationships
+@assert {1, 2} >= {1}
+@assert {1, 2, 3} >= {1, 2}
+
+uint8 dummy
+@sealed

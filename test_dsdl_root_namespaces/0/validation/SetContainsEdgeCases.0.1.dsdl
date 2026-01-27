@@ -1,0 +1,45 @@
+# Set contains edge cases - targets lines 3667-3678, 3683
+# Tests set membership operations and edge cases
+
+# Set membership via subset check
+@assert {1} <= {1, 2, 3}
+@assert {2} <= {1, 2, 3}
+@assert {3} <= {1, 2, 3}
+
+# Element not in set (via subset check)
+@assert !({1} <= {2, 3, 4})
+@assert !({5} <= {1, 2, 3})
+
+# Single element set membership
+@assert {42} <= {42}
+@assert !({41} <= {42})
+@assert !({43} <= {42})
+
+# Boolean set membership
+@assert {true} <= {true, false}
+@assert {false} <= {true, false}
+@assert {true} <= {true}
+@assert !({false} <= {true})
+
+# Set with duplicates (normalized)
+@assert {1} <= {1, 1, 1}
+@assert {2} <= {1, 2, 1}
+
+# Negative numbers in set
+@assert {-1} <= {-1, 0, 1}
+@assert !({2} <= {-1, 0, 1})
+
+# Large numbers in set
+@assert {1000} <= {999, 1000, 1001}
+@assert !({1000} <= {999, 1001})
+
+# Set proper subset
+@assert {1} < {1, 2}
+@assert !({1, 2} < {1, 2})
+
+# Set proper superset
+@assert {1, 2} > {1}
+@assert !({1, 2} > {1, 2})
+
+uint8 dummy
+@sealed

@@ -1,0 +1,41 @@
+# Set homogeneity checks - targets lines 3641-3665
+# Tests homogeneity validation and set operations
+
+# Single element set is homogeneous
+@assert {1}.count == 1
+@assert {42}.count == 1
+
+# Multiple same-type elements are homogeneous
+@assert {1, 2, 3}.count == 3
+@assert {true, false}.count == 2
+
+# Set attributes
+@assert {1}.count == 1
+@assert {1, 2}.count == 2
+@assert {1, 2, 3}.count == 3
+
+# Set union preserves homogeneity
+@assert ({1} | {2}).count == 2
+@assert ({1} | {1}).count == 1
+@assert ({1, 2} | {3}).count == 3
+
+# Set intersection with homogeneous sets
+@assert ({1, 2} & {2, 3}).count == 1
+@assert ({1, 2, 3} & {2, 3, 4}).count == 2
+
+# Set symmetric difference
+@assert ({1, 2} ^ {2, 3}).count == 2
+@assert ({1, 2, 3} ^ {2, 3, 4}).count == 2
+
+# Set min/max attributes
+@assert {1, 2, 3}.min == 1
+@assert {1, 2, 3}.max == 3
+@assert {5}.min == 5
+@assert {5}.max == 5
+
+# Set operations with booleans
+@assert {true, false}.count == 2
+@assert {true}.count == 1
+
+uint8 dummy
+@sealed
