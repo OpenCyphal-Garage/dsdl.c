@@ -316,6 +316,22 @@ static void test_bigint_overflow_from_uintmax(void)
     TEST_ASSERT_TRUE(v.limb_count <= DSDL_BIGINT_LIMB_COUNT);
 }
 
+static void test_bigint_limb_overflow_from_uintmax(void)
+{
+    dsdl_bigint_t v;
+
+    TEST_ASSERT_TRUE(dsdl_bigint_from_uintmax(&v, 0U));
+    TEST_ASSERT_EQUAL_UINT8(0, v.limb_count);
+
+    TEST_ASSERT_TRUE(dsdl_bigint_from_uintmax(&v, 1U));
+    TEST_ASSERT_EQUAL_UINT8(1, v.limb_count);
+    TEST_ASSERT_EQUAL_UINT32(1U, v.limbs[0]);
+
+    TEST_ASSERT_TRUE(dsdl_bigint_from_uintmax(&v, UINTMAX_MAX));
+    TEST_ASSERT_TRUE(v.limb_count > 0);
+    TEST_ASSERT_TRUE(v.limb_count <= DSDL_BIGINT_LIMB_COUNT);
+}
+
 static void test_bigint_overflow_add_abs(void)
 {
     dsdl_bigint_t a;
@@ -2686,6 +2702,7 @@ int main(void)
 
     // Bigint overflow tests
     RUN_TEST(test_bigint_overflow_from_uintmax);
+    RUN_TEST(test_bigint_limb_overflow_from_uintmax);
     RUN_TEST(test_bigint_overflow_add_abs);
     RUN_TEST(test_bigint_overflow_mul_abs);
     RUN_TEST(test_bigint_overflow_mul_small_inplace);
