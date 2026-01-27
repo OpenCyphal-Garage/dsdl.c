@@ -1,0 +1,7 @@
+# Fixed port ID >= 8192 (DSDL_FIXED_PORT_ID_NONE)
+# This tests the error path at lines 7599-7605 in dsdl.c
+# The @fixed_port_id directive must be < 8192
+
+@fixed_port_id 8192
+uint8 field
+@sealed

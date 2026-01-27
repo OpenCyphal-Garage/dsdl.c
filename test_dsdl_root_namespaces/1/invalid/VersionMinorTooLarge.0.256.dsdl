@@ -1,0 +1,6 @@
+# Minor version > 255 (invalid)
+# This tests the error path at lines 7677-7681 in dsdl.c
+# Version numbers must be 0-255
+
+uint8 field
+@sealed

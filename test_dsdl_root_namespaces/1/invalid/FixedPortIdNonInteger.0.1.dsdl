@@ -1,0 +1,7 @@
+# Fixed port ID with non-integer value (3.14)
+# This tests the error path at lines 7592-7597 in dsdl.c
+# The @fixed_port_id directive must have an integer value
+
+@fixed_port_id 3.14
+uint8 field
+@sealed

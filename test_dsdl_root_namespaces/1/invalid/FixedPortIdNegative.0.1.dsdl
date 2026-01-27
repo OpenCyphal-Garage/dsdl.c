@@ -1,0 +1,7 @@
+# Fixed port ID with negative value
+# This tests the error path at lines 7599-7605 in dsdl.c
+# The @fixed_port_id directive must have a non-negative value
+
+@fixed_port_id -1
+uint8 field
+@sealed

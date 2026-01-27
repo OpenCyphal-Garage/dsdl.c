@@ -1,0 +1,7 @@
+# Extent smaller than actual type size
+# This tests the error path at lines 7634-7637 in dsdl.c
+# The @extent directive must be >= the actual size of the type
+
+@extent 8
+uint64 field
+@sealed
