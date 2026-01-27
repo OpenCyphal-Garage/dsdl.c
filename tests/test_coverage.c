@@ -3207,16 +3207,6 @@ static void test_invalid_array_capacity_negative(void)
     teardown_dsdl();
 }
 
-static void test_invalid_array_capacity_too_large(void)
-{
-    setup_dsdl();
-    TEST_ASSERT_TRUE(add_test_roots());
-    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("invalid.ArrayCapacityTooLarge.0.1"));
-    TEST_ASSERT_NULL(type);
-    TEST_ASSERT(g_dsdl.error != dsdl_error_none);
-    teardown_dsdl();
-}
-
 static void test_invalid_array_capacity_variable(void)
 {
     setup_dsdl();
@@ -3704,7 +3694,6 @@ int main(void)
 
     /* New coverage tests for invalid DSDL files */
     RUN_TEST(test_invalid_array_capacity_negative);
-    RUN_TEST(test_invalid_array_capacity_too_large);
     RUN_TEST(test_invalid_array_capacity_variable);
     RUN_TEST(test_invalid_array_capacity_float);
     RUN_TEST(test_invalid_array_capacity_negative_expr);

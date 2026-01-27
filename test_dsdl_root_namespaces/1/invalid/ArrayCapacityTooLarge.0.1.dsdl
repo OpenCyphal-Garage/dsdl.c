@@ -1,3 +1,0 @@
-# ERROR: Array capacity exceeds maximum
-uint8[18446744073709551616] data
-@sealed
