@@ -594,6 +594,328 @@ void test_rational_from_double_large_negative(void)
 }
 
 // ============================================================================
+// Extreme value and error path tests
+// ============================================================================
+
+void test_rational_div_by_zero(void)
+{
+    // Division by zero should return NaN
+    dsdl_rational_t a = make_rational(5, 7);
+    dsdl_rational_t b = dsdl_rational_from_int(0);
+    dsdl_rational_t r = dsdl_rational_div(a, b);
+
+    TEST_ASSERT_TRUE(dsdl_rational_is_nan(r));
+    assert_bigint_eq_uintmax(0, r.den);
+}
+
+void test_rational_div_zero_by_nonzero(void)
+{
+    // 0 / 5 = 0 (valid, not NaN)
+    dsdl_rational_t a = dsdl_rational_from_int(0);
+    dsdl_rational_t b = make_rational(5, 1);
+    dsdl_rational_t r = dsdl_rational_div(a, b);
+
+    TEST_ASSERT_FALSE(dsdl_rational_is_nan(r));
+    assert_bigint_eq_intmax(0, r.num);
+    assert_bigint_eq_uintmax(1, r.den);
+}
+
+void test_rational_div_nan_operand(void)
+{
+    // NaN / x = NaN
+    dsdl_rational_t a = dsdl_rational_nan();
+    dsdl_rational_t b = make_rational(3, 4);
+    dsdl_rational_t r = dsdl_rational_div(a, b);
+
+    TEST_ASSERT_TRUE(dsdl_rational_is_nan(r));
+}
+
+void test_rational_add_nan_operand(void)
+{
+    // NaN + x = NaN
+    dsdl_rational_t a = dsdl_rational_nan();
+    dsdl_rational_t b = make_rational(1, 2);
+    dsdl_rational_t r = dsdl_rational_add(a, b);
+
+    TEST_ASSERT_TRUE(dsdl_rational_is_nan(r));
+}
+
+void test_rational_mul_nan_operand(void)
+{
+    // NaN * x = NaN
+    dsdl_rational_t a = dsdl_rational_nan();
+    dsdl_rational_t b = make_rational(2, 3);
+    dsdl_rational_t r = dsdl_rational_mul(a, b);
+
+    TEST_ASSERT_TRUE(dsdl_rational_is_nan(r));
+}
+
+void test_rational_sub_nan_operand(void)
+{
+    // x - NaN = NaN
+    dsdl_rational_t a = make_rational(5, 7);
+    dsdl_rational_t b = dsdl_rational_nan();
+    dsdl_rational_t r = dsdl_rational_sub(a, b);
+
+    TEST_ASSERT_TRUE(dsdl_rational_is_nan(r));
+}
+
+void test_rational_cmp_nan_operand(void)
+{
+    // cmp(NaN, x) = 0
+    dsdl_rational_t a   = dsdl_rational_nan();
+    dsdl_rational_t b   = make_rational(1, 2);
+    int             cmp = dsdl_rational_cmp(a, b);
+
+    TEST_ASSERT_EQUAL_INT(0, cmp);
+}
+
+void test_rational_normalize_nan(void)
+{
+    // normalize(NaN) = NaN
+    dsdl_rational_t r = dsdl_rational_nan();
+    r                 = dsdl_rational_normalize(r);
+
+    TEST_ASSERT_TRUE(dsdl_rational_is_nan(r));
+}
+
+void test_rational_to_double_nan(void)
+{
+    // to_double(NaN) should fail
+    dsdl_rational_t r   = dsdl_rational_nan();
+    double          out = 0.0;
+
+    TEST_ASSERT_FALSE(dsdl_rational_to_double(r, &out));
+}
+
+void test_rational_to_intmax_non_integer(void)
+{
+    // to_intmax(1/2) should fail (not an integer)
+    dsdl_rational_t r   = make_rational(1, 2);
+    intmax_t        out = 0;
+
+    TEST_ASSERT_FALSE(dsdl_rational_to_intmax(r, &out));
+}
+
+void test_rational_to_uintmax_negative(void)
+{
+    // to_uintmax(-5/1) should fail (negative)
+    dsdl_rational_t r   = make_rational(-5, 1);
+    uintmax_t       out = 0;
+
+    TEST_ASSERT_FALSE(dsdl_rational_to_uintmax(r, &out));
+}
+
+void test_rational_to_uintmax_non_integer(void)
+{
+    // to_uintmax(3/4) should fail (not an integer)
+    dsdl_rational_t r   = make_rational(3, 4);
+    uintmax_t       out = 0;
+
+    TEST_ASSERT_FALSE(dsdl_rational_to_uintmax(r, &out));
+}
+
+void test_rational_is_int_true(void)
+{
+    // is_int(5/1) = true
+    dsdl_rational_t r = make_rational(5, 1);
+    TEST_ASSERT_TRUE(dsdl_rational_is_int(r));
+}
+
+void test_rational_is_int_false(void)
+{
+    // is_int(5/2) = false
+    dsdl_rational_t r = make_rational(5, 2);
+    TEST_ASSERT_FALSE(dsdl_rational_is_int(r));
+}
+
+void test_rational_is_int_nan(void)
+{
+    // is_int(NaN) = false
+    dsdl_rational_t r = dsdl_rational_nan();
+    TEST_ASSERT_FALSE(dsdl_rational_is_int(r));
+}
+
+void test_rational_neg_zero(void)
+{
+    // neg(0) = 0 (sign not flipped for zero)
+    dsdl_rational_t r = dsdl_rational_from_int(0);
+    r                 = dsdl_rational_neg(r);
+
+    assert_bigint_eq_intmax(0, r.num);
+    assert_bigint_eq_uintmax(1, r.den);
+}
+
+void test_rational_neg_positive(void)
+{
+    // neg(3/4) = -3/4
+    dsdl_rational_t r = make_rational(3, 4);
+    r                 = dsdl_rational_neg(r);
+
+    TEST_ASSERT_TRUE(r.num.negative);
+    assert_bigint_eq_intmax(-3, r.num);
+    assert_bigint_eq_uintmax(4, r.den);
+}
+
+void test_rational_neg_negative(void)
+{
+    // neg(-2/5) = 2/5
+    dsdl_rational_t r = make_rational(-2, 5);
+    r                 = dsdl_rational_neg(r);
+
+    TEST_ASSERT_FALSE(r.num.negative);
+    assert_bigint_eq_intmax(2, r.num);
+    assert_bigint_eq_uintmax(5, r.den);
+}
+
+void test_rational_cmp_both_nan(void)
+{
+    // cmp(NaN, NaN) = 0
+    dsdl_rational_t a   = dsdl_rational_nan();
+    dsdl_rational_t b   = dsdl_rational_nan();
+    int             cmp = dsdl_rational_cmp(a, b);
+
+    TEST_ASSERT_EQUAL_INT(0, cmp);
+}
+
+void test_rational_cmp_zero_positive(void)
+{
+    // cmp(0, 5) < 0
+    dsdl_rational_t a = dsdl_rational_from_int(0);
+    dsdl_rational_t b = dsdl_rational_from_int(5);
+
+    TEST_ASSERT_TRUE(dsdl_rational_cmp(a, b) < 0);
+}
+
+void test_rational_cmp_zero_negative(void)
+{
+    // cmp(0, -5) > 0
+    dsdl_rational_t a = dsdl_rational_from_int(0);
+    dsdl_rational_t b = dsdl_rational_from_int(-5);
+
+    TEST_ASSERT_TRUE(dsdl_rational_cmp(a, b) > 0);
+}
+
+void test_rational_cmp_zero_zero(void)
+{
+    // cmp(0, 0) = 0
+    dsdl_rational_t a = dsdl_rational_from_int(0);
+    dsdl_rational_t b = dsdl_rational_from_int(0);
+
+    TEST_ASSERT_EQUAL_INT(0, dsdl_rational_cmp(a, b));
+}
+
+void test_rational_from_uintmax_zero(void)
+{
+    // from_uintmax(0) = 0/1
+    dsdl_rational_t r = dsdl_rational_from_uintmax(0U);
+
+    assert_bigint_eq_intmax(0, r.num);
+    assert_bigint_eq_uintmax(1, r.den);
+    TEST_ASSERT_FALSE(r.num.negative);
+}
+
+void test_rational_from_uintmax_large(void)
+{
+    // from_uintmax(UINTMAX_MAX) = UINTMAX_MAX/1
+    dsdl_rational_t r = dsdl_rational_from_uintmax(UINTMAX_MAX);
+
+    assert_bigint_eq_uintmax(UINTMAX_MAX, r.num);
+    assert_bigint_eq_uintmax(1, r.den);
+    TEST_ASSERT_FALSE(r.num.negative);
+}
+
+void test_rational_normalize_zero_numerator(void)
+{
+    // normalize(0/5) = 0/1
+    dsdl_rational_t r = make_rational(0, 5);
+    r                 = dsdl_rational_normalize(r);
+
+    assert_bigint_eq_intmax(0, r.num);
+    assert_bigint_eq_uintmax(1, r.den);
+    TEST_ASSERT_FALSE(r.num.negative);
+}
+
+void test_rational_add_opposite_signs(void)
+{
+    // 5/7 + (-5/7) = 0
+    dsdl_rational_t a = make_rational(5, 7);
+    dsdl_rational_t b = make_rational(-5, 7);
+    dsdl_rational_t r = dsdl_rational_add(a, b);
+
+    assert_bigint_eq_intmax(0, r.num);
+    assert_bigint_eq_uintmax(1, r.den);
+}
+
+void test_rational_sub_same_values(void)
+{
+    // 3/4 - 3/4 = 0
+    dsdl_rational_t a = make_rational(3, 4);
+    dsdl_rational_t b = make_rational(3, 4);
+    dsdl_rational_t r = dsdl_rational_sub(a, b);
+
+    assert_bigint_eq_intmax(0, r.num);
+    assert_bigint_eq_uintmax(1, r.den);
+}
+
+void test_rational_mul_by_one(void)
+{
+    // 5/7 * 1 = 5/7
+    dsdl_rational_t a = make_rational(5, 7);
+    dsdl_rational_t b = dsdl_rational_from_int(1);
+    dsdl_rational_t r = dsdl_rational_mul(a, b);
+
+    assert_bigint_eq_intmax(5, r.num);
+    assert_bigint_eq_uintmax(7, r.den);
+}
+
+void test_rational_mul_by_negative_one(void)
+{
+    // 5/7 * (-1) = -5/7
+    dsdl_rational_t a = make_rational(5, 7);
+    dsdl_rational_t b = dsdl_rational_from_int(-1);
+    dsdl_rational_t r = dsdl_rational_mul(a, b);
+
+    TEST_ASSERT_TRUE(r.num.negative);
+    assert_bigint_eq_intmax(-5, r.num);
+    assert_bigint_eq_uintmax(7, r.den);
+}
+
+void test_rational_div_by_one(void)
+{
+    // 5/7 / 1 = 5/7
+    dsdl_rational_t a = make_rational(5, 7);
+    dsdl_rational_t b = dsdl_rational_from_int(1);
+    dsdl_rational_t r = dsdl_rational_div(a, b);
+
+    assert_bigint_eq_intmax(5, r.num);
+    assert_bigint_eq_uintmax(7, r.den);
+}
+
+void test_rational_div_by_negative_one(void)
+{
+    // 5/7 / (-1) = -5/7
+    dsdl_rational_t a = make_rational(5, 7);
+    dsdl_rational_t b = dsdl_rational_from_int(-1);
+    dsdl_rational_t r = dsdl_rational_div(a, b);
+
+    TEST_ASSERT_TRUE(r.num.negative);
+    assert_bigint_eq_intmax(-5, r.num);
+    assert_bigint_eq_uintmax(7, r.den);
+}
+
+void test_rational_div_self(void)
+{
+    // 5/7 / (5/7) = 1
+    dsdl_rational_t a = make_rational(5, 7);
+    dsdl_rational_t b = make_rational(5, 7);
+    dsdl_rational_t r = dsdl_rational_div(a, b);
+
+    assert_bigint_eq_intmax(1, r.num);
+    assert_bigint_eq_uintmax(1, r.den);
+}
+
+// ============================================================================
 // Main
 // ============================================================================
 
@@ -612,7 +934,6 @@ int main(void)
     RUN_TEST(test_rational_div);
     RUN_TEST(test_rational_cmp);
 
-    // Overflow handling tests
     RUN_TEST(test_rational_overflow_mul);
     RUN_TEST(test_rational_overflow_add);
     RUN_TEST(test_rational_overflow_large_denominators);
@@ -643,6 +964,39 @@ int main(void)
     RUN_TEST(test_rational_from_double_nan);
     RUN_TEST(test_rational_from_double_large_positive);
     RUN_TEST(test_rational_from_double_large_negative);
+
+    RUN_TEST(test_rational_div_by_zero);
+    RUN_TEST(test_rational_div_zero_by_nonzero);
+    RUN_TEST(test_rational_div_nan_operand);
+    RUN_TEST(test_rational_add_nan_operand);
+    RUN_TEST(test_rational_mul_nan_operand);
+    RUN_TEST(test_rational_sub_nan_operand);
+    RUN_TEST(test_rational_cmp_nan_operand);
+    RUN_TEST(test_rational_normalize_nan);
+    RUN_TEST(test_rational_to_double_nan);
+    RUN_TEST(test_rational_to_intmax_non_integer);
+    RUN_TEST(test_rational_to_uintmax_negative);
+    RUN_TEST(test_rational_to_uintmax_non_integer);
+    RUN_TEST(test_rational_is_int_true);
+    RUN_TEST(test_rational_is_int_false);
+    RUN_TEST(test_rational_is_int_nan);
+    RUN_TEST(test_rational_neg_zero);
+    RUN_TEST(test_rational_neg_positive);
+    RUN_TEST(test_rational_neg_negative);
+    RUN_TEST(test_rational_cmp_both_nan);
+    RUN_TEST(test_rational_cmp_zero_positive);
+    RUN_TEST(test_rational_cmp_zero_negative);
+    RUN_TEST(test_rational_cmp_zero_zero);
+    RUN_TEST(test_rational_from_uintmax_zero);
+    RUN_TEST(test_rational_from_uintmax_large);
+    RUN_TEST(test_rational_normalize_zero_numerator);
+    RUN_TEST(test_rational_add_opposite_signs);
+    RUN_TEST(test_rational_sub_same_values);
+    RUN_TEST(test_rational_mul_by_one);
+    RUN_TEST(test_rational_mul_by_negative_one);
+    RUN_TEST(test_rational_div_by_one);
+    RUN_TEST(test_rational_div_by_negative_one);
+    RUN_TEST(test_rational_div_self);
 
     return UNITY_END();
 }
