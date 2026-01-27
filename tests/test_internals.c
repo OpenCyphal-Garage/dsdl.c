@@ -471,6 +471,148 @@ static void test_bigint_estimate_quotient_zero_den(void)
 }
 
 // ============================================================================
+// Additional bigint coverage tests (intrusive)
+// ============================================================================
+
+static void test_bigint_add_abs_invalid_limb_count(void)
+{
+    // Test add_abs with invalid limb_count (line 193)
+    dsdl_bigint_t a;
+    dsdl_bigint_t b;
+    dsdl_bigint_t result;
+
+    dsdl_bigint_zero(&a);
+    dsdl_bigint_zero(&b);
+
+    // Set limb_count beyond valid range
+    a.limb_count = DSDL_BIGINT_LIMB_COUNT + 1;
+    b.limb_count = 1;
+    b.limbs[0]   = 1;
+
+    TEST_ASSERT_FALSE(dsdl_bigint_add_abs(&a, &b, &result));
+}
+
+static void test_bigint_add_abs_with_carry(void)
+{
+    // Test add_abs with carry propagation (line 211)
+    dsdl_bigint_t a;
+    dsdl_bigint_t b;
+    dsdl_bigint_t result;
+
+    TEST_ASSERT_TRUE(dsdl_bigint_from_uintmax(&a, DSDL_BIGINT_BASE - 1));
+    TEST_ASSERT_TRUE(dsdl_bigint_from_uintmax(&b, 2));
+
+    TEST_ASSERT_TRUE(dsdl_bigint_add_abs(&a, &b, &result));
+    TEST_ASSERT_EQUAL_UINT8(2, result.limb_count);
+}
+
+static void test_bigint_add_signed_same_sign_overflow(void)
+{
+    // Test add_signed with same sign causing overflow (line 258)
+    dsdl_bigint_t a;
+    dsdl_bigint_t b;
+    dsdl_bigint_t result;
+
+    dsdl_bigint_zero(&a);
+    dsdl_bigint_zero(&b);
+
+    for (uint_least8_t i = 0; i < DSDL_BIGINT_LIMB_COUNT; i++) {
+        a.limbs[i] = DSDL_BIGINT_BASE - 1;
+        b.limbs[i] = DSDL_BIGINT_BASE - 1;
+    }
+    a.limb_count = DSDL_BIGINT_LIMB_COUNT;
+    b.limb_count = DSDL_BIGINT_LIMB_COUNT;
+
+    TEST_ASSERT_FALSE(dsdl_bigint_add_signed(&a, &b, &result));
+}
+
+static void test_bigint_add_signed_diff_signs_a_positive(void)
+{
+    // Test add_signed with different signs: a positive, b negative (line 270)
+    dsdl_bigint_t a;
+    dsdl_bigint_t b;
+    dsdl_bigint_t result;
+
+    TEST_ASSERT_TRUE(dsdl_bigint_from_intmax(&a, 10));
+    TEST_ASSERT_TRUE(dsdl_bigint_from_intmax(&b, -3));
+
+    TEST_ASSERT_TRUE(dsdl_bigint_add_signed(&a, &b, &result));
+    assert_bigint_eq_intmax(7, result);
+}
+
+static void test_bigint_add_signed_diff_signs_a_negative(void)
+{
+    // Test add_signed with different signs: a negative, b positive (line 276)
+    dsdl_bigint_t a;
+    dsdl_bigint_t b;
+    dsdl_bigint_t result;
+
+    TEST_ASSERT_TRUE(dsdl_bigint_from_intmax(&a, -10));
+    TEST_ASSERT_TRUE(dsdl_bigint_from_intmax(&b, 3));
+
+    TEST_ASSERT_TRUE(dsdl_bigint_add_signed(&a, &b, &result));
+    assert_bigint_eq_intmax(-7, result);
+}
+
+static void test_bigint_mul_abs_index_overflow(void)
+{
+    // Test mul_abs index overflow (line 293)
+    dsdl_bigint_t a;
+    dsdl_bigint_t b;
+    dsdl_bigint_t result;
+
+    dsdl_bigint_zero(&a);
+    dsdl_bigint_zero(&b);
+
+    const uint_least8_t half = (DSDL_BIGINT_LIMB_COUNT / 2) + 1;
+    for (uint_least8_t i = 0; i < half; i++) {
+        a.limbs[i] = DSDL_BIGINT_BASE - 1;
+        b.limbs[i] = DSDL_BIGINT_BASE - 1;
+    }
+    a.limb_count = half;
+    b.limb_count = half;
+
+    TEST_ASSERT_FALSE(dsdl_bigint_mul_abs(&a, &b, &result));
+}
+
+static void test_bigint_shift_base_add_zero_nonzero(void)
+{
+    // Test shift_base_add with zero value and nonzero digit (lines 404-409)
+    dsdl_bigint_t v;
+
+    dsdl_bigint_zero(&v);
+
+    TEST_ASSERT_TRUE(dsdl_bigint_shift_base_add(&v, 42U));
+    TEST_ASSERT_EQUAL_UINT8(1, v.limb_count);
+    TEST_ASSERT_EQUAL_UINT32(42U, v.limbs[0]);
+}
+
+static void test_bigint_estimate_quotient_malformed_den(void)
+{
+    // Test estimate_quotient with malformed denominator (line 438)
+    dsdl_bigint_t rem;
+    dsdl_bigint_t den;
+
+    TEST_ASSERT_TRUE(dsdl_bigint_from_uintmax(&rem, 100U));
+    dsdl_bigint_zero(&den);
+    den.limbs[0]   = 5U;
+    den.limbs[1]   = 0U;
+    den.limb_count = 2U;
+
+    TEST_ASSERT_EQUAL_UINT32(0U, dsdl_bigint_estimate_quotient(&rem, &den));
+}
+
+static void test_bigint_mul_add_small_inplace_basic(void)
+{
+    // Test mul_add_small_inplace basic operation
+    dsdl_bigint_t v;
+
+    TEST_ASSERT_TRUE(dsdl_bigint_from_uintmax(&v, 5U));
+    TEST_ASSERT_TRUE(dsdl_bigint_mul_add_small_inplace(&v, 3U, 2U));
+    assert_bigint_eq_uintmax(17U, v);
+}
+
+// ============================================================================
 // Main
 // ============================================================================
 
@@ -517,6 +659,17 @@ int main(void)
     RUN_TEST(test_bigint_mul_small_zero);
     RUN_TEST(test_bigint_estimate_quotient_zero_rem);
     RUN_TEST(test_bigint_estimate_quotient_zero_den);
+
+    // Additional bigint coverage tests
+    RUN_TEST(test_bigint_add_abs_invalid_limb_count);
+    RUN_TEST(test_bigint_add_abs_with_carry);
+    RUN_TEST(test_bigint_add_signed_same_sign_overflow);
+    RUN_TEST(test_bigint_add_signed_diff_signs_a_positive);
+    RUN_TEST(test_bigint_add_signed_diff_signs_a_negative);
+    RUN_TEST(test_bigint_mul_abs_index_overflow);
+    RUN_TEST(test_bigint_shift_base_add_zero_nonzero);
+    RUN_TEST(test_bigint_estimate_quotient_malformed_den);
+    RUN_TEST(test_bigint_mul_add_small_inplace_basic);
 
     return UNITY_END();
 }
