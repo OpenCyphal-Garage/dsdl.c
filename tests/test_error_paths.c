@@ -1324,6 +1324,146 @@ void test_oom_large_union_variants(void)
     }
 }
 
+void test_service_response_const_fail(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_invalid_test_root());
+
+    // Service with invalid constant in response section (lines 8188-8193)
+    const dsdl_type_composite_t* result = dsdl_read(&g_dsdl, wkv_key("invalid.ServiceResponseConstFail.0.1"));
+
+    TEST_ASSERT_NULL(result);
+    TEST_ASSERT_NOT_EQUAL(dsdl_error_none, g_dsdl.error);
+
+    teardown_dsdl();
+}
+
+void test_service_response_assert_fail(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_invalid_test_root());
+
+    // Service with failing assertion in response section (lines 8208-8214)
+    const dsdl_type_composite_t* result = dsdl_read(&g_dsdl, wkv_key("invalid.ServiceResponseAssertFail.0.1"));
+
+    TEST_ASSERT_NULL(result);
+    TEST_ASSERT_NOT_EQUAL(dsdl_error_none, g_dsdl.error);
+
+    teardown_dsdl();
+}
+
+void test_service_response_print_fail(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_invalid_test_root());
+
+    // Service with invalid print directive in response section (lines 8220-8227)
+    const dsdl_type_composite_t* result = dsdl_read(&g_dsdl, wkv_key("invalid.ServiceResponsePrintFail.0.1"));
+
+    TEST_ASSERT_NULL(result);
+    TEST_ASSERT_NOT_EQUAL(dsdl_error_none, g_dsdl.error);
+
+    teardown_dsdl();
+}
+
+void test_service_response_array_size_fail(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_invalid_test_root());
+
+    // Service with invalid array size expression in response (lines 8235-8240)
+    const dsdl_type_composite_t* result = dsdl_read(&g_dsdl, wkv_key("invalid.ServiceResponseArraySizeFail.0.1"));
+
+    TEST_ASSERT_NULL(result);
+    TEST_ASSERT_NOT_EQUAL(dsdl_error_none, g_dsdl.error);
+
+    teardown_dsdl();
+}
+
+void test_service_response_type_fail(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_invalid_test_root());
+
+    // Service with non-existent type in response (lines 8246-8251)
+    const dsdl_type_composite_t* result = dsdl_read(&g_dsdl, wkv_key("invalid.ServiceResponseTypeFail.0.1"));
+
+    TEST_ASSERT_NULL(result);
+    TEST_ASSERT_NOT_EQUAL(dsdl_error_none, g_dsdl.error);
+
+    teardown_dsdl();
+}
+
+void test_service_response_extent_non_integer(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_invalid_test_root());
+
+    // Service with extent expression that evaluates to non-integer in response
+    const dsdl_type_composite_t* result = dsdl_read(&g_dsdl, wkv_key("invalid.ServiceResponseExtentFail.0.1"));
+
+    TEST_ASSERT_NULL(result);
+    TEST_ASSERT_NOT_EQUAL(dsdl_error_none, g_dsdl.error);
+
+    teardown_dsdl();
+}
+
+void test_service_response_extent_out_of_range(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_invalid_test_root());
+
+    // Service with extent value out of range in response
+    const dsdl_type_composite_t* result = dsdl_read(&g_dsdl, wkv_key("invalid.ServiceResponseExtentOutOfRange.0.1"));
+
+    TEST_ASSERT_NULL(result);
+    TEST_ASSERT_NOT_EQUAL(dsdl_error_none, g_dsdl.error);
+
+    teardown_dsdl();
+}
+
+void test_request_extent_non_integer(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_invalid_test_root());
+
+    // Request with extent expression that evaluates to non-integer (lines 8138-8144)
+    const dsdl_type_composite_t* result = dsdl_read(&g_dsdl, wkv_key("invalid.RequestExtentNonInteger.0.1"));
+
+    TEST_ASSERT_NULL(result);
+    TEST_ASSERT_NOT_EQUAL(dsdl_error_none, g_dsdl.error);
+
+    teardown_dsdl();
+}
+
+void test_request_extent_out_of_range(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_invalid_test_root());
+
+    // Request with extent value out of range (lines 8149-8155)
+    const dsdl_type_composite_t* result = dsdl_read(&g_dsdl, wkv_key("invalid.RequestExtentOutOfRange.0.1"));
+
+    TEST_ASSERT_NULL(result);
+    TEST_ASSERT_NOT_EQUAL(dsdl_error_none, g_dsdl.error);
+
+    teardown_dsdl();
+}
+
+void test_request_print_fail(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_invalid_test_root());
+
+    // Request with invalid print directive (lines 8014-8019)
+    const dsdl_type_composite_t* result = dsdl_read(&g_dsdl, wkv_key("invalid.RequestPrintFail.0.1"));
+
+    TEST_ASSERT_NULL(result);
+    TEST_ASSERT_NOT_EQUAL(dsdl_error_none, g_dsdl.error);
+
+    teardown_dsdl();
+}
+
 // ============================================================================
 // Unity test runner
 // ============================================================================
@@ -1397,5 +1537,15 @@ int main(void)
     RUN_TEST(test_oom_huge_struct_early);
     RUN_TEST(test_oom_huge_struct_mid);
     RUN_TEST(test_oom_huge_struct_late);
+    RUN_TEST(test_service_response_const_fail);
+    RUN_TEST(test_service_response_assert_fail);
+    RUN_TEST(test_service_response_print_fail);
+    RUN_TEST(test_service_response_array_size_fail);
+    RUN_TEST(test_service_response_type_fail);
+    RUN_TEST(test_service_response_extent_non_integer);
+    RUN_TEST(test_service_response_extent_out_of_range);
+    RUN_TEST(test_request_extent_non_integer);
+    RUN_TEST(test_request_extent_out_of_range);
+    RUN_TEST(test_request_print_fail);
     return UNITY_END();
 }
