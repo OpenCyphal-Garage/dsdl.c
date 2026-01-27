@@ -1,0 +1,4 @@
+# ERROR: @print with expression after @sealed
+uint8 value
+@sealed
+@print value

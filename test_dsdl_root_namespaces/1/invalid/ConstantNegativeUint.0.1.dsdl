@@ -1,0 +1,2 @@
+uint8 MY_CONST = -1
+@sealed

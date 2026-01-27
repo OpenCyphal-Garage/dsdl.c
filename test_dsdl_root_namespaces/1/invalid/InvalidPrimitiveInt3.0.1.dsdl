@@ -1,0 +1,3 @@
+# ERROR: int0 is invalid (minimum is int1)
+int0 value
+@sealed

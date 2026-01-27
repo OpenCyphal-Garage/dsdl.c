@@ -1,0 +1,3 @@
+# ERROR: uint65 is invalid (maximum is uint64)
+uint65 value
+@sealed

@@ -3194,6 +3194,210 @@ static void test_invalid_expr_invalid_power(void)
 }
 
 /* ============================================================================
+ * New coverage tests for invalid DSDL files
+ * ============================================================================ */
+
+static void test_invalid_array_capacity_negative(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("invalid.ArrayCapacityNegative.0.1"));
+    TEST_ASSERT_NULL(type);
+    TEST_ASSERT(g_dsdl.error != dsdl_error_none);
+    teardown_dsdl();
+}
+
+static void test_invalid_array_capacity_too_large(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("invalid.ArrayCapacityTooLarge.0.1"));
+    TEST_ASSERT_NULL(type);
+    TEST_ASSERT(g_dsdl.error != dsdl_error_none);
+    teardown_dsdl();
+}
+
+static void test_invalid_array_capacity_variable(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("invalid.ArrayCapacityVariable.0.1"));
+    TEST_ASSERT_NULL(type);
+    TEST_ASSERT(g_dsdl.error != dsdl_error_none);
+    teardown_dsdl();
+}
+
+static void test_invalid_array_capacity_float(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("invalid.ArrayCapacityFloat.0.1"));
+    TEST_ASSERT_NULL(type);
+    TEST_ASSERT(g_dsdl.error != dsdl_error_none);
+    teardown_dsdl();
+}
+
+static void test_invalid_array_capacity_negative_expr(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("invalid.ArrayCapacityNegativeExpr.0.1"));
+    TEST_ASSERT_NULL(type);
+    TEST_ASSERT(g_dsdl.error != dsdl_error_none);
+    teardown_dsdl();
+}
+
+static void test_invalid_void_field_named(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("invalid.VoidFieldNamed.0.1"));
+    TEST_ASSERT_NULL(type);
+    TEST_ASSERT(g_dsdl.error != dsdl_error_none);
+    teardown_dsdl();
+}
+
+static void test_invalid_primitive_int3(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("invalid.InvalidPrimitiveInt3.0.1"));
+    TEST_ASSERT_NULL(type);
+    TEST_ASSERT(g_dsdl.error != dsdl_error_none);
+    teardown_dsdl();
+}
+
+static void test_invalid_primitive_uint33(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("invalid.InvalidPrimitiveUint33.0.1"));
+    TEST_ASSERT_NULL(type);
+    TEST_ASSERT(g_dsdl.error != dsdl_error_none);
+    teardown_dsdl();
+}
+
+static void test_invalid_unknown_type_reference(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("invalid.UnknownTypeReference.0.1"));
+    TEST_ASSERT_NULL(type);
+    TEST_ASSERT(g_dsdl.error != dsdl_error_none);
+    teardown_dsdl();
+}
+
+static void test_invalid_float16(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("invalid.InvalidFloat16.0.1"));
+    TEST_ASSERT_NULL(type);
+    TEST_ASSERT(g_dsdl.error != dsdl_error_none);
+    teardown_dsdl();
+}
+
+static void test_invalid_assert_without_expr(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("invalid.AssertWithoutExpr.0.1"));
+    TEST_ASSERT_NULL(type);
+    TEST_ASSERT(g_dsdl.error != dsdl_error_none);
+    teardown_dsdl();
+}
+
+static void test_invalid_extent_without_expr(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("invalid.ExtentWithoutExpr.0.1"));
+    TEST_ASSERT_NULL(type);
+    TEST_ASSERT(g_dsdl.error != dsdl_error_none);
+    teardown_dsdl();
+}
+
+static void test_invalid_print_without_expr(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("invalid.PrintWithoutExpr.0.1"));
+    TEST_ASSERT_NULL(type);
+    TEST_ASSERT(g_dsdl.error != dsdl_error_none);
+    teardown_dsdl();
+}
+
+static void test_invalid_sealed_and_extent_both(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("invalid.SealedAndExtentBoth.0.1"));
+    TEST_ASSERT_NULL(type);
+    TEST_ASSERT(g_dsdl.error != dsdl_error_none);
+    teardown_dsdl();
+}
+
+static void test_invalid_assert_after_sealed(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("invalid.AssertAfterSealed.0.1"));
+    TEST_ASSERT_NULL(type);
+    TEST_ASSERT(g_dsdl.error != dsdl_error_none);
+    teardown_dsdl();
+}
+
+static void test_invalid_constant_invalid_cast(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("invalid.ConstantInvalidCast.0.1"));
+    TEST_ASSERT_NULL(type);
+    TEST_ASSERT(g_dsdl.error != dsdl_error_none);
+    teardown_dsdl();
+}
+
+static void test_invalid_constant_overflow(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("invalid.ConstantOverflow.0.1"));
+    TEST_ASSERT_NULL(type);
+    TEST_ASSERT(g_dsdl.error != dsdl_error_none);
+    teardown_dsdl();
+}
+
+static void test_invalid_constant_type_mismatch(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("invalid.ConstantTypeMismatch.0.1"));
+    TEST_ASSERT_NULL(type);
+    TEST_ASSERT(g_dsdl.error != dsdl_error_none);
+    teardown_dsdl();
+}
+
+static void test_invalid_constant_undefined(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("invalid.ConstantUndefined.0.1"));
+    TEST_ASSERT_NULL(type);
+    TEST_ASSERT(g_dsdl.error != dsdl_error_none);
+    teardown_dsdl();
+}
+
+static void test_invalid_constant_negative_uint(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("invalid.ConstantNegativeUint.0.1"));
+    TEST_ASSERT_NULL(type);
+    TEST_ASSERT(g_dsdl.error != dsdl_error_none);
+    teardown_dsdl();
+}
+
+/* ============================================================================
  * Main test runner
  * ============================================================================ */
 
@@ -3497,6 +3701,28 @@ int main(void)
     RUN_TEST(test_invalid_expr_invalid_bitwise);
     RUN_TEST(test_invalid_expr_invalid_modulo);
     RUN_TEST(test_invalid_expr_invalid_power);
+
+    /* New coverage tests for invalid DSDL files */
+    RUN_TEST(test_invalid_array_capacity_negative);
+    RUN_TEST(test_invalid_array_capacity_too_large);
+    RUN_TEST(test_invalid_array_capacity_variable);
+    RUN_TEST(test_invalid_array_capacity_float);
+    RUN_TEST(test_invalid_array_capacity_negative_expr);
+    RUN_TEST(test_invalid_void_field_named);
+    RUN_TEST(test_invalid_primitive_int3);
+    RUN_TEST(test_invalid_primitive_uint33);
+    RUN_TEST(test_invalid_unknown_type_reference);
+    RUN_TEST(test_invalid_float16);
+    RUN_TEST(test_invalid_assert_without_expr);
+    RUN_TEST(test_invalid_extent_without_expr);
+    RUN_TEST(test_invalid_print_without_expr);
+    RUN_TEST(test_invalid_sealed_and_extent_both);
+    RUN_TEST(test_invalid_assert_after_sealed);
+    RUN_TEST(test_invalid_constant_invalid_cast);
+    RUN_TEST(test_invalid_constant_overflow);
+    RUN_TEST(test_invalid_constant_type_mismatch);
+    RUN_TEST(test_invalid_constant_undefined);
+    RUN_TEST(test_invalid_constant_negative_uint);
 
     return UNITY_END();
 }

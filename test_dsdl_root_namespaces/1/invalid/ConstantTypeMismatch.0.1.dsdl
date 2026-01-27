@@ -1,0 +1,2 @@
+uint8 MY_CONST = 3.14
+@sealed
