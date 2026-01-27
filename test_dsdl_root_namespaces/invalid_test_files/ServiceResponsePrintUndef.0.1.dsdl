@@ -1,0 +1,7 @@
+# Service with undefined print in response
+uint8 request
+@sealed
+---
+uint8 response_field
+@print undefined_response_symbol
+@sealed

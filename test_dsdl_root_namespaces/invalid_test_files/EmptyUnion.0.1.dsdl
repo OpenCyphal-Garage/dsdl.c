@@ -1,0 +1,3 @@
+# Union with no variants (edge case)
+@union
+@sealed

@@ -1,0 +1,7 @@
+# Service with undefined constant in response
+uint8 request
+@sealed
+---
+uint8 INVALID_CONST = undefined_value
+uint8 response
+@sealed
