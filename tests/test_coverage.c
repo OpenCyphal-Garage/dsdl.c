@@ -2241,6 +2241,34 @@ static void test_invalid_service_bit_length_ref(void)
     teardown_dsdl();
 }
 
+static void test_invalid_service_with_fixed_port_id(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("invalid.ServiceWithFixedPortId.0.1"));
+    TEST_ASSERT_NOT_NULL(type);
+    teardown_dsdl();
+}
+
+static void test_invalid_port_id_overflow(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("invalid.PortIdOverflow.0.1"));
+    TEST_ASSERT_NULL(type);
+    TEST_ASSERT_EQUAL(dsdl_error_file_not_found, g_dsdl.error);
+    teardown_dsdl();
+}
+
+static void test_invalid_port_id_mismatch(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("invalid.PortIdMismatch.0.1"));
+    TEST_ASSERT_NOT_NULL(type);
+    teardown_dsdl();
+}
+
 static void test_invalid_invalid_operand_types(void)
 {
     setup_dsdl();
@@ -2860,6 +2888,9 @@ int main(void)
     RUN_TEST(test_invalid_unknown_directive);
     RUN_TEST(test_invalid_service_triple_marker);
     RUN_TEST(test_invalid_service_bit_length_ref);
+    RUN_TEST(test_invalid_service_with_fixed_port_id);
+    RUN_TEST(test_invalid_port_id_overflow);
+    RUN_TEST(test_invalid_port_id_mismatch);
     RUN_TEST(test_invalid_invalid_operand_types);
     RUN_TEST(test_invalid_void_named);
     RUN_TEST(test_invalid_attribute_name_collision);

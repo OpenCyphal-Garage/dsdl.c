@@ -1,0 +1,7 @@
+# Message with port ID > 65535 (max is 65535)
+# This tests the error path at lines 7600-7605 in dsdl.c
+# The filename "99999.PortIdOverflow.0.1.dsdl" specifies port ID 99999
+# Port ID 99999 exceeds DSDL_FIXED_PORT_ID_NONE (65536)
+
+uint8 value
+@sealed

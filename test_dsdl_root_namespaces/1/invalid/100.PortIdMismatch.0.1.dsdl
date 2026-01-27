@@ -1,0 +1,9 @@
+# Message with port ID mismatch between filename and content
+# Filename says 100, but content specifies different port ID via expression
+# This tests the error path at lines 7617-7624 in dsdl.c
+# NOTE: This error path is unreachable due to a bug in dsdl.c where the
+# @fixed_port_id directive name is checked as "fixed-port-id" (with hyphens)
+# but the identifier parser only allows underscores and alphanumerics.
+
+uint8 value
+@sealed

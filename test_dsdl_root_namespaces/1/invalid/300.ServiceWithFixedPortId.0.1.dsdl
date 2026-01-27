@@ -1,0 +1,9 @@
+# Service with fixed port ID - should fail (services cannot have fixed port IDs)
+# This tests the error path at lines 7611-7615 in dsdl.c
+# The filename "300.ServiceWithFixedPortId.0.1.dsdl" specifies port ID 300
+
+uint8 request_value
+@sealed
+---
+uint8 response_value
+@sealed
