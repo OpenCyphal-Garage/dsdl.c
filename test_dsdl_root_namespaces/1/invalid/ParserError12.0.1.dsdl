@@ -1,0 +1,3 @@
+# Underflow in constant
+uint8 VAL = -1
+@sealed

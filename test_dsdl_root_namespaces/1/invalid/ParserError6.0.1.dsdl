@@ -1,0 +1,4 @@
+# Duplicate field name
+uint8 field
+uint8 field
+@sealed

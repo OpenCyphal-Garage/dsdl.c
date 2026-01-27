@@ -1,0 +1,4 @@
+# Invalid unary minus on bool
+@assert -true
+uint8 field
+@sealed

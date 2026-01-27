@@ -1,0 +1,4 @@
+# Invalid directive
+@invalid_directive
+uint8 field
+@sealed

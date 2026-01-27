@@ -1,0 +1,4 @@
+# Assert with non-boolean
+@assert 123
+uint8 field
+@sealed

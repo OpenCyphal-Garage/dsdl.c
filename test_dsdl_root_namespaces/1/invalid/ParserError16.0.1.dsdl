@@ -1,0 +1,4 @@
+# Invalid logical operation on number
+@assert 123 && 456
+uint8 field
+@sealed

@@ -1,0 +1,3 @@
+# Invalid constant type
+string CONST = 123
+@sealed

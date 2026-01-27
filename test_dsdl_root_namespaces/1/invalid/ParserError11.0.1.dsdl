@@ -1,0 +1,3 @@
+# Overflow in constant
+uint8 VAL = 256
+@sealed

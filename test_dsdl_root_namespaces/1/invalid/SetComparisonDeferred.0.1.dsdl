@@ -1,0 +1,4 @@
+# Test set comparison with deferred values (line 3635-3636)
+@assert {1} == {2}
+uint8 dummy
+@sealed

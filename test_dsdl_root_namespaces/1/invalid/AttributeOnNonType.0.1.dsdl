@@ -1,0 +1,4 @@
+# Test attribute access on non-type value (line 3436)
+uint8 VAL = (5).min
+uint8 dummy
+@sealed

@@ -1,0 +1,5 @@
+# Test division edge cases
+uint64 DIV1 = 1000000000000000000 / 1
+uint64 DIV2 = 18446744073709551615 / 18446744073709551615
+uint8 dummy
+@sealed

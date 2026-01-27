@@ -1,0 +1,4 @@
+# Test empty string comparison edge case (line 3467)
+@assert "" == ""
+uint8 dummy
+@sealed

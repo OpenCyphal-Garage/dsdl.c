@@ -1,0 +1,63 @@
+# Complex expression testing to increase coverage
+
+# Floating-point power operations (triggers dsdl_rational_from_double)
+@assert 2.0 ** 3.0 == 8.0
+@assert 10.0 ** 0.5 > 3.0
+@assert 0.5 ** 2.0 == 0.25
+
+# Large rational comparisons (triggers dsdl_rational_cmp edge cases)
+@assert 999999999999999999 > 999999999999999998
+@assert 1000000000000000000 >= 1000000000000000000
+@assert 999999999999999997 < 999999999999999998
+
+# Rational arithmetic with large numbers (triggers bigint operations)
+uint64 LARGE_ADD = 9223372036854775806 + 1
+uint64 LARGE_SUB = 9223372036854775807 - 1
+uint64 LARGE_MUL = 4611686018427387903 * 2
+
+# Division with large numbers (triggers bigint_estimate_quotient)
+uint64 LARGE_DIV = 9223372036854775806 / 2
+uint64 LARGE_MOD = 9223372036854775807 % 1000000
+
+# Negative number operations (triggers signed bigint paths)
+int64 NEG_ADD = -9223372036854775807 + 1
+int64 NEG_SUB = -100 - 200
+int64 NEG_MUL = -1000 * 1000
+
+# Mixed positive/negative (triggers dsdl_bigint_add_signed)
+int64 MIXED1 = 1000 + (-500)
+int64 MIXED2 = -1000 + 500
+int64 MIXED3 = 1000 - (-500)
+
+# Rational operations with fractions
+@assert 1.5 + 2.5 == 4.0
+@assert 10.0 / 3.0 > 3.0
+@assert 10.0 / 3.0 < 4.0
+
+# Complex nested expressions
+@assert ((10 + 20) * 3) / 2 == 45
+@assert (100 - 50) / (10 - 5) == 10
+@assert ((2 ** 3) * (3 ** 2)) == 72
+
+# Bitwise operations with large values
+uint32 BIT_LARGE1 = 0xFFFFFFFF & 0x12345678
+uint32 BIT_LARGE2 = 0x00000000 | 0xABCDEF00
+uint32 BIT_LARGE3 = 0xFFFFFFFF ^ 0xFFFFFFFF
+
+# Comparisons with zero
+@assert 0 == 0
+@assert 0 != 1
+@assert 0 < 1
+@assert 1 > 0
+@assert 0 <= 0
+@assert 0 >= 0
+
+# Comparisons with negative numbers
+@assert -1 < 0
+@assert -1 < 1
+@assert -100 < -99
+@assert -1 != 1
+
+uint8 dummy
+
+@sealed

@@ -1,0 +1,3 @@
+# Circular dependency via constant
+uint8 VAL = VAL + 1
+@sealed

@@ -1,0 +1,6 @@
+# Test complex rational operations
+@assert 1.0 / 3.0 * 3.0 > 0.99
+@assert 1.0 / 3.0 * 3.0 < 1.01
+@assert 10.0 ** 10.0 > 1000000000.0
+uint8 dummy
+@sealed

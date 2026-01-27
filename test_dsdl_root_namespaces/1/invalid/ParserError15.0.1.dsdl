@@ -1,0 +1,3 @@
+# Invalid bitwise operation on float
+uint8 VAL = 1.5 & 2.5
+@sealed

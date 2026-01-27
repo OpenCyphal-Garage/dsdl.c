@@ -1,0 +1,4 @@
+# Test type comparison with mismatched types (line 3623)
+@assert 1 == "string"
+uint8 dummy
+@sealed

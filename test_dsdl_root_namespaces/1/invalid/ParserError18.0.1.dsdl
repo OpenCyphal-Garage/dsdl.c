@@ -1,0 +1,3 @@
+# Invalid power operation
+uint8 VAL = 2 ** -1
+@sealed

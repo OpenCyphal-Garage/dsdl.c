@@ -1,0 +1,3 @@
+# Bool in arithmetic
+uint8 VAL = true + false
+@sealed

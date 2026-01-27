@@ -1,0 +1,6 @@
+# Test large negative number operations
+int64 NEG1 = -9223372036854775807
+int64 NEG2 = -9223372036854775807 + 1
+int64 NEG3 = -1000000000000 * 1000
+uint8 dummy
+@sealed

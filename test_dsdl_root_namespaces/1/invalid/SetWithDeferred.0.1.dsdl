@@ -1,0 +1,7 @@
+# Test set with deferred value (should fail)
+# This should trigger line 3658 - set with deferred element
+
+@assert {1, 2, 3}.count == 3
+
+uint8 dummy
+@sealed

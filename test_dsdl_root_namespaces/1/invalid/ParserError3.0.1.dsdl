@@ -1,0 +1,3 @@
+# Negative array capacity
+uint8[<-1] field
+@sealed

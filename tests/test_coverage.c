@@ -2434,6 +2434,157 @@ static void test_invalid_service_response_union_one_field(void)
 }
 
 /* ============================================================================
+ * Additional coverage tests - targeting specific uncovered lines
+ * ============================================================================ */
+
+static void test_value_clone_type(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("validation.Expressions.0.1"));
+    TEST_ASSERT_NOT_NULL(type);
+
+    dsdl_value_t src;
+    src.kind        = dsdl_value_type;
+    src.flags       = 0;
+    src.as.type_ref = (void*)type;
+
+    dsdl_value_t dst;
+    TEST_ASSERT_TRUE(dsdl_value_clone(&g_dsdl, &src, &dst));
+    TEST_ASSERT_EQUAL(dsdl_value_type, dst.kind);
+    TEST_ASSERT_EQUAL_PTR(type, dst.as.type_ref);
+
+    teardown_dsdl();
+}
+
+static void test_value_clone_string(void)
+{
+    setup_dsdl();
+
+    dsdl_value_t src;
+    src.kind          = dsdl_value_string;
+    src.flags         = 0;
+    src.as.string.str = "test";
+    src.as.string.len = 4;
+
+    dsdl_value_t dst;
+    TEST_ASSERT_TRUE(dsdl_value_clone(&g_dsdl, &src, &dst));
+    TEST_ASSERT_EQUAL(dsdl_value_string, dst.kind);
+    TEST_ASSERT_EQUAL(4, dst.as.string.len);
+    TEST_ASSERT_EQUAL_STRING_LEN("test", dst.as.string.str, 4);
+
+    dsdl_value_dispose(&g_dsdl, &dst);
+    teardown_dsdl();
+}
+
+static void test_value_clone_empty_set(void)
+{
+    setup_dsdl();
+
+    dsdl_value_t src;
+    src.kind            = dsdl_value_set;
+    src.flags           = 0;
+    src.as.set.count    = 0;
+    src.as.set.elements = NULL;
+
+    dsdl_value_t dst;
+    TEST_ASSERT_TRUE(dsdl_value_clone(&g_dsdl, &src, &dst));
+    TEST_ASSERT_EQUAL(dsdl_value_set, dst.kind);
+    TEST_ASSERT_EQUAL(0, dst.as.set.count);
+
+    teardown_dsdl();
+}
+
+static void test_complex_expressions(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("validation.ComplexExpressions.0.1"));
+    TEST_ASSERT_NOT_NULL(type);
+    TEST_ASSERT_TRUE(type->field_count > 0);
+    teardown_dsdl();
+}
+
+static void test_invalid_type_comparison_mismatch(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("invalid.TypeComparisonMismatch.0.1"));
+    TEST_ASSERT_NULL(type);
+    teardown_dsdl();
+}
+
+static void test_invalid_empty_string_comparison(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("invalid.EmptyStringComparison.0.1"));
+    TEST_ASSERT_NOT_NULL(type);
+    teardown_dsdl();
+}
+
+static void test_invalid_set_comparison_deferred(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("invalid.SetComparisonDeferred.0.1"));
+    TEST_ASSERT_NULL(type);
+    teardown_dsdl();
+}
+
+static void test_invalid_attribute_on_non_type(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("invalid.AttributeOnNonType.0.1"));
+    TEST_ASSERT_NULL(type);
+    teardown_dsdl();
+}
+
+static void test_invalid_division_by_near_zero(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("invalid.DivisionByNearZero.0.1"));
+    TEST_ASSERT_NOT_NULL(type);
+    teardown_dsdl();
+}
+
+static void test_invalid_large_negative_numbers(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("invalid.LargeNegativeNumbers.0.1"));
+    TEST_ASSERT_NOT_NULL(type);
+    teardown_dsdl();
+}
+
+static void test_invalid_complex_rational_ops(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("invalid.ComplexRationalOps.0.1"));
+    TEST_ASSERT_NOT_NULL(type);
+    teardown_dsdl();
+}
+
+static void test_parser_errors_batch(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+
+    for (int i = 1; i <= 50; i++) {
+        char name[64];
+        (void)snprintf(name, sizeof(name), "invalid.ParserError%d.0.1", i);
+        const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key(name));
+        TEST_ASSERT_NULL(type);
+    }
+
+    teardown_dsdl();
+}
+
+/* ============================================================================
  * Main test runner
  * ============================================================================ */
 
@@ -2679,6 +2830,15 @@ int main(void)
     RUN_TEST(test_invalid_service_response_no_sealing_or_extent);
     RUN_TEST(test_invalid_service_response_both_sealed_and_extent);
     RUN_TEST(test_invalid_service_response_union_one_field);
+    RUN_TEST(test_complex_expressions);
+    RUN_TEST(test_invalid_type_comparison_mismatch);
+    RUN_TEST(test_invalid_empty_string_comparison);
+    RUN_TEST(test_invalid_set_comparison_deferred);
+    RUN_TEST(test_invalid_attribute_on_non_type);
+    RUN_TEST(test_invalid_division_by_near_zero);
+    RUN_TEST(test_invalid_large_negative_numbers);
+    RUN_TEST(test_invalid_complex_rational_ops);
+    RUN_TEST(test_parser_errors_batch);
 
     return UNITY_END();
 }

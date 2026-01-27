@@ -1,0 +1,3 @@
+# Array capacity too large
+uint8[<999999999999999999999] field
+@sealed
