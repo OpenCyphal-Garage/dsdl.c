@@ -1,0 +1,3 @@
+# @extent with value exceeding UINT64_MAX (2^64 = 18446744073709551616)
+uint8 field
+@extent 99999999999999999999999999999999999

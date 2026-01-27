@@ -1,0 +1,6 @@
+# Service with response @extent out of range
+uint8 request
+@sealed
+---
+uint8 response
+@extent 99999999999999999999999999999999999

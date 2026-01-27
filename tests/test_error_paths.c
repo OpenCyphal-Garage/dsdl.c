@@ -617,6 +617,80 @@ void test_error_fixed_port_non_integer(void)
 }
 
 // ============================================================================
+// Extent expression error tests (lines 8135-8363 coverage)
+// ============================================================================
+
+void test_error_invalid_extent_expression(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_invalid_test_root());
+
+    // @extent "string" - extent expression evaluates to string, not rational
+    const dsdl_type_composite_t* result = dsdl_read(&g_dsdl, wkv_key("InvalidExtentExpr.0.1"));
+
+    TEST_ASSERT_NULL(result);
+    TEST_ASSERT_EQUAL(dsdl_error_parse, g_dsdl.error);
+
+    teardown_dsdl();
+}
+
+void test_error_extent_out_of_range(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_invalid_test_root());
+
+    // @extent 99999999999999999999999999999999999 - value exceeds uint64 range
+    const dsdl_type_composite_t* result = dsdl_read(&g_dsdl, wkv_key("ExtentOutOfRange.0.1"));
+
+    TEST_ASSERT_NULL(result);
+    TEST_ASSERT_EQUAL(dsdl_error_parse, g_dsdl.error);
+
+    teardown_dsdl();
+}
+
+void test_error_invalid_print_expr_response(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_invalid_test_root());
+
+    // Service with @print undefined_symbol_xyz in response section
+    const dsdl_type_composite_t* result = dsdl_read(&g_dsdl, wkv_key("InvalidPrintExprResponse.0.1"));
+
+    TEST_ASSERT_NULL(result);
+    TEST_ASSERT_EQUAL(dsdl_error_parse, g_dsdl.error);
+
+    teardown_dsdl();
+}
+
+void test_error_service_invalid_response_extent(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_invalid_test_root());
+
+    // Service with @extent "invalid" in response section
+    const dsdl_type_composite_t* result = dsdl_read(&g_dsdl, wkv_key("ServiceInvalidResponseExtent.0.1"));
+
+    TEST_ASSERT_NULL(result);
+    TEST_ASSERT_EQUAL(dsdl_error_parse, g_dsdl.error);
+
+    teardown_dsdl();
+}
+
+void test_error_service_extent_out_of_range(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_invalid_test_root());
+
+    // Service with @extent 99999... in response section
+    const dsdl_type_composite_t* result = dsdl_read(&g_dsdl, wkv_key("ServiceExtentOutOfRange.0.1"));
+
+    TEST_ASSERT_NULL(result);
+    TEST_ASSERT_EQUAL(dsdl_error_parse, g_dsdl.error);
+
+    teardown_dsdl();
+}
+
+// ============================================================================
 // Unity test runner
 // ============================================================================
 
@@ -651,5 +725,10 @@ int main(void)
     RUN_TEST(test_error_duplicate_fixed_port);
     RUN_TEST(test_error_fixed_port_invalid_value);
     RUN_TEST(test_error_fixed_port_non_integer);
+    RUN_TEST(test_error_invalid_extent_expression);
+    RUN_TEST(test_error_extent_out_of_range);
+    RUN_TEST(test_error_invalid_print_expr_response);
+    RUN_TEST(test_error_service_invalid_response_extent);
+    RUN_TEST(test_error_service_extent_out_of_range);
     return UNITY_END();
 }

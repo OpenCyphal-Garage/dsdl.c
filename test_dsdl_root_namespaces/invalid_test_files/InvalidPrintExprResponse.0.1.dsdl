@@ -1,0 +1,7 @@
+# Service with invalid @print in response section
+uint8 request
+@sealed
+---
+uint8 response
+@print undefined_symbol_xyz
+@sealed
