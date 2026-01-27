@@ -1,0 +1,38 @@
+#Tests for deferred expression evaluation
+
+# Initial offset is 0
+@assert _offset_ == {0}
+
+uint8 a
+@assert _offset_ == {8}
+
+uint16 b
+@assert _offset_ == {24}
+
+# After variable-length array, offset becomes a set
+uint8[<=3] c
+@assert _offset_ == {24 + 8, 24 + 16, 24 + 24, 24 + 32}
+
+# Using .min and .max attributes
+@assert _offset_.min == 32
+@assert _offset_.max == 56
+
+# Alignment check - offset modulo 8 should be {0} for byte-aligned
+@assert _offset_ % 8 == {0}
+
+# Fixed array doesn't change the set cardinality
+uint8[4] d
+@assert _offset_.min == 64
+@assert _offset_.max == 88
+
+# Another variable array
+uint16[<=2] e
+@assert _offset_.min == 72
+@assert _offset_.max == 128
+
+# Final alignment check
+@assert _offset_ % 8 == {0}
+
+uint8 final_field
+
+@sealed
