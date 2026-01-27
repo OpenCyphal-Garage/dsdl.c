@@ -83,6 +83,7 @@ endif()
 # Code coverage (optional)
 # ------------------------------------------------------------------------------
 if(DSDL_ENABLE_COVERAGE)
+    add_compile_definitions(NDEBUG)
     include(cmake/Coverage.cmake)
 endif()
 

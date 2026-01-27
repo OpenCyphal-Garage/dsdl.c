@@ -42,6 +42,7 @@ if(GCOVR_EXE)
 
     # HTML coverage report
     add_custom_target(coverage
+        COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/coverage
         COMMAND ${GCOVR_EXE}
             ${GCOVR_GCOV_ARGS}
             --root ${CMAKE_SOURCE_DIR}

@@ -23,3 +23,7 @@ There probably are some memory leaks that need fixing.
 ## Allow NULL value pointers in struct and union
 
 See TODO comments in `dsdl.h`.
+
+## Proper JSON serialization example
+
+`examples/serialize_to_json.c` must include a recursive function that can serialize an arbitrary data type into JSON, and the name of the type is to be accepted via CLI args. The function will descend the tree and emit each item into JSON. The emission should be done via a callback accepting `wkv_str_t` instead of direct stdout access.

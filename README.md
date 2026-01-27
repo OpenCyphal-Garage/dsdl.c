@@ -219,8 +219,9 @@ build/tools/dsdl_to_json -r test_dsdl_root_namespaces/0 -r test_dsdl_root_namesp
 Generate coverage report:
 
 ```bash
+pip3 install --user gcovr
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DDSDL_ENABLE_COVERAGE=ON
-cmake --build build
+cmake --build build -j$(nproc)
 ctest --test-dir build
 cmake --build build --target coverage
 ```
