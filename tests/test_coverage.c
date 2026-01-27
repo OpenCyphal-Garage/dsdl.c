@@ -3879,9 +3879,325 @@ static void test_valid_float_arithmetic(void)
     teardown_dsdl();
 }
 
-/* ============================================================================
- * Main test runner
- * ============================================================================ */
+static void test_serialize_float16_primitives(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("validation.Primitives.0.1"));
+    TEST_ASSERT_NOT_NULL(type);
+
+    uint_least8_t  flag = 1, u1 = 1, u8 = 42;
+    uint_least16_t u16 = 1000;
+    uint_least32_t u32 = 100000;
+    uint_least64_t u64 = 1000000;
+    int_least8_t   i2 = 1, i8 = -42;
+    int_least16_t  i16 = -1000;
+    int_least32_t  i32 = -100000;
+    int_least64_t  i64 = -1000000;
+    float          f16 = 3.14f, f32 = 2.71f;
+    double         f64 = 1.414;
+
+    void*               values[] = { &flag, &u1, &u8, &u16, &u32, &u64, &i2, &i8, &i16, &i32, &i64, &f16, &f32, &f64 };
+    dsdl_value_struct_t msg      = { .values = values };
+
+    uint8_t      buffer[256];
+    dsdl_error_t err  = dsdl_error_none;
+    size_t       size = dsdl_serialize(type, &msg, sizeof(buffer), buffer, &err);
+    TEST_ASSERT_NOT_EQUAL(SIZE_MAX, size);
+    TEST_ASSERT_GREATER_THAN(0, size);
+    teardown_dsdl();
+}
+
+static void test_serialize_float32_primitives(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("validation.Primitives.0.1"));
+    TEST_ASSERT_NOT_NULL(type);
+
+    uint_least8_t  flag = 0, u1 = 0, u8 = 100;
+    uint_least16_t u16 = 2000;
+    uint_least32_t u32 = 200000;
+    uint_least64_t u64 = 2000000;
+    int_least8_t   i2 = -1, i8 = 42;
+    int_least16_t  i16 = 1000;
+    int_least32_t  i32 = 100000;
+    int_least64_t  i64 = 1000000;
+    float          f16 = 1.5f, f32 = 2.5f;
+    double         f64 = 3.5;
+
+    void*               values[] = { &flag, &u1, &u8, &u16, &u32, &u64, &i2, &i8, &i16, &i32, &i64, &f16, &f32, &f64 };
+    dsdl_value_struct_t msg      = { .values = values };
+
+    uint8_t      buffer[256];
+    dsdl_error_t err  = dsdl_error_none;
+    size_t       size = dsdl_serialize(type, &msg, sizeof(buffer), buffer, &err);
+    TEST_ASSERT_NOT_EQUAL(SIZE_MAX, size);
+    TEST_ASSERT_GREATER_THAN(0, size);
+    teardown_dsdl();
+}
+
+static void test_serialize_float64_primitives(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("validation.Primitives.0.1"));
+    TEST_ASSERT_NOT_NULL(type);
+
+    uint_least8_t  flag = 1, u1 = 1, u8 = 200;
+    uint_least16_t u16 = 3000;
+    uint_least32_t u32 = 300000;
+    uint_least64_t u64 = 3000000;
+    int_least8_t   i2 = 0, i8 = -100;
+    int_least16_t  i16 = -2000;
+    int_least32_t  i32 = -200000;
+    int_least64_t  i64 = -2000000;
+    float          f16 = 0.5f, f32 = 1.5f;
+    double         f64 = 2.5;
+
+    void*               values[] = { &flag, &u1, &u8, &u16, &u32, &u64, &i2, &i8, &i16, &i32, &i64, &f16, &f32, &f64 };
+    dsdl_value_struct_t msg      = { .values = values };
+
+    uint8_t      buffer[256];
+    dsdl_error_t err  = dsdl_error_none;
+    size_t       size = dsdl_serialize(type, &msg, sizeof(buffer), buffer, &err);
+    TEST_ASSERT_NOT_EQUAL(SIZE_MAX, size);
+    TEST_ASSERT_GREATER_THAN(0, size);
+    teardown_dsdl();
+}
+
+static void test_serialize_union_tag0(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("validation.Union.0.1"));
+    TEST_ASSERT_NOT_NULL(type);
+
+    uint_least8_t      byte_val = 42;
+    dsdl_value_union_t msg      = { .tag = 0, .value = &byte_val };
+
+    uint8_t      buffer[256];
+    dsdl_error_t err  = dsdl_error_none;
+    size_t       size = dsdl_serialize(type, &msg, sizeof(buffer), buffer, &err);
+    TEST_ASSERT_NOT_EQUAL(SIZE_MAX, size);
+    TEST_ASSERT_GREATER_THAN(0, size);
+    teardown_dsdl();
+}
+
+static void test_serialize_union_tag1(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("validation.Union.0.1"));
+    TEST_ASSERT_NOT_NULL(type);
+
+    uint_least16_t     word_val = 1000;
+    dsdl_value_union_t msg      = { .tag = 1, .value = &word_val };
+
+    uint8_t      buffer[256];
+    dsdl_error_t err  = dsdl_error_none;
+    size_t       size = dsdl_serialize(type, &msg, sizeof(buffer), buffer, &err);
+    TEST_ASSERT_NOT_EQUAL(SIZE_MAX, size);
+    TEST_ASSERT_GREATER_THAN(0, size);
+    teardown_dsdl();
+}
+
+static void test_serialize_nested_composite(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("validation.Simple.0.1"));
+    TEST_ASSERT_NOT_NULL(type);
+
+    uint_least8_t       a = 10, b = 20;
+    uint_least16_t      c        = 300;
+    void*               values[] = { &a, &b, &c };
+    dsdl_value_struct_t msg      = { .values = values };
+
+    uint8_t      buffer[512];
+    dsdl_error_t err  = dsdl_error_none;
+    size_t       size = dsdl_serialize(type, &msg, sizeof(buffer), buffer, &err);
+    TEST_ASSERT_NOT_EQUAL(SIZE_MAX, size);
+    TEST_ASSERT_GREATER_THAN(0, size);
+    teardown_dsdl();
+}
+
+static void test_serialize_buffer_too_small(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("validation.Simple.0.1"));
+    TEST_ASSERT_NOT_NULL(type);
+
+    uint_least8_t       a = 10, b = 20;
+    uint_least16_t      c        = 300;
+    void*               values[] = { &a, &b, &c };
+    dsdl_value_struct_t msg      = { .values = values };
+
+    uint8_t      buffer[3];
+    dsdl_error_t err  = dsdl_error_none;
+    size_t       size = dsdl_serialize(type, &msg, sizeof(buffer), buffer, &err);
+    TEST_ASSERT_EQUAL(SIZE_MAX, size);
+    teardown_dsdl();
+}
+
+static void test_serialize_buffer_exact_size(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("validation.Simple.0.1"));
+    TEST_ASSERT_NOT_NULL(type);
+
+    uint_least8_t       a = 10, b = 20;
+    uint_least16_t      c        = 300;
+    void*               values[] = { &a, &b, &c };
+    dsdl_value_struct_t msg      = { .values = values };
+
+    uint8_t      buffer[4];
+    dsdl_error_t err  = dsdl_error_none;
+    size_t       size = dsdl_serialize(type, &msg, sizeof(buffer), buffer, &err);
+    TEST_ASSERT_NOT_EQUAL(SIZE_MAX, size);
+    TEST_ASSERT_EQUAL(4, size);
+    teardown_dsdl();
+}
+
+static void test_serialize_buffer_larger(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("validation.Simple.0.1"));
+    TEST_ASSERT_NOT_NULL(type);
+
+    uint_least8_t       a = 10, b = 20;
+    uint_least16_t      c        = 300;
+    void*               values[] = { &a, &b, &c };
+    dsdl_value_struct_t msg      = { .values = values };
+
+    uint8_t      buffer[256];
+    dsdl_error_t err  = dsdl_error_none;
+    size_t       size = dsdl_serialize(type, &msg, sizeof(buffer), buffer, &err);
+    TEST_ASSERT_NOT_EQUAL(SIZE_MAX, size);
+    TEST_ASSERT_EQUAL(4, size);
+    teardown_dsdl();
+}
+
+static void test_serialize_empty_composite(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("validation.Empty.0.1"));
+    TEST_ASSERT_NOT_NULL(type);
+
+    dsdl_value_struct_t msg = { .values = NULL };
+
+    uint8_t      buffer[256];
+    dsdl_error_t err  = dsdl_error_none;
+    size_t       size = dsdl_serialize(type, &msg, sizeof(buffer), buffer, &err);
+    TEST_ASSERT_NOT_EQUAL(SIZE_MAX, size);
+    teardown_dsdl();
+}
+
+static void test_deserialize_float16_primitives(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("validation.Primitives.0.1"));
+    TEST_ASSERT_NOT_NULL(type);
+
+    uint_least8_t  flag = 1, u1 = 1, u8 = 42;
+    uint_least16_t u16 = 1000;
+    uint_least32_t u32 = 100000;
+    uint_least64_t u64 = 1000000;
+    int_least8_t   i2 = 1, i8 = -42;
+    int_least16_t  i16 = -1000;
+    int_least32_t  i32 = -100000;
+    int_least64_t  i64 = -1000000;
+    float          f16 = 3.14f, f32 = 2.71f;
+    double         f64 = 1.414;
+
+    void*               values[] = { &flag, &u1, &u8, &u16, &u32, &u64, &i2, &i8, &i16, &i32, &i64, &f16, &f32, &f64 };
+    dsdl_value_struct_t msg      = { .values = values };
+
+    uint8_t      buffer[256];
+    dsdl_error_t err  = dsdl_error_none;
+    size_t       size = dsdl_serialize(type, &msg, sizeof(buffer), buffer, &err);
+    TEST_ASSERT_NOT_EQUAL(SIZE_MAX, size);
+
+    uint_least8_t  flag_out = 0, u1_out = 0, u8_out = 0;
+    uint_least16_t u16_out = 0;
+    uint_least32_t u32_out = 0;
+    uint_least64_t u64_out = 0;
+    int_least8_t   i2_out = 0, i8_out = 0;
+    int_least16_t  i16_out = 0;
+    int_least32_t  i32_out = 0;
+    int_least64_t  i64_out = 0;
+    float          f16_out = 0.0f, f32_out = 0.0f;
+    double         f64_out = 0.0;
+
+    void*               out_values[] = { &flag_out, &u1_out,  &u8_out,  &u16_out, &u32_out, &u64_out, &i2_out,
+                                         &i8_out,   &i16_out, &i32_out, &i64_out, &f16_out, &f32_out, &f64_out };
+    dsdl_value_struct_t result       = { .values = out_values };
+
+    err             = dsdl_error_none;
+    size_t consumed = dsdl_deserialize(type, &result, size, buffer, &err);
+    TEST_ASSERT_NOT_EQUAL(SIZE_MAX, consumed);
+    TEST_ASSERT_EQUAL(size, consumed);
+    teardown_dsdl();
+}
+
+static void test_deserialize_union_tag0(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("validation.Union.0.1"));
+    TEST_ASSERT_NOT_NULL(type);
+
+    uint_least8_t      byte_val = 42;
+    dsdl_value_union_t msg      = { .tag = 0, .value = &byte_val };
+
+    uint8_t      buffer[256];
+    dsdl_error_t err  = dsdl_error_none;
+    size_t       size = dsdl_serialize(type, &msg, sizeof(buffer), buffer, &err);
+    TEST_ASSERT_NOT_EQUAL(SIZE_MAX, size);
+
+    uint_least8_t      byte_out = 0;
+    dsdl_value_union_t result   = { .tag = 0, .value = &byte_out };
+
+    err             = dsdl_error_none;
+    size_t consumed = dsdl_deserialize(type, &result, size, buffer, &err);
+    TEST_ASSERT_NOT_EQUAL(SIZE_MAX, consumed);
+    TEST_ASSERT_EQUAL(size, consumed);
+    teardown_dsdl();
+}
+
+static void test_deserialize_nested_composite(void)
+{
+    setup_dsdl();
+    TEST_ASSERT_TRUE(add_test_roots());
+    const dsdl_type_composite_t* type = dsdl_read(&g_dsdl, wkv_key("validation.Simple.0.1"));
+    TEST_ASSERT_NOT_NULL(type);
+
+    uint_least8_t       a = 10, b = 20;
+    uint_least16_t      c        = 300;
+    void*               values[] = { &a, &b, &c };
+    dsdl_value_struct_t msg      = { .values = values };
+
+    uint8_t      buffer[512];
+    dsdl_error_t err  = dsdl_error_none;
+    size_t       size = dsdl_serialize(type, &msg, sizeof(buffer), buffer, &err);
+    TEST_ASSERT_NOT_EQUAL(SIZE_MAX, size);
+
+    uint_least8_t       a_out = 0, b_out = 0;
+    uint_least16_t      c_out        = 0;
+    void*               out_values[] = { &a_out, &b_out, &c_out };
+    dsdl_value_struct_t result       = { .values = out_values };
+
+    err             = dsdl_error_none;
+    size_t consumed = dsdl_deserialize(type, &result, size, buffer, &err);
+    TEST_ASSERT_NOT_EQUAL(SIZE_MAX, consumed);
+    TEST_ASSERT_EQUAL(size, consumed);
+    teardown_dsdl();
+}
 
 int main(void)
 {
@@ -4262,6 +4578,20 @@ int main(void)
     RUN_TEST(test_valid_rational_to_integer);
     RUN_TEST(test_valid_modulo_operations);
     RUN_TEST(test_valid_float_arithmetic);
+
+    RUN_TEST(test_serialize_float16_primitives);
+    RUN_TEST(test_serialize_float32_primitives);
+    RUN_TEST(test_serialize_float64_primitives);
+    RUN_TEST(test_serialize_union_tag0);
+    RUN_TEST(test_serialize_union_tag1);
+    RUN_TEST(test_serialize_nested_composite);
+    RUN_TEST(test_serialize_buffer_too_small);
+    RUN_TEST(test_serialize_buffer_exact_size);
+    RUN_TEST(test_serialize_buffer_larger);
+    RUN_TEST(test_serialize_empty_composite);
+    RUN_TEST(test_deserialize_float16_primitives);
+    RUN_TEST(test_deserialize_union_tag0);
+    RUN_TEST(test_deserialize_nested_composite);
 
     return UNITY_END();
 }
