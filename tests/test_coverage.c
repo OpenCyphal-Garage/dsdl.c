@@ -1514,8 +1514,139 @@ static void test_nested_array_capacity(void)
 }
 
 /* ============================================================================
- * Category 1.10: OOM simulation tests (2 functions)
+ * Category 1.10: OOM simulation tests (8 functions)
  * ============================================================================ */
+
+/* Helper to add test roots */
+static bool add_test_roots_oom(dsdl_t* dsdl)
+{
+    char path0[512];
+    char path1[512];
+    (void)snprintf(path0, sizeof(path0), "%s/test_dsdl_root_namespaces/0", DSDL_TEST_ROOT);
+    (void)snprintf(path1, sizeof(path1), "%s/test_dsdl_root_namespaces/1", DSDL_TEST_ROOT);
+    return dsdl_add_namespace(dsdl, wkv_key(path0)) && dsdl_add_namespace(dsdl, wkv_key(path1));
+}
+
+/* Systematic OOM test for HugeStruct (1000 fields - exercises array growth) */
+static void test_oom_systematic_hugestruct(void)
+{
+    for (int i = 1; i <= 100; i++) {
+        dsdl_t oom_dsdl;
+        g_oom_counter = i;
+        dsdl_new(&oom_dsdl, oom_realloc, test_read_file, test_list_dir);
+
+        if (add_test_roots_oom(&oom_dsdl)) {
+            /* Either succeeds or fails cleanly - no crash */
+            (void)dsdl_read(&oom_dsdl, wkv_key("validation.HugeStruct.0.1"));
+        }
+
+        dsdl_destroy(&oom_dsdl);
+    }
+}
+
+/* Systematic OOM test for LargeUnion (260 fields - 16-bit tag) */
+static void test_oom_systematic_largeunion(void)
+{
+    for (int i = 1; i <= 100; i++) {
+        dsdl_t oom_dsdl;
+        g_oom_counter = i;
+        dsdl_new(&oom_dsdl, oom_realloc, test_read_file, test_list_dir);
+
+        if (add_test_roots_oom(&oom_dsdl)) {
+            /* Either succeeds or fails cleanly - no crash */
+            (void)dsdl_read(&oom_dsdl, wkv_key("validation.LargeUnion.0.1"));
+        }
+
+        dsdl_destroy(&oom_dsdl);
+    }
+}
+
+/* Systematic OOM test for ServiceBothUnion (complex service) */
+static void test_oom_systematic_servicebothunion(void)
+{
+    for (int i = 1; i <= 50; i++) {
+        dsdl_t oom_dsdl;
+        g_oom_counter = i;
+        dsdl_new(&oom_dsdl, oom_realloc, test_read_file, test_list_dir);
+
+        if (add_test_roots_oom(&oom_dsdl)) {
+            /* Either succeeds or fails cleanly - no crash */
+            (void)dsdl_read(&oom_dsdl, wkv_key("validation.ServiceBothUnion.0.1"));
+        }
+
+        dsdl_destroy(&oom_dsdl);
+    }
+}
+
+/* Systematic OOM test for DeepNesting (recursive composites) */
+static void test_oom_systematic_deepnesting(void)
+{
+    for (int i = 1; i <= 50; i++) {
+        dsdl_t oom_dsdl;
+        g_oom_counter = i;
+        dsdl_new(&oom_dsdl, oom_realloc, test_read_file, test_list_dir);
+
+        if (add_test_roots_oom(&oom_dsdl)) {
+            /* Either succeeds or fails cleanly - no crash */
+            (void)dsdl_read(&oom_dsdl, wkv_key("validation.DeepNesting.0.1"));
+        }
+
+        dsdl_destroy(&oom_dsdl);
+    }
+}
+
+/* OOM during serialization */
+static void test_oom_during_serialization(void)
+{
+    for (int i = 1; i <= 50; i++) {
+        dsdl_t oom_dsdl;
+        g_oom_counter = 1000; /* Allow type loading */
+        dsdl_new(&oom_dsdl, oom_realloc, test_read_file, test_list_dir);
+
+        if (add_test_roots_oom(&oom_dsdl)) {
+            const dsdl_type_composite_t* type = dsdl_read(&oom_dsdl, wkv_key("validation.HugeStruct.0.1"));
+            if (type != NULL) {
+                /* Now trigger OOM during serialization */
+                g_oom_counter = i;
+
+                /* Create dummy field values (all zeros) */
+                uint8_t field_values[1000] = { 0 };
+                void*   field_ptrs[1000];
+                for (int j = 0; j < 1000; j++) {
+                    field_ptrs[j] = &field_values[j];
+                }
+                dsdl_value_struct_t msg = { .values = field_ptrs };
+
+                uint8_t      buffer[2048];
+                dsdl_error_t err = dsdl_error_none;
+                (void)dsdl_serialize(type, &msg, sizeof(buffer), buffer, &err);
+            }
+        }
+
+        dsdl_destroy(&oom_dsdl);
+    }
+}
+
+/* OOM during namespace path building */
+static void test_oom_namespace_path_building(void)
+{
+    for (int i = 1; i <= 30; i++) {
+        dsdl_t oom_dsdl;
+        g_oom_counter = i;
+        dsdl_new(&oom_dsdl, oom_realloc, test_read_file, test_list_dir);
+
+        char path0[512];
+        char path1[512];
+        (void)snprintf(path0, sizeof(path0), "%s/test_dsdl_root_namespaces/0", DSDL_TEST_ROOT);
+        (void)snprintf(path1, sizeof(path1), "%s/test_dsdl_root_namespaces/1", DSDL_TEST_ROOT);
+
+        /* Either succeeds or fails cleanly - no crash */
+        (void)dsdl_add_namespace(&oom_dsdl, wkv_key(path0));
+        (void)dsdl_add_namespace(&oom_dsdl, wkv_key(path1));
+
+        dsdl_destroy(&oom_dsdl);
+    }
+}
 
 static void test_oom_during_type_load(void)
 {
@@ -2455,6 +2586,12 @@ int main(void)
     RUN_TEST(test_nested_array_capacity);
 
     /* OOM simulation tests */
+    RUN_TEST(test_oom_systematic_hugestruct);
+    RUN_TEST(test_oom_systematic_largeunion);
+    RUN_TEST(test_oom_systematic_servicebothunion);
+    RUN_TEST(test_oom_systematic_deepnesting);
+    RUN_TEST(test_oom_during_serialization);
+    RUN_TEST(test_oom_namespace_path_building);
     RUN_TEST(test_oom_during_type_load);
     RUN_TEST(test_oom_during_namespace_add);
 
