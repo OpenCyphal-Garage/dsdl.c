@@ -85,6 +85,9 @@ gen_test_matrix(test_dsdl_bls "${trace_source};${CMAKE_CURRENT_SOURCE_DIR}/test_
 # Error path tests (include dsdl.c directly)
 gen_test_matrix(test_dsdl_error_paths "${trace_source};${CMAKE_CURRENT_SOURCE_DIR}/test_error_paths.c" FALSE)
 
+# Coverage tests (include dsdl.c directly)
+gen_test_matrix(test_dsdl_coverage "${trace_source};${CMAKE_CURRENT_SOURCE_DIR}/test_coverage.c" FALSE)
+
 # Nunavut cross-validation tests
 find_package(Python3 COMPONENTS Interpreter)
 if(Python3_Interpreter_FOUND)
