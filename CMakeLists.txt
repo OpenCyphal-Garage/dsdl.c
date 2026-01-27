@@ -141,12 +141,31 @@ find_program(clang_format NAMES clang-format)
 if (NOT clang_format)
     message(STATUS "Could not locate clang-format")
 else ()
-    file(GLOB format_files
-            ${CMAKE_CURRENT_SOURCE_DIR}/dsdl.[ch]
-            ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_*.[ch]
-            ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_*.cpp)
+    set(format_patterns
+            "${CMAKE_CURRENT_SOURCE_DIR}/dsdl.[ch]"
+            "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_*.[ch]"
+            "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_*.cpp"
+            "${CMAKE_CURRENT_SOURCE_DIR}/examples/*.[ch]"
+            "${CMAKE_CURRENT_SOURCE_DIR}/examples/*.cpp"
+            "${CMAKE_CURRENT_SOURCE_DIR}/tools/*.[ch]"
+            "${CMAKE_CURRENT_SOURCE_DIR}/tools/*.cpp")
+    set(format_files "")
+    foreach(pattern IN LISTS format_patterns)
+        file(GLOB files
+                CONFIGURE_DEPENDS
+                ${pattern})
+        list(APPEND format_files ${files})
+    endforeach()
+    list(REMOVE_DUPLICATES format_files)
+
     message(STATUS "Using clang-format: ${clang_format}")
-    add_custom_target(format COMMAND ${clang_format} -i -fallback-style=none -style=file --verbose ${format_files})
+    add_custom_target(format
+            COMMAND ${clang_format}
+                    -i
+                    -fallback-style=none
+                    -style=file
+                    --verbose
+                    ${format_files})
 endif ()
 
 # ------------------------------------------------------------------------------

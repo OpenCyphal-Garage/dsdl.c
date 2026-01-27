@@ -261,6 +261,8 @@ typedef struct dsdl_value_struct_t
     ///     #0 points to: uint_least32_t
     ///     #1 points to: dsdl_value_array_variable_t { count, *members }; members point to char*
     ///     #2 points to: dsdl_value_struct_t { **values }
+    ///
+    /// TODO: Allow NULL pointers to skip over fields. Ignore during deserialization, zero during serialization.
     void** values;
 } dsdl_value_struct_t;
 
@@ -268,6 +270,7 @@ typedef struct dsdl_value_union_t
 {
     size_t tag;   ///< Which field is selected; must be in [0, field_count)
     void*  value; ///< Currently selected field value; see dsdl_value_struct_t
+    /// TODO: Allow NULL value: ignore during deserialization, zero during serialization.
 } dsdl_value_union_t;
 
 // ============================================================================

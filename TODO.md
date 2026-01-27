@@ -19,3 +19,7 @@ CI must require 99% coverage.
 ## Identify and fix memory leaks
 
 There probably are some memory leaks that need fixing.
+
+## Allow NULL value pointers in struct and union
+
+See TODO comments in `dsdl.h`.
