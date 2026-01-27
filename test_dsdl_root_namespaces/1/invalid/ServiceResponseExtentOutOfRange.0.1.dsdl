@@ -1,0 +1,6 @@
+# Service with extent value out of range in response
+uint8 request_field
+@sealed
+---
+uint8 response_field
+@extent 99999999999999999999999999999999999999

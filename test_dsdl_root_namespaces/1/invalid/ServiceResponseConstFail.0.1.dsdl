@@ -1,0 +1,7 @@
+# Service with invalid constant in response section
+uint8 request_field
+@sealed
+---
+uint8 response_field
+uint8 INVALID_CONST = undefined_value
+@extent 64

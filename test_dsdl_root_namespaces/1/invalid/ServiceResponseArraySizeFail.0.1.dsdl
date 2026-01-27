@@ -1,0 +1,6 @@
+# Service with invalid array size expression in response
+uint8 request_field
+@sealed
+---
+uint8[<=undefined_size] response_array
+@extent 64
