@@ -1,0 +1,7 @@
+# Test Unicode escape sequences (\u and \U)
+
+uint8 basic_unicode = "\u0041"
+uint8 emoji = "\U00000041"
+uint8 mixed = "A"
+
+@sealed

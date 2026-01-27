@@ -1237,6 +1237,105 @@ static void test_utf8_encode_4byte_sequences(void)
 }
 
 // ============================================================================
+// String Unescaping Tests
+// ============================================================================
+
+static void test_unescape_string_null_dsdl(void)
+{
+    // Test NULL dsdl parameter (line 2977)
+    wkv_str_t raw = { .str = "test", .len = 4 };
+    wkv_str_t out;
+    TEST_ASSERT_FALSE(dsdl_unescape_string(NULL, raw, &out));
+}
+
+static void test_unescape_string_null_out(void)
+{
+    // Test NULL out parameter (line 2977)
+    dsdl_t dsdl;
+    dsdl_new(&dsdl, test_realloc, NULL, NULL);
+    wkv_str_t raw = { .str = "test", .len = 4 };
+    TEST_ASSERT_FALSE(dsdl_unescape_string(&dsdl, raw, NULL));
+    dsdl_destroy(&dsdl);
+}
+
+static void test_unescape_string_invalid_raw(void)
+{
+    // Test raw.len > 0 but raw.str == NULL (line 2980)
+    dsdl_t dsdl;
+    dsdl_new(&dsdl, test_realloc, NULL, NULL);
+    wkv_str_t raw = { .str = NULL, .len = 4 };
+    wkv_str_t out;
+    TEST_ASSERT_FALSE(dsdl_unescape_string(&dsdl, raw, &out));
+    dsdl_destroy(&dsdl);
+}
+
+static void test_unescape_string_incomplete_escape(void)
+{
+    // Test incomplete escape at end of string (lines 2999-3000)
+    dsdl_t dsdl;
+    dsdl_new(&dsdl, test_realloc, NULL, NULL);
+    wkv_str_t raw = { .str = "test\\", .len = 5 }; // Ends with backslash
+    wkv_str_t out;
+    TEST_ASSERT_FALSE(dsdl_unescape_string(&dsdl, raw, &out));
+    dsdl_destroy(&dsdl);
+}
+
+static void test_unescape_string_incomplete_unicode_u(void)
+{
+    // Test incomplete \u escape (lines 3036-3037)
+    dsdl_t dsdl;
+    dsdl_new(&dsdl, test_realloc, NULL, NULL);
+    wkv_str_t raw = { .str = "\\u004", .len = 5 }; // Only 3 hex digits
+    wkv_str_t out;
+    TEST_ASSERT_FALSE(dsdl_unescape_string(&dsdl, raw, &out));
+    dsdl_destroy(&dsdl);
+}
+
+static void test_unescape_string_incomplete_unicode_U(void)
+{
+    // Test incomplete \U escape (lines 3036-3037)
+    dsdl_t dsdl;
+    dsdl_new(&dsdl, test_realloc, NULL, NULL);
+    wkv_str_t raw = { .str = "\\U0001F60", .len = 9 }; // Only 7 hex digits
+    wkv_str_t out;
+    TEST_ASSERT_FALSE(dsdl_unescape_string(&dsdl, raw, &out));
+    dsdl_destroy(&dsdl);
+}
+
+static void test_unescape_string_invalid_hex(void)
+{
+    // Test invalid hex digit in \u escape (lines 3043-3044)
+    dsdl_t dsdl;
+    dsdl_new(&dsdl, test_realloc, NULL, NULL);
+    wkv_str_t raw = { .str = "\\u00XY", .len = 6 }; // X and Y are not hex
+    wkv_str_t out;
+    TEST_ASSERT_FALSE(dsdl_unescape_string(&dsdl, raw, &out));
+    dsdl_destroy(&dsdl);
+}
+
+static void test_unescape_string_invalid_code_point(void)
+{
+    // Test invalid Unicode code point (lines 3051-3052)
+    dsdl_t dsdl;
+    dsdl_new(&dsdl, test_realloc, NULL, NULL);
+    wkv_str_t raw = { .str = "\\U00110000", .len = 10 }; // Beyond U+10FFFF
+    wkv_str_t out;
+    TEST_ASSERT_FALSE(dsdl_unescape_string(&dsdl, raw, &out));
+    dsdl_destroy(&dsdl);
+}
+
+static void test_unescape_string_unknown_escape(void)
+{
+    // Test unknown escape sequence (lines 3064-3065)
+    dsdl_t dsdl;
+    dsdl_new(&dsdl, test_realloc, NULL, NULL);
+    wkv_str_t raw = { .str = "\\x41", .len = 4 }; // \x is not valid
+    wkv_str_t out;
+    TEST_ASSERT_FALSE(dsdl_unescape_string(&dsdl, raw, &out));
+    dsdl_destroy(&dsdl);
+}
+
+// ============================================================================
 // Main
 // ============================================================================
 
@@ -1349,6 +1448,17 @@ int main(void)
 
     // UTF-8 encoding tests
     RUN_TEST(test_utf8_encode_4byte_sequences);
+
+    // String unescaping tests
+    RUN_TEST(test_unescape_string_null_dsdl);
+    RUN_TEST(test_unescape_string_null_out);
+    RUN_TEST(test_unescape_string_invalid_raw);
+    RUN_TEST(test_unescape_string_incomplete_escape);
+    RUN_TEST(test_unescape_string_incomplete_unicode_u);
+    RUN_TEST(test_unescape_string_incomplete_unicode_U);
+    RUN_TEST(test_unescape_string_invalid_hex);
+    RUN_TEST(test_unescape_string_invalid_code_point);
+    RUN_TEST(test_unescape_string_unknown_escape);
 
     return UNITY_END();
 }

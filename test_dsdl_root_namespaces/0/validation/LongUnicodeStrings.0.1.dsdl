@@ -1,0 +1,5 @@
+# Test long strings with Unicode escape sequences
+
+uint8 long_unicode = "\u0041"
+
+@sealed

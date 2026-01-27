@@ -1,0 +1,8 @@
+# Test various escape sequences
+
+uint8 newline = "A"
+uint8 tab = "B"
+uint8 quote = "C"
+uint8 backslash = "D"
+
+@sealed
