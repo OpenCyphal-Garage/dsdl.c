@@ -394,7 +394,82 @@ static void test_bigint_overflow_shift_base_add(void)
 }
 
 // ============================================================================
-// Main
+// Additional bigint edge case tests
+// ============================================================================
+
+static void test_bigint_zero_null(void)
+{
+    // Test that dsdl_bigint_zero handles NULL pointer gracefully
+    dsdl_bigint_zero(NULL);
+    // If we reach here without crashing, the test passes
+    TEST_PASS();
+}
+
+static void test_bigint_sub_abs_underflow(void)
+{
+    // Test subtraction when a < b (should return false)
+    dsdl_bigint_t a;
+    dsdl_bigint_t b;
+    dsdl_bigint_t result;
+
+    TEST_ASSERT_TRUE(dsdl_bigint_from_uintmax(&a, 5U));
+    TEST_ASSERT_TRUE(dsdl_bigint_from_uintmax(&b, 10U));
+
+    // a < b, so sub_abs should fail
+    TEST_ASSERT_FALSE(dsdl_bigint_sub_abs(&a, &b, &result));
+}
+
+static void test_bigint_sub_abs_inplace_failure(void)
+{
+    // Test inplace subtraction failure when a < b
+    dsdl_bigint_t a;
+    dsdl_bigint_t b;
+
+    TEST_ASSERT_TRUE(dsdl_bigint_from_uintmax(&a, 3U));
+    TEST_ASSERT_TRUE(dsdl_bigint_from_uintmax(&b, 7U));
+
+    // a < b, so sub_abs_inplace should fail
+    TEST_ASSERT_FALSE(dsdl_bigint_sub_abs_inplace(&a, &b));
+}
+
+static void test_bigint_mul_small_zero(void)
+{
+    // Test multiplication by zero
+    dsdl_bigint_t v;
+
+    TEST_ASSERT_TRUE(dsdl_bigint_from_uintmax(&v, 12345U));
+    TEST_ASSERT_TRUE(dsdl_bigint_mul_small_inplace(&v, 0U));
+
+    // Result should be zero
+    TEST_ASSERT_TRUE(dsdl_bigint_is_zero(&v));
+}
+
+static void test_bigint_estimate_quotient_zero_rem(void)
+{
+    // Test estimate_quotient with zero remainder
+    dsdl_bigint_t rem;
+    dsdl_bigint_t den;
+
+    dsdl_bigint_zero(&rem);
+    TEST_ASSERT_TRUE(dsdl_bigint_from_uintmax(&den, 10U));
+
+    // With zero remainder, estimate should return 0
+    TEST_ASSERT_EQUAL_UINT32(0U, dsdl_bigint_estimate_quotient(&rem, &den));
+}
+
+static void test_bigint_estimate_quotient_zero_den(void)
+{
+    // Test estimate_quotient with zero denominator
+    dsdl_bigint_t rem;
+    dsdl_bigint_t den;
+
+    TEST_ASSERT_TRUE(dsdl_bigint_from_uintmax(&rem, 100U));
+    dsdl_bigint_zero(&den);
+
+    // With zero denominator, estimate should return 0 (safe fallback)
+    TEST_ASSERT_EQUAL_UINT32(0U, dsdl_bigint_estimate_quotient(&rem, &den));
+}
+
 // ============================================================================
 // Main
 // ============================================================================
@@ -434,6 +509,14 @@ int main(void)
     RUN_TEST(test_bigint_overflow_mul_small_inplace);
     RUN_TEST(test_bigint_overflow_add_small_inplace);
     RUN_TEST(test_bigint_overflow_shift_base_add);
+
+    // Bigint edge case tests
+    RUN_TEST(test_bigint_zero_null);
+    RUN_TEST(test_bigint_sub_abs_underflow);
+    RUN_TEST(test_bigint_sub_abs_inplace_failure);
+    RUN_TEST(test_bigint_mul_small_zero);
+    RUN_TEST(test_bigint_estimate_quotient_zero_rem);
+    RUN_TEST(test_bigint_estimate_quotient_zero_den);
 
     return UNITY_END();
 }
