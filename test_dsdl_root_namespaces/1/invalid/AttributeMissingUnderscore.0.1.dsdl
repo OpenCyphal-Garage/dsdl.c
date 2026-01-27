@@ -1,0 +1,2 @@
+uint8 field
+@assert bit_length == 8

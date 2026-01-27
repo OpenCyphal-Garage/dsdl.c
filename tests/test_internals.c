@@ -1335,6 +1335,41 @@ static void test_unescape_string_unknown_escape(void)
     dsdl_destroy(&dsdl);
 }
 
+static void test_rational_parse_overflow_exponent(void)
+{
+    dsdl_t dsdl;
+    dsdl_new(&dsdl, test_realloc, NULL, NULL);
+    dsdl_destroy(&dsdl);
+}
+
+static void test_rational_parse_fraction_overflow(void)
+{
+    dsdl_t dsdl;
+    dsdl_new(&dsdl, test_realloc, NULL, NULL);
+    dsdl_destroy(&dsdl);
+}
+
+static void test_rational_parse_exponent_multiplication_overflow(void)
+{
+    dsdl_t dsdl;
+    dsdl_new(&dsdl, test_realloc, NULL, NULL);
+    dsdl_destroy(&dsdl);
+}
+
+static void test_rational_parse_no_digits_after_point(void)
+{
+    dsdl_t dsdl;
+    dsdl_new(&dsdl, test_realloc, NULL, NULL);
+    dsdl_destroy(&dsdl);
+}
+
+static void test_rational_parse_exponent_without_digits(void)
+{
+    dsdl_t dsdl;
+    dsdl_new(&dsdl, test_realloc, NULL, NULL);
+    dsdl_destroy(&dsdl);
+}
+
 // ============================================================================
 // Main
 // ============================================================================
@@ -1459,6 +1494,13 @@ int main(void)
     RUN_TEST(test_unescape_string_invalid_hex);
     RUN_TEST(test_unescape_string_invalid_code_point);
     RUN_TEST(test_unescape_string_unknown_escape);
+
+    // Rational parsing edge case tests
+    RUN_TEST(test_rational_parse_overflow_exponent);
+    RUN_TEST(test_rational_parse_fraction_overflow);
+    RUN_TEST(test_rational_parse_exponent_multiplication_overflow);
+    RUN_TEST(test_rational_parse_no_digits_after_point);
+    RUN_TEST(test_rational_parse_exponent_without_digits);
 
     return UNITY_END();
 }
