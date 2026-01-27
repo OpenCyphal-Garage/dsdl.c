@@ -1719,6 +1719,232 @@ static void test_set_attribute_invalid_attr(void)
 }
 
 // ============================================================================
+// Closure evaluation tests
+// ============================================================================
+
+static void test_closure_eval_binary_null_self(void)
+{
+    dsdl_value_t out;
+    TEST_ASSERT_FALSE(dsdl_closure_eval_binary(NULL, &out));
+}
+
+static void test_closure_eval_binary_null_out(void)
+{
+    dsdl_closure_t closure = { 0 };
+    TEST_ASSERT_FALSE(dsdl_closure_eval_binary(&closure, NULL));
+}
+
+static void test_closure_eval_binary_null_context(void)
+{
+    dsdl_closure_t closure = { .context = NULL };
+    dsdl_value_t   out;
+    TEST_ASSERT_FALSE(dsdl_closure_eval_binary(&closure, &out));
+}
+
+static void test_closure_eval_unary_null_self(void)
+{
+    dsdl_value_t out;
+    TEST_ASSERT_FALSE(dsdl_closure_eval_unary(NULL, &out));
+}
+
+static void test_closure_eval_unary_null_out(void)
+{
+    dsdl_closure_t closure = { 0 };
+    TEST_ASSERT_FALSE(dsdl_closure_eval_unary(&closure, NULL));
+}
+
+static void test_closure_eval_unary_null_context(void)
+{
+    dsdl_closure_t closure = { .context = NULL };
+    dsdl_value_t   out;
+    TEST_ASSERT_FALSE(dsdl_closure_eval_unary(&closure, &out));
+}
+
+static void test_closure_eval_attribute_null_self(void)
+{
+    dsdl_value_t out;
+    TEST_ASSERT_FALSE(dsdl_closure_eval_attribute(NULL, &out));
+}
+
+static void test_closure_eval_attribute_null_out(void)
+{
+    dsdl_closure_t closure = { 0 };
+    TEST_ASSERT_FALSE(dsdl_closure_eval_attribute(&closure, NULL));
+}
+
+static void test_closure_eval_attribute_null_context(void)
+{
+    dsdl_closure_t closure = { .context = NULL };
+    dsdl_value_t   out;
+    TEST_ASSERT_FALSE(dsdl_closure_eval_attribute(&closure, &out));
+}
+
+static void test_closure_eval_offset_null_self(void)
+{
+    dsdl_value_t out;
+    TEST_ASSERT_FALSE(dsdl_closure_eval_offset(NULL, &out));
+}
+
+static void test_closure_eval_offset_null_out(void)
+{
+    dsdl_closure_t closure = { 0 };
+    TEST_ASSERT_FALSE(dsdl_closure_eval_offset(&closure, NULL));
+}
+
+static void test_closure_eval_offset_null_context(void)
+{
+    dsdl_closure_t closure = { .context = NULL };
+    dsdl_value_t   out;
+    TEST_ASSERT_FALSE(dsdl_closure_eval_offset(&closure, &out));
+}
+
+static void test_closure_eval_symbol_null_self(void)
+{
+    dsdl_value_t out;
+    TEST_ASSERT_FALSE(dsdl_closure_eval_symbol(NULL, &out));
+}
+
+static void test_closure_eval_symbol_null_out(void)
+{
+    dsdl_closure_t closure = { 0 };
+    TEST_ASSERT_FALSE(dsdl_closure_eval_symbol(&closure, NULL));
+}
+
+static void test_closure_eval_symbol_null_context(void)
+{
+    dsdl_closure_t closure = { .context = NULL };
+    dsdl_value_t   out;
+    TEST_ASSERT_FALSE(dsdl_closure_eval_symbol(&closure, &out));
+}
+
+static void test_closure_eval_type_ref_null_self(void)
+{
+    dsdl_value_t out;
+    TEST_ASSERT_FALSE(dsdl_closure_eval_type_ref(NULL, &out));
+}
+
+static void test_closure_eval_type_ref_null_out(void)
+{
+    dsdl_closure_t closure = { 0 };
+    TEST_ASSERT_FALSE(dsdl_closure_eval_type_ref(&closure, NULL));
+}
+
+static void test_closure_eval_type_ref_null_context(void)
+{
+    dsdl_closure_t closure = { .context = NULL };
+    dsdl_value_t   out;
+    TEST_ASSERT_FALSE(dsdl_closure_eval_type_ref(&closure, &out));
+}
+
+static void test_closure_cleanup_binary_null_self(void)
+{
+    // Should not crash with NULL
+    dsdl_closure_cleanup_binary(NULL);
+}
+
+static void test_closure_cleanup_unary_null_self(void)
+{
+    // Should not crash with NULL
+    dsdl_closure_cleanup_unary(NULL);
+}
+
+static void test_closure_cleanup_attribute_null_self(void)
+{
+    // Should not crash with NULL
+    dsdl_closure_cleanup_attribute(NULL);
+}
+
+static void test_closure_cleanup_offset_null_self(void)
+{
+    // Should not crash with NULL
+    dsdl_closure_cleanup_offset(NULL);
+}
+
+static void test_closure_cleanup_symbol_null_self(void)
+{
+    // Should not crash with NULL
+    dsdl_closure_cleanup_symbol(NULL);
+}
+
+static void test_closure_cleanup_type_ref_null_self(void)
+{
+    // Should not crash with NULL
+    dsdl_closure_cleanup_type_ref(NULL);
+}
+
+static void test_closure_clone_binary_null_self(void)
+{
+    dsdl_closure_t out;
+    TEST_ASSERT_FALSE(dsdl_closure_clone_binary(NULL, &out));
+}
+
+static void test_closure_clone_binary_null_out(void)
+{
+    dsdl_closure_t closure = { 0 };
+    TEST_ASSERT_FALSE(dsdl_closure_clone_binary(&closure, NULL));
+}
+
+static void test_closure_clone_unary_null_self(void)
+{
+    dsdl_closure_t out;
+    TEST_ASSERT_FALSE(dsdl_closure_clone_unary(NULL, &out));
+}
+
+static void test_closure_clone_unary_null_out(void)
+{
+    dsdl_closure_t closure = { 0 };
+    TEST_ASSERT_FALSE(dsdl_closure_clone_unary(&closure, NULL));
+}
+
+static void test_closure_clone_attribute_null_self(void)
+{
+    dsdl_closure_t out;
+    TEST_ASSERT_FALSE(dsdl_closure_clone_attribute(NULL, &out));
+}
+
+static void test_closure_clone_attribute_null_out(void)
+{
+    dsdl_closure_t closure = { 0 };
+    TEST_ASSERT_FALSE(dsdl_closure_clone_attribute(&closure, NULL));
+}
+
+static void test_closure_clone_symbol_null_self(void)
+{
+    dsdl_closure_t out;
+    TEST_ASSERT_FALSE(dsdl_closure_clone_symbol(NULL, &out));
+}
+
+static void test_closure_clone_symbol_null_out(void)
+{
+    dsdl_closure_t closure = { 0 };
+    TEST_ASSERT_FALSE(dsdl_closure_clone_symbol(&closure, NULL));
+}
+
+static void test_closure_clone_type_ref_null_self(void)
+{
+    dsdl_closure_t out;
+    TEST_ASSERT_FALSE(dsdl_closure_clone_type_ref(NULL, &out));
+}
+
+static void test_closure_clone_type_ref_null_out(void)
+{
+    dsdl_closure_t closure = { 0 };
+    TEST_ASSERT_FALSE(dsdl_closure_clone_type_ref(&closure, NULL));
+}
+
+static void test_closure_clone_offset_null_self(void)
+{
+    dsdl_closure_t out;
+    TEST_ASSERT_FALSE(dsdl_closure_clone_offset(NULL, &out));
+}
+
+static void test_closure_clone_offset_null_out(void)
+{
+    dsdl_closure_t closure = { 0 };
+    TEST_ASSERT_FALSE(dsdl_closure_clone_offset(&closure, NULL));
+}
+
+// ============================================================================
 // Main
 // ============================================================================
 
@@ -1895,6 +2121,44 @@ int main(void)
     RUN_TEST(test_set_attribute_min_multiple_elements);
     RUN_TEST(test_set_attribute_max_multiple_elements);
     RUN_TEST(test_set_attribute_invalid_attr);
+
+    // Closure evaluation tests
+    RUN_TEST(test_closure_eval_binary_null_self);
+    RUN_TEST(test_closure_eval_binary_null_out);
+    RUN_TEST(test_closure_eval_binary_null_context);
+    RUN_TEST(test_closure_eval_unary_null_self);
+    RUN_TEST(test_closure_eval_unary_null_out);
+    RUN_TEST(test_closure_eval_unary_null_context);
+    RUN_TEST(test_closure_eval_attribute_null_self);
+    RUN_TEST(test_closure_eval_attribute_null_out);
+    RUN_TEST(test_closure_eval_attribute_null_context);
+    RUN_TEST(test_closure_eval_offset_null_self);
+    RUN_TEST(test_closure_eval_offset_null_out);
+    RUN_TEST(test_closure_eval_offset_null_context);
+    RUN_TEST(test_closure_eval_symbol_null_self);
+    RUN_TEST(test_closure_eval_symbol_null_out);
+    RUN_TEST(test_closure_eval_symbol_null_context);
+    RUN_TEST(test_closure_eval_type_ref_null_self);
+    RUN_TEST(test_closure_eval_type_ref_null_out);
+    RUN_TEST(test_closure_eval_type_ref_null_context);
+    RUN_TEST(test_closure_cleanup_binary_null_self);
+    RUN_TEST(test_closure_cleanup_unary_null_self);
+    RUN_TEST(test_closure_cleanup_attribute_null_self);
+    RUN_TEST(test_closure_cleanup_offset_null_self);
+    RUN_TEST(test_closure_cleanup_symbol_null_self);
+    RUN_TEST(test_closure_cleanup_type_ref_null_self);
+    RUN_TEST(test_closure_clone_binary_null_self);
+    RUN_TEST(test_closure_clone_binary_null_out);
+    RUN_TEST(test_closure_clone_unary_null_self);
+    RUN_TEST(test_closure_clone_unary_null_out);
+    RUN_TEST(test_closure_clone_attribute_null_self);
+    RUN_TEST(test_closure_clone_attribute_null_out);
+    RUN_TEST(test_closure_clone_symbol_null_self);
+    RUN_TEST(test_closure_clone_symbol_null_out);
+    RUN_TEST(test_closure_clone_type_ref_null_self);
+    RUN_TEST(test_closure_clone_type_ref_null_out);
+    RUN_TEST(test_closure_clone_offset_null_self);
+    RUN_TEST(test_closure_clone_offset_null_out);
 
     return UNITY_END();
 }
