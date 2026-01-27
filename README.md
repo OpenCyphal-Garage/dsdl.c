@@ -37,7 +37,6 @@ See the `examples/` directory for additional examples.
 // Memory allocator callback (can use standard realloc or O1Heap)
 static void* my_realloc(dsdl_t* self, void* ptr, size_t size)
 {
-    (void)self;
     if (size == 0) {
         free(ptr);
         return NULL;
@@ -48,7 +47,6 @@ static void* my_realloc(dsdl_t* self, void* ptr, size_t size)
 // File reader callback
 static wkv_str_t my_read_file(dsdl_t* self, wkv_str_t path)
 {
-    (void)self;
     FILE* f = fopen(path.str, "rb");
     if (!f) return (wkv_str_t){NULL, 0};
     
@@ -70,11 +68,10 @@ static wkv_str_t my_read_file(dsdl_t* self, wkv_str_t path)
 // Directory listing callback
 static wkv_str_t* my_list_dir(dsdl_t* self, wkv_str_t path)
 {
-    (void)self;
-    (void)path;
     // Implementation depends on platform (POSIX: opendir/readdir, Windows: FindFirstFile)
     // Return NULL-terminated array of wkv_str_t
-    return NULL;  // Simplified for example
+    // See examples/ for the full implementation; here omitted for brevity.
+    return NULL;
 }
 
 int main(void)
@@ -84,14 +81,14 @@ int main(void)
     dsdl_new(&dsdl, my_realloc, my_read_file, my_list_dir);
     
     // Register namespace directories
-    if (!dsdl_add_namespace(&dsdl, WKV_STR("/path/to/public_regulated_data_types/uavcan"))) {
+    if (!dsdl_add_namespace(&dsdl, wkv_key("/path/to/public_regulated_data_types/uavcan"))) {
         fprintf(stderr, "Failed to add namespace: error %d\n", dsdl.error);
         dsdl_destroy(&dsdl);
         return 1;
     }
     
     // Load a type definition
-    const dsdl_type_composite_t* type = dsdl_read(&dsdl, WKV_STR("uavcan.node.Heartbeat.1.0"));
+    const dsdl_type_composite_t* type = dsdl_read(&dsdl, wkv_key("uavcan.node.Heartbeat.1.0"));
     if (!type) {
         fprintf(stderr, "Failed to read type: error %d\n", dsdl.error);
         dsdl_destroy(&dsdl);
@@ -148,7 +145,7 @@ void serialize_heartbeat(const dsdl_type_composite_t* heartbeat_type)
 
 // Deserialize a Heartbeat message
 void deserialize_heartbeat(const dsdl_type_composite_t* heartbeat_type, 
-                          const uint8_t* buffer, size_t buffer_size)
+                           const uint8_t* buffer, size_t buffer_size)
 {
     // Prepare storage for deserialized data
     uint_least32_t uptime;
