@@ -1014,6 +1014,223 @@ void test_parser_unknown_directive(void)
 // Coverage Phase 5: Comprehensive error path tests
 // ============================================================================
 
+// ============================================================================
+// Coverage Phase 6: Precise OOM tests for dsdl_read (lines 8000-9000)
+// ============================================================================
+
+// Test OOM during print resolution in request section (lines 8011-8016)
+void test_oom_print_resolution_request(void)
+{
+    // Use HugeStruct (3,173 allocations) to target specific failure points
+    // Target: print resolution failure during request processing
+    for (int counter = 1500; counter <= 2500; counter += 50) {
+        setup_dsdl_with_oom(counter);
+        if (!add_test_roots()) {
+            teardown_dsdl();
+            continue;
+        }
+
+        const dsdl_type_composite_t* result = dsdl_read(&g_dsdl, wkv_key("validation.HugeStruct.0.1"));
+
+        if (result == NULL && g_dsdl.error == dsdl_error_out_of_memory) {
+            teardown_dsdl();
+            return;
+        }
+        teardown_dsdl();
+    }
+}
+
+// Test OOM during union variants allocation (lines 8062-8067)
+void test_oom_union_variants_precise(void)
+{
+    // Target the exact allocation at line 8063 for union variants array
+    for (int counter = 100; counter <= 400; counter += 10) {
+        setup_dsdl_with_oom(counter);
+        if (!add_test_roots()) {
+            teardown_dsdl();
+            continue;
+        }
+
+        const dsdl_type_composite_t* result = dsdl_read(&g_dsdl, wkv_key("validation.LargeUnion.0.1"));
+
+        if (result == NULL && g_dsdl.error == dsdl_error_out_of_memory) {
+            teardown_dsdl();
+            return;
+        }
+        teardown_dsdl();
+    }
+}
+
+// Test OOM during extent expression evaluation (lines 8135-8152)
+void test_oom_extent_expression_eval(void)
+{
+    // Target extent expression evaluation and validation
+    for (int counter = 50; counter <= 300; counter += 10) {
+        setup_dsdl_with_oom(counter);
+        if (!add_test_roots()) {
+            teardown_dsdl();
+            continue;
+        }
+
+        const dsdl_type_composite_t* result = dsdl_read(&g_dsdl, wkv_key("validation.Delimited.0.1"));
+
+        if (result == NULL && g_dsdl.error == dsdl_error_out_of_memory) {
+            teardown_dsdl();
+            return;
+        }
+        teardown_dsdl();
+    }
+}
+
+// Test OOM during service response constant evaluation (lines 8185-8196)
+void test_oom_service_response_const_eval(void)
+{
+    // Target constant evaluation in service response section
+    for (int counter = 100; counter <= 400; counter += 10) {
+        setup_dsdl_with_oom(counter);
+        if (!add_test_roots()) {
+            teardown_dsdl();
+            continue;
+        }
+
+        const dsdl_type_composite_t* result = dsdl_read(&g_dsdl, wkv_key("validation.Service.0.1"));
+
+        if (result == NULL && g_dsdl.error == dsdl_error_out_of_memory) {
+            teardown_dsdl();
+            return;
+        }
+        teardown_dsdl();
+    }
+}
+
+// Test OOM during service response print resolution (lines 8218-8228)
+void test_oom_service_response_print(void)
+{
+    // Target print resolution in service response section
+    for (int counter = 100; counter <= 400; counter += 10) {
+        setup_dsdl_with_oom(counter);
+        if (!add_test_roots()) {
+            teardown_dsdl();
+            continue;
+        }
+
+        const dsdl_type_composite_t* result = dsdl_read(&g_dsdl, wkv_key("validation.ServiceResponsePrint.0.1"));
+
+        if (result == NULL && g_dsdl.error == dsdl_error_out_of_memory) {
+            teardown_dsdl();
+            return;
+        }
+        teardown_dsdl();
+    }
+}
+
+// Test OOM during service response type descriptor creation (lines 8242-8252)
+void test_oom_service_response_type_descriptor(void)
+{
+    // Target type descriptor creation in service response
+    for (int counter = 100; counter <= 400; counter += 10) {
+        setup_dsdl_with_oom(counter);
+        if (!add_test_roots()) {
+            teardown_dsdl();
+            continue;
+        }
+
+        const dsdl_type_composite_t* result = dsdl_read(&g_dsdl, wkv_key("validation.ServiceWithResponseFeatures.0.1"));
+
+        if (result == NULL && g_dsdl.error == dsdl_error_out_of_memory) {
+            teardown_dsdl();
+            return;
+        }
+        teardown_dsdl();
+    }
+}
+
+// Test OOM during service response union variants allocation (lines 8270-8277)
+void test_oom_service_response_union_variants(void)
+{
+    // Target union variants allocation in service response section
+    for (int counter = 100; counter <= 400; counter += 10) {
+        setup_dsdl_with_oom(counter);
+        if (!add_test_roots()) {
+            teardown_dsdl();
+            continue;
+        }
+
+        const dsdl_type_composite_t* result = dsdl_read(&g_dsdl, wkv_key("validation.ServiceBothUnion.0.1"));
+
+        if (result == NULL && g_dsdl.error == dsdl_error_out_of_memory) {
+            teardown_dsdl();
+            return;
+        }
+        teardown_dsdl();
+    }
+}
+
+// Test OOM with HugeStruct at various allocation points
+void test_oom_huge_struct_early(void)
+{
+    // Target early allocations in HugeStruct parsing
+    for (int counter = 500; counter <= 1000; counter += 50) {
+        setup_dsdl_with_oom(counter);
+        if (!add_test_roots()) {
+            teardown_dsdl();
+            continue;
+        }
+
+        const dsdl_type_composite_t* result = dsdl_read(&g_dsdl, wkv_key("validation.HugeStruct.0.1"));
+
+        if (result == NULL && g_dsdl.error == dsdl_error_out_of_memory) {
+            teardown_dsdl();
+            return;
+        }
+        teardown_dsdl();
+    }
+}
+
+void test_oom_huge_struct_mid(void)
+{
+    // Target middle allocations in HugeStruct parsing
+    for (int counter = 1500; counter <= 2000; counter += 50) {
+        setup_dsdl_with_oom(counter);
+        if (!add_test_roots()) {
+            teardown_dsdl();
+            continue;
+        }
+
+        const dsdl_type_composite_t* result = dsdl_read(&g_dsdl, wkv_key("validation.HugeStruct.0.1"));
+
+        if (result == NULL && g_dsdl.error == dsdl_error_out_of_memory) {
+            teardown_dsdl();
+            return;
+        }
+        teardown_dsdl();
+    }
+}
+
+void test_oom_huge_struct_late(void)
+{
+    // Target late allocations in HugeStruct parsing (near end)
+    for (int counter = 2800; counter <= 3100; counter += 50) {
+        setup_dsdl_with_oom(counter);
+        if (!add_test_roots()) {
+            teardown_dsdl();
+            continue;
+        }
+
+        const dsdl_type_composite_t* result = dsdl_read(&g_dsdl, wkv_key("validation.HugeStruct.0.1"));
+
+        if (result == NULL && g_dsdl.error == dsdl_error_out_of_memory) {
+            teardown_dsdl();
+            return;
+        }
+        teardown_dsdl();
+    }
+}
+
+// ============================================================================
+// Coverage Phase 5: Comprehensive error path tests (continued)
+// ============================================================================
+
 void test_error_fixed_port_non_int_expr(void)
 {
     setup_dsdl();
@@ -1170,5 +1387,15 @@ int main(void)
     RUN_TEST(test_parser_deprecated_after_field);
     RUN_TEST(test_parser_assert_no_value);
     RUN_TEST(test_parser_unknown_directive);
+    RUN_TEST(test_oom_print_resolution_request);
+    RUN_TEST(test_oom_union_variants_precise);
+    RUN_TEST(test_oom_extent_expression_eval);
+    RUN_TEST(test_oom_service_response_const_eval);
+    RUN_TEST(test_oom_service_response_print);
+    RUN_TEST(test_oom_service_response_type_descriptor);
+    RUN_TEST(test_oom_service_response_union_variants);
+    RUN_TEST(test_oom_huge_struct_early);
+    RUN_TEST(test_oom_huge_struct_mid);
+    RUN_TEST(test_oom_huge_struct_late);
     return UNITY_END();
 }
