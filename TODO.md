@@ -4,6 +4,10 @@
 
 Target: 99+% line coverage for dsdl.c only
 
+## Add nested composite serialization and deserialization tests
+
+Add tests that verify serialization and deserialization of nested composites, including struct nesting struct, struct nesting union, union nestring struct, and union nesting union.
+
 ## Configure CI to fail if test coverage is too low
 
 CI must require 99% coverage.
