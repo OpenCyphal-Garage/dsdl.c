@@ -1,0 +1,8 @@
+# Service response with both @sealed and @extent
+uint8 request_field
+@sealed
+---
+uint8 response_field
+@sealed
+@extent 128
+# ERROR: Cannot have both @sealed and @extent

@@ -1,0 +1,6 @@
+# Service response without @sealed or @extent
+uint8 request_field
+@sealed
+---
+uint8 response_field
+# ERROR: Response must have @sealed or @extent

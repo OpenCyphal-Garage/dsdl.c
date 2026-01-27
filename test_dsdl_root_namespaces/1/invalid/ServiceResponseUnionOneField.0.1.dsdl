@@ -1,0 +1,8 @@
+# Service response union with only one field
+uint8 request_field
+@sealed
+---
+@union
+uint8 only_field
+@sealed
+# ERROR: Union must have at least 2 fields
