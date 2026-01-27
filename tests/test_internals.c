@@ -1193,6 +1193,50 @@ static void test_bigint_shift_large_value(void)
 }
 
 // ============================================================================
+// UTF-8 Encoding Tests (lines 2963-2971)
+// ============================================================================
+
+static void test_utf8_encode_4byte_sequences(void)
+{
+    char   out[4];
+    size_t out_len = 0;
+
+    TEST_ASSERT_TRUE(dsdl_utf8_encode(0x10000U, out, &out_len));
+    TEST_ASSERT_EQUAL_INT(4, out_len);
+    TEST_ASSERT_EQUAL_INT(0xF0, (unsigned char)out[0]);
+    TEST_ASSERT_EQUAL_INT(0x90, (unsigned char)out[1]);
+    TEST_ASSERT_EQUAL_INT(0x80, (unsigned char)out[2]);
+    TEST_ASSERT_EQUAL_INT(0x80, (unsigned char)out[3]);
+
+    out_len = 0;
+    TEST_ASSERT_TRUE(dsdl_utf8_encode(0x10FFFFU, out, &out_len));
+    TEST_ASSERT_EQUAL_INT(4, out_len);
+    TEST_ASSERT_EQUAL_INT(0xF4, (unsigned char)out[0]);
+    TEST_ASSERT_EQUAL_INT(0x8F, (unsigned char)out[1]);
+    TEST_ASSERT_EQUAL_INT(0xBF, (unsigned char)out[2]);
+    TEST_ASSERT_EQUAL_INT(0xBF, (unsigned char)out[3]);
+
+    out_len = 0;
+    TEST_ASSERT_TRUE(dsdl_utf8_encode(0x1F600U, out, &out_len));
+    TEST_ASSERT_EQUAL_INT(4, out_len);
+    TEST_ASSERT_EQUAL_INT(0xF0, (unsigned char)out[0]);
+    TEST_ASSERT_EQUAL_INT(0x9F, (unsigned char)out[1]);
+    TEST_ASSERT_EQUAL_INT(0x98, (unsigned char)out[2]);
+    TEST_ASSERT_EQUAL_INT(0x80, (unsigned char)out[3]);
+
+    out_len = 0;
+    TEST_ASSERT_TRUE(dsdl_utf8_encode(0x20000U, out, &out_len));
+    TEST_ASSERT_EQUAL_INT(4, out_len);
+    TEST_ASSERT_EQUAL_INT(0xF0, (unsigned char)out[0]);
+    TEST_ASSERT_EQUAL_INT(0xA0, (unsigned char)out[1]);
+    TEST_ASSERT_EQUAL_INT(0x80, (unsigned char)out[2]);
+    TEST_ASSERT_EQUAL_INT(0x80, (unsigned char)out[3]);
+
+    out_len = 0;
+    TEST_ASSERT_FALSE(dsdl_utf8_encode(0x110000U, out, &out_len));
+}
+
+// ============================================================================
 // Main
 // ============================================================================
 
@@ -1302,6 +1346,9 @@ int main(void)
     RUN_TEST(test_rational_add_large_fractions);
     RUN_TEST(test_rational_sub_negative_result);
     RUN_TEST(test_bigint_shift_large_value);
+
+    // UTF-8 encoding tests
+    RUN_TEST(test_utf8_encode_4byte_sequences);
 
     return UNITY_END();
 }

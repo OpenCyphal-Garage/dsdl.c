@@ -1,0 +1,16 @@
+# Test BLS bitmap path (lines 1629-1633)
+# Triggers dsdl_bls_modulo with use_bitmap=true for set union operations
+# The bitmap path is used when divisor <= 512 (8 * 64 bits)
+
+uint8 field1
+
+@assert uint8._bit_length_ == {8}
+@assert uint16._bit_length_ == {16}
+@assert uint32._bit_length_ == {32}
+@assert uint64._bit_length_ == {64}
+
+@assert (uint8._bit_length_ | uint16._bit_length_) == {8, 16}
+@assert (uint8._bit_length_ | uint32._bit_length_) == {8, 32}
+@assert (uint16._bit_length_ | uint32._bit_length_) == {16, 32}
+
+@sealed

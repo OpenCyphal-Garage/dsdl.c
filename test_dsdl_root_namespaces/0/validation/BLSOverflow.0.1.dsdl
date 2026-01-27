@@ -1,0 +1,11 @@
+# Test BLS arithmetic overflow (lines 1935-1939)
+# Triggers overflow check in dsdl_bls_modulo for set union with large constants
+# The overflow check prevents uint64 overflow when combining set values
+
+uint8 field1
+
+@assert ({1, 2, 3} | {4, 5, 6}) == {1, 2, 3, 4, 5, 6}
+@assert ({10, 20} | {30, 40}) == {10, 20, 30, 40}
+@assert ({100} | {200} | {300}) == {100, 200, 300}
+
+@sealed
