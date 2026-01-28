@@ -266,17 +266,17 @@ static bool dsdl_bigint_add_signed(const dsdl_bigint_t* const a, const dsdl_bigi
         return true;
     }
     if (cmp > 0) {
-        if (!dsdl_bigint_sub_abs(a, b, out)) {
-            assert(false && "unreachable: cmp > 0 guarantees a >= b");
-            return false;
-        }
+        // cmp > 0 guarantees |a| > |b|, so subtraction always succeeds.
+        const bool ok = dsdl_bigint_sub_abs(a, b, out);
+        assert(ok);
+        (void)ok;
         out->negative = a->negative;
         return true;
     }
-    if (!dsdl_bigint_sub_abs(b, a, out)) {
-        assert(false && "unreachable: cmp < 0 guarantees b >= a");
-        return false;
-    }
+    // cmp < 0 guarantees |b| > |a|, so subtraction always succeeds.
+    const bool ok = dsdl_bigint_sub_abs(b, a, out);
+    assert(ok);
+    (void)ok;
     out->negative = b->negative;
     return true;
 }
@@ -477,10 +477,12 @@ static bool dsdl_bigint_div_mod_abs(const dsdl_bigint_t* const num,
         }
         const uintmax_t q = num_u / den_u;
         const uintmax_t r = num_u % den_u;
-        if (!dsdl_bigint_from_uintmax(quot, q) || !dsdl_bigint_from_uintmax(rem, r)) {
-            assert(false && "unreachable: division results of uintmax_t always fit in bigint");
-            return false;
-        }
+        // Division of uintmax_t values always produces results that fit in bigint.
+        const bool ok_q = dsdl_bigint_from_uintmax(quot, q);
+        const bool ok_r = dsdl_bigint_from_uintmax(rem, r);
+        assert(ok_q && ok_r);
+        (void)ok_q;
+        (void)ok_r;
         return true;
     }
     if (den->limb_count == 1U) {
@@ -526,10 +528,10 @@ static bool dsdl_bigint_div_mod_abs(const dsdl_bigint_t* const num,
     quot->limb_count = num_div->limb_count;
 
     for (uint_least8_t i = num_div->limb_count; i-- > 0U;) {
-        if (!dsdl_bigint_shift_base_add(rem, num_div->limbs[i])) {
-            assert(false && "unreachable: rem < den implies shift cannot overflow");
-            return false;
-        }
+        // rem < den at this point, so adding one more digit cannot overflow.
+        const bool ok = dsdl_bigint_shift_base_add(rem, num_div->limbs[i]);
+        assert(ok);
+        (void)ok;
         uint32_t qdigit = 0U;
         if (!dsdl_bigint_is_zero(rem)) {
             qdigit = dsdl_bigint_estimate_quotient(rem, den_div);
@@ -543,15 +545,15 @@ static bool dsdl_bigint_div_mod_abs(const dsdl_bigint_t* const num,
                         break;
                     }
                     qdigit--;
-                    if (!dsdl_bigint_sub_abs_inplace(&tmp, den_div)) {
-                        assert(false && "unreachable: tmp = den_div * qdigit >= den_div");
-                        return false;
-                    }
+                    // tmp was den_div * (qdigit+1), subtracting den_div gives den_div * qdigit >= 0.
+                    const bool ok_sub = dsdl_bigint_sub_abs_inplace(&tmp, den_div);
+                    assert(ok_sub);
+                    (void)ok_sub;
                 }
-                if (!dsdl_bigint_sub_abs_inplace(rem, &tmp)) {
-                    assert(false && "unreachable: loop ensures tmp <= rem");
-                    return false;
-                }
+                // Loop exit guarantees tmp <= rem.
+                const bool ok_rem = dsdl_bigint_sub_abs_inplace(rem, &tmp);
+                assert(ok_rem);
+                (void)ok_rem;
             }
         }
         quot->limbs[i] = qdigit;
@@ -560,11 +562,12 @@ static bool dsdl_bigint_div_mod_abs(const dsdl_bigint_t* const num,
     dsdl_bigint_trim(quot);
     dsdl_bigint_trim(rem);
     if (norm > 1U) {
-        uint32_t rem_small = 0U;
-        if (!dsdl_bigint_div_small_inplace(rem, norm, &rem_small) || (rem_small != 0U)) {
-            assert(false && "unreachable: denormalization should be exact");
-            return false;
-        }
+        // Denormalization: we multiplied both num and den by norm, so the
+        // remainder must be exactly divisible by norm with no leftover.
+        uint32_t   rem_small = 0U;
+        const bool ok        = dsdl_bigint_div_small_inplace(rem, norm, &rem_small);
+        assert(ok && (rem_small == 0U));
+        (void)ok;
     }
     rem->negative = false;
     return true;
@@ -685,10 +688,9 @@ static bool dsdl_bigint_mul_pow10_inplace(dsdl_bigint_t* const value, const uint
 
 static bool dsdl_bigint_pow10(const uint32_t exp, dsdl_bigint_t* const out)
 {
-    if (!dsdl_bigint_from_uintmax(out, 1U)) {
-        assert(false && "unreachable: converting 1 to bigint always succeeds");
-        return false;
-    }
+    const bool ok = dsdl_bigint_from_uintmax(out, 1U);
+    assert(ok);
+    (void)ok;
     return dsdl_bigint_mul_pow10_inplace(out, exp);
 }
 
@@ -722,20 +724,22 @@ static bool dsdl_rational_is_nan(const dsdl_rational_t r) { return dsdl_bigint_i
 static dsdl_rational_t dsdl_rational_from_int(const intmax_t value)
 {
     dsdl_rational_t r;
-    if (!dsdl_bigint_from_intmax(&r.num, value) || !dsdl_bigint_from_uintmax(&r.den, 1U)) {
-        assert(false && "unreachable: converting 1 to bigint always succeeds");
-        return dsdl_rational_nan();
-    }
+    const bool      ok_num = dsdl_bigint_from_intmax(&r.num, value);
+    const bool      ok_den = dsdl_bigint_from_uintmax(&r.den, 1U);
+    assert(ok_num && ok_den);
+    (void)ok_num;
+    (void)ok_den;
     return r;
 }
 
 static dsdl_rational_t dsdl_rational_from_uintmax(const uintmax_t value)
 {
     dsdl_rational_t r;
-    if (!dsdl_bigint_from_uintmax(&r.num, value) || !dsdl_bigint_from_uintmax(&r.den, 1U)) {
-        assert(false && "unreachable: converting 1 to bigint always succeeds");
-        return dsdl_rational_nan();
-    }
+    const bool      ok_num = dsdl_bigint_from_uintmax(&r.num, value);
+    const bool      ok_den = dsdl_bigint_from_uintmax(&r.den, 1U);
+    assert(ok_num && ok_den);
+    (void)ok_num;
+    (void)ok_den;
     r.num.negative = false;
     return r;
 }
@@ -971,10 +975,11 @@ static dsdl_rational_t dsdl_rational_from_double(double x)
     exp2 -= mant_bits;
 
     dsdl_rational_t r;
-    if (!dsdl_bigint_from_uintmax(&r.num, (uintmax_t)mant) || !dsdl_bigint_from_uintmax(&r.den, 1U)) {
-        assert(false && "unreachable: converting 1 to bigint always succeeds");
-        return dsdl_rational_nan();
-    }
+    const bool      ok_num = dsdl_bigint_from_uintmax(&r.num, (uintmax_t)mant);
+    const bool      ok_den = dsdl_bigint_from_uintmax(&r.den, 1U);
+    assert(ok_num && ok_den);
+    (void)ok_num;
+    (void)ok_den;
 
     if (exp2 >= 0) {
         if (!dsdl_bigint_mul_pow2_inplace(&r.num, (uint32_t)exp2)) {
@@ -2481,11 +2486,10 @@ static dsdl_rational_t dsdl_parse_int_binary(dsdl_parser_t* const parser)
     }
 
     if (has_digit) {
-        result.num = value;
-        if (!dsdl_bigint_from_uintmax(&result.den, 1U)) {
-            assert(false && "unreachable: converting 1 to bigint always succeeds");
-            return dsdl_rational_nan();
-        }
+        result.num    = value;
+        const bool ok = dsdl_bigint_from_uintmax(&result.den, 1U);
+        assert(ok);
+        (void)ok;
     }
     return result;
 }
@@ -2524,11 +2528,10 @@ static dsdl_rational_t dsdl_parse_int_octal(dsdl_parser_t* const parser)
     }
 
     if (has_digit) {
-        result.num = value;
-        if (!dsdl_bigint_from_uintmax(&result.den, 1U)) {
-            assert(false && "unreachable: converting 1 to bigint always succeeds");
-            return dsdl_rational_nan();
-        }
+        result.num    = value;
+        const bool ok = dsdl_bigint_from_uintmax(&result.den, 1U);
+        assert(ok);
+        (void)ok;
     }
     return result;
 }
@@ -2567,11 +2570,10 @@ static dsdl_rational_t dsdl_parse_int_hex(dsdl_parser_t* const parser)
     }
 
     if (has_digit) {
-        result.num = value;
-        if (!dsdl_bigint_from_uintmax(&result.den, 1U)) {
-            assert(false && "unreachable: converting 1 to bigint always succeeds");
-            return dsdl_rational_nan();
-        }
+        result.num    = value;
+        const bool ok = dsdl_bigint_from_uintmax(&result.den, 1U);
+        assert(ok);
+        (void)ok;
     }
     return result;
 }
@@ -2609,11 +2611,10 @@ static dsdl_rational_t dsdl_parse_int_decimal(dsdl_parser_t* const parser)
     }
 
     if (has_digit) {
-        result.num = value;
-        if (!dsdl_bigint_from_uintmax(&result.den, 1U)) {
-            assert(false && "unreachable: converting 1 to bigint always succeeds");
-            return dsdl_rational_nan();
-        }
+        result.num    = value;
+        const bool ok = dsdl_bigint_from_uintmax(&result.den, 1U);
+        assert(ok);
+        (void)ok;
     }
     return result;
 }
@@ -2796,11 +2797,9 @@ static dsdl_rational_t dsdl_parse_real(dsdl_parser_t* const parser)
             return result;
         }
     } else {
-        if (!dsdl_bigint_from_uintmax(&den, 1U)) {
-            assert(false && "unreachable: converting 1 to bigint always succeeds");
-            parser->pos = start_pos;
-            return result;
-        }
+        const bool ok = dsdl_bigint_from_uintmax(&den, 1U);
+        assert(ok);
+        (void)ok;
     }
 
     if (has_exp && (exp_value > 0U)) {

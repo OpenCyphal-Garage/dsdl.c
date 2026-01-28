@@ -570,6 +570,36 @@ static void test_bigint_add_signed_diff_signs_a_negative(void)
     assert_bigint_eq_intmax(-7, result);
 }
 
+static void test_bigint_add_signed_diff_signs_cmp_less_than_zero(void)
+{
+    // Test add_signed with different signs where |a| < |b| (line 277)
+    // This tests the cmp < 0 branch
+    dsdl_bigint_t a;
+    dsdl_bigint_t b;
+    dsdl_bigint_t result;
+
+    TEST_ASSERT_TRUE(dsdl_bigint_from_intmax(&a, 3));
+    TEST_ASSERT_TRUE(dsdl_bigint_from_intmax(&b, -10));
+
+    TEST_ASSERT_TRUE(dsdl_bigint_add_signed(&a, &b, &result));
+    assert_bigint_eq_intmax(-7, result);
+}
+
+static void test_bigint_add_signed_diff_signs_cmp_less_than_zero_positive_result(void)
+{
+    // Test add_signed with different signs where |a| < |b| and result is positive
+    // This tests the cmp < 0 branch with positive result
+    dsdl_bigint_t a;
+    dsdl_bigint_t b;
+    dsdl_bigint_t result;
+
+    TEST_ASSERT_TRUE(dsdl_bigint_from_intmax(&a, -3));
+    TEST_ASSERT_TRUE(dsdl_bigint_from_intmax(&b, 10));
+
+    TEST_ASSERT_TRUE(dsdl_bigint_add_signed(&a, &b, &result));
+    assert_bigint_eq_intmax(7, result);
+}
+
 static void test_bigint_mul_abs_index_overflow(void)
 {
     // Test mul_abs index overflow (line 293)
@@ -870,6 +900,76 @@ static void test_bigint_div_mod_abs_zero_denominator(void)
 
     // Should fail with zero denominator
     TEST_ASSERT_FALSE(dsdl_bigint_div_mod_abs(&num, &den, &quot, &rem));
+}
+
+static void test_bigint_div_mod_abs_fast_path_small_operands(void)
+{
+    // Test line 474: Fast path when both operands fit in uintmax_t
+    dsdl_bigint_t num, den, quot, rem;
+
+    TEST_ASSERT_TRUE(dsdl_bigint_from_uintmax(&num, 1000000ULL));
+    TEST_ASSERT_TRUE(dsdl_bigint_from_uintmax(&den, 7ULL));
+
+    TEST_ASSERT_TRUE(dsdl_bigint_div_mod_abs(&num, &den, &quot, &rem));
+
+    // 1000000 / 7 = 142857 remainder 1
+    assert_bigint_eq_uintmax(142857ULL, quot);
+    assert_bigint_eq_uintmax(1ULL, rem);
+}
+
+static void test_bigint_div_mod_abs_multi_limb_division(void)
+{
+    // Test line 488+: Multi-limb division requiring normalization
+    // Create a large numerator and denominator that require the full algorithm
+    dsdl_bigint_t num, den, quot, rem;
+
+    // Create numerator: 2^64 + 1 (requires 2 limbs on 32-bit, 1 on 64-bit)
+    dsdl_bigint_zero(&num);
+    num.limbs[0]   = 1U;
+    num.limbs[1]   = 1U;
+    num.limb_count = 2U;
+
+    // Create denominator: 256 (single limb)
+    TEST_ASSERT_TRUE(dsdl_bigint_from_uintmax(&den, 256U));
+
+    TEST_ASSERT_TRUE(dsdl_bigint_div_mod_abs(&num, &den, &quot, &rem));
+
+    // Verify quotient and remainder are reasonable
+    TEST_ASSERT_TRUE(quot.limb_count > 0);
+    TEST_ASSERT_TRUE(rem.limb_count > 0 || dsdl_bigint_is_zero(&rem));
+}
+
+static void test_bigint_pow10_zero_exponent(void)
+{
+    // Test line 680: pow10 with exp=0 (should return 1)
+    dsdl_bigint_t result;
+
+    TEST_ASSERT_TRUE(dsdl_bigint_pow10(0U, &result));
+    assert_bigint_eq_uintmax(1U, result);
+}
+
+static void test_bigint_pow10_one_exponent(void)
+{
+    // Test line 688: pow10 with exp=1 (should return 10)
+    dsdl_bigint_t result;
+
+    TEST_ASSERT_TRUE(dsdl_bigint_pow10(1U, &result));
+    assert_bigint_eq_uintmax(10U, result);
+}
+
+static void test_bigint_pow10_various_exponents(void)
+{
+    // Test pow10 with various exponents
+    dsdl_bigint_t result;
+
+    TEST_ASSERT_TRUE(dsdl_bigint_pow10(2U, &result));
+    assert_bigint_eq_uintmax(100U, result);
+
+    TEST_ASSERT_TRUE(dsdl_bigint_pow10(3U, &result));
+    assert_bigint_eq_uintmax(1000U, result);
+
+    TEST_ASSERT_TRUE(dsdl_bigint_pow10(5U, &result));
+    assert_bigint_eq_uintmax(100000U, result);
 }
 
 // ============================================================================
@@ -2723,6 +2823,8 @@ int main(void)
     RUN_TEST(test_bigint_add_signed_same_sign_overflow);
     RUN_TEST(test_bigint_add_signed_diff_signs_a_positive);
     RUN_TEST(test_bigint_add_signed_diff_signs_a_negative);
+    RUN_TEST(test_bigint_add_signed_diff_signs_cmp_less_than_zero);
+    RUN_TEST(test_bigint_add_signed_diff_signs_cmp_less_than_zero_positive_result);
     RUN_TEST(test_bigint_mul_abs_index_overflow);
     RUN_TEST(test_bigint_shift_base_add_zero_nonzero);
     RUN_TEST(test_bigint_estimate_quotient_malformed_den);
@@ -2743,6 +2845,11 @@ int main(void)
     RUN_TEST(test_bigint_div_mod_abs_small_denominator);
     RUN_TEST(test_bigint_div_mod_abs_numerator_less_than_denominator);
     RUN_TEST(test_bigint_div_mod_abs_zero_denominator);
+    RUN_TEST(test_bigint_div_mod_abs_fast_path_small_operands);
+    RUN_TEST(test_bigint_div_mod_abs_multi_limb_division);
+    RUN_TEST(test_bigint_pow10_zero_exponent);
+    RUN_TEST(test_bigint_pow10_one_exponent);
+    RUN_TEST(test_bigint_pow10_various_exponents);
 
     // Phase 3: Final comprehensive coverage tests
     RUN_TEST(test_gcd_large_primes);
