@@ -28,6 +28,7 @@
 *.pdb
 *.mod*
 *.cmd
+*.gcov
 .tmp*/
 __pycache__/
 modules.order
