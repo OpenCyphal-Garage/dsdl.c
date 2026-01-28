@@ -1,8 +1,23 @@
 # Remaining tasks
 
-## Refactor to remove unreachable branches and ensure full test coverage in `dsdl.c`
+## Refactor to remove unreachable branches and ensure 100% test coverage in `dsdl.c`
 
-Review the code in `dsdl.c` and refactor it such that there are no unreachable or redundant branches. If any such unreachable code is found, replace it with defensive assertion statements checking for the impossible conditions. Do not alter the business logic unless it is proven to be incorrect.
+Review the code in `dsdl.c` and refactor it such that there are no unreachable or redundant branches. If any such unreachable code is found, refactor it such that the unreachable branches are eliminated, and the remaining valid branch contains an assertion check. For example, given code like:
+
+```
+if (!dsdl_bigint_sub_abs(a, b, out)) {
+    assert(false);  // Unreachable, cannot be covered by tests, WRONG!
+    return false;
+}
+```
+
+Refactor it into:
+
+```
+const bool ok = dsdl_bigint_sub_abs(a, b, out);
+assert(ok);  // Reachable, valid!
+(void) ok;   // Avoid unused variable warnings in debug builds.
+```
 
 Add new tests to ensure full test coverage. Prefer tests that use the public API only. If there is any code that cannot be tested through the public API, resort to intrusive tests that `#include "dsdl.c"` directly.
 
