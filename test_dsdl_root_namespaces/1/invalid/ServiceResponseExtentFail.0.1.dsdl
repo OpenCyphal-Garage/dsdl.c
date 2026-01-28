@@ -1,0 +1,6 @@
+# Service with extent expression that evaluates to non-integer in response
+uint8 request_field
+@sealed
+---
+uint8 response_field
+@extent 3.14

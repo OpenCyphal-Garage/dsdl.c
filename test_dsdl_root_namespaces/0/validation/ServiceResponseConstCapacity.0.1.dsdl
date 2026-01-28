@@ -1,0 +1,36 @@
+# Service response constant capacity growth testing
+# Tests response constant capacity growth
+
+# Request part (minimal)
+uint8 request_field
+
+@sealed
+
+---
+
+# Response part with 17+ constants to trigger response constant capacity growth
+uint8 RC01 = 1
+uint8 RC02 = 2
+uint8 RC03 = 3
+uint8 RC04 = 4
+uint8 RC05 = 5
+uint8 RC06 = 6
+uint8 RC07 = 7
+uint8 RC08 = 8
+uint8 RC09 = 9
+uint8 RC10 = 10
+uint8 RC11 = 11
+uint8 RC12 = 12
+uint8 RC13 = 13
+uint8 RC14 = 14
+uint8 RC15 = 15
+uint8 RC16 = 16
+# This 17th constant triggers response constant capacity growth
+uint8 RC17 = 17
+uint8 RC18 = 18
+uint8 RC19 = 19
+uint8 RC20 = 20
+
+uint8 dummy
+
+@sealed

@@ -1,0 +1,4 @@
+# @extent with non-integer value (fails the is_int check)
+uint8 field
+@extent 3/2
+@sealed

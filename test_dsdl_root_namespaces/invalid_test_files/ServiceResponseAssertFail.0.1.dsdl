@@ -1,0 +1,7 @@
+# Service with failing assertion in response
+uint8 request
+@sealed
+---
+uint8[<=8] data
+@assert _offset_.max / 8 <= 100000000000000  
+@sealed

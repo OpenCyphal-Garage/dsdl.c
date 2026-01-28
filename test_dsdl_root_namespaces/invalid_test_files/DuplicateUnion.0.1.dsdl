@@ -1,0 +1,6 @@
+# Test file for duplicate @union directive error
+@union
+@union
+uint8 field1
+uint8 field2
+@sealed

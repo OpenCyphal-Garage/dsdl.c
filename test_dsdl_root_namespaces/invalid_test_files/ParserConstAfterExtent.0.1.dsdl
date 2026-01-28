@@ -1,0 +1,5 @@
+# Test constant after @extent error (line 6245)
+uint8 field1
+@extent 64
+uint8 MY_CONST = 42
+@sealed

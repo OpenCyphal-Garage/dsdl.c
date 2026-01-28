@@ -1,0 +1,4 @@
+# Fixed port ID with non-integer value
+@port 123.5
+uint8 field
+@sealed

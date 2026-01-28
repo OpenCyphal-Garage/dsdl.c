@@ -1,0 +1,4 @@
+# @extent with undefined constant (passes parsing, fails evaluation)
+uint8 field
+@extent UNDEFINED_CONSTANT
+@sealed

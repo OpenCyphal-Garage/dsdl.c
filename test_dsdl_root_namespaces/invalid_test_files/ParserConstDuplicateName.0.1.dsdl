@@ -1,0 +1,4 @@
+# Test duplicate constant name error (line 6257)
+uint8 MY_CONST = 42
+uint16 MY_CONST = 100
+@sealed

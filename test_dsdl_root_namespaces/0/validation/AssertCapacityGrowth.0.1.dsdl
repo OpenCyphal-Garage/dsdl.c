@@ -1,0 +1,29 @@
+# Assert capacity growth testing
+# Initial capacity is 16, so 17+ assertions trigger capacity growth
+
+uint8 field1
+@assert _offset_ == {8}
+@assert _offset_ % 8 == {0}
+@assert 1 + 1 == 2
+@assert 2 * 2 == 4
+@assert 3 + 3 == 6
+@assert 4 * 4 == 16
+@assert 5 ** 2 == 25
+@assert 10 / 2 == 5
+@assert true
+@assert !false
+@assert true && true
+@assert true || false
+@assert 1 < 2
+@assert 2 > 1
+@assert 1 <= 1
+@assert 1 >= 1
+
+uint8 field2
+# This 17th assert triggers capacity growth
+@assert 17 % 3 == 2
+@assert 100 - 50 == 50
+@assert 8 / 4 == 2
+@assert 2 ** 3 == 8
+
+@sealed

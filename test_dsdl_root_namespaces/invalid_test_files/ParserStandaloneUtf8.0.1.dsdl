@@ -1,0 +1,3 @@
+# Test standalone utf8 type error (line 6212)
+utf8 field1
+@sealed

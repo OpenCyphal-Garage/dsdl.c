@@ -1,0 +1,3 @@
+# Test standalone byte type error (line 6212)
+byte field1
+@sealed

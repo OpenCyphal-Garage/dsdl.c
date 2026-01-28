@@ -1,0 +1,4 @@
+# Test duplicate field name error (line 6208)
+uint8 field1
+uint16 field1
+@sealed

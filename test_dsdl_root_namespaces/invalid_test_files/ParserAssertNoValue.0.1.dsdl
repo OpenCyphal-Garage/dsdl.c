@@ -1,0 +1,4 @@
+# Test @assert without value error (line 6405)
+uint8 field1
+@assert
+@sealed

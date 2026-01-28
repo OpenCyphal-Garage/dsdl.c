@@ -1632,12 +1632,625 @@ static void test_serialize_empty_array(void)
 }
 
 // ============================================================================
+// Deserialization edge case tests
+// ============================================================================
+
+void test_deserialize_void_fields_in_struct(void)
+{
+    setup_dsdl();
+
+    TEST_ASSERT_TRUE(add_test_roots());
+
+    const dsdl_type_composite_t* all_voids = dsdl_read(&g_dsdl, wkv_key("validation.AllVoids.0.1"));
+    TEST_ASSERT_NOT_NULL(all_voids);
+
+    TEST_ASSERT_EQUAL_size_t(64, all_voids->field_count);
+
+    dsdl_value_struct_t sval = { .values = NULL };
+
+    uint8_t buffer[512] = { 0 };
+    size_t  size        = dsdl_serialize(all_voids, &sval, sizeof(buffer), buffer, NULL);
+    TEST_ASSERT_EQUAL_size_t(260, size);
+
+    dsdl_value_struct_t result_sval = { .values = NULL };
+    size_t              consumed    = dsdl_deserialize(all_voids, &result_sval, size, buffer, NULL);
+    TEST_ASSERT_EQUAL_size_t(260, consumed);
+
+    teardown_dsdl();
+}
+
+void test_deserialize_union_with_void_variant(void)
+{
+    setup_dsdl();
+
+    TEST_ASSERT_TRUE(add_test_roots());
+
+    const dsdl_type_composite_t* union_type = dsdl_read(&g_dsdl, wkv_key("validation.Union.0.1"));
+    TEST_ASSERT_NOT_NULL(union_type);
+    TEST_ASSERT_EQUAL(DSDL_COMPOSITE_UNION, union_type->type);
+
+    uint8_t            value = 0x42;
+    dsdl_value_union_t uval  = { .tag = 0, .value = &value };
+
+    uint8_t buffer[32] = { 0 };
+    size_t  size       = dsdl_serialize(union_type, &uval, sizeof(buffer), buffer, NULL);
+    TEST_ASSERT_TRUE(size != SIZE_MAX);
+
+    uint8_t            result_value = 0;
+    dsdl_value_union_t result_uval  = { .tag = 99, .value = &result_value };
+    size_t             consumed     = dsdl_deserialize(union_type, &result_uval, size, buffer, NULL);
+    TEST_ASSERT_TRUE(consumed != SIZE_MAX);
+    TEST_ASSERT_EQUAL_size_t(0, result_uval.tag);
+    TEST_ASSERT_EQUAL_UINT8(0x42, result_value);
+
+    teardown_dsdl();
+}
+
+void test_deserialize_union_tag_at_boundary(void)
+{
+    static dsdl_type_t  field_types_storage[255];
+    static dsdl_type_t* field_types[255];
+    static wkv_str_t    field_names[255];
+
+    for (size_t i = 0; i < 255; i++) {
+        field_types_storage[i] = DSDL_UINT(8);
+        field_types[i]         = &field_types_storage[i];
+        field_names[i].len     = 1;
+        field_names[i].str     = "a";
+    }
+
+    dsdl_type_composite_t union_type = {
+        .type        = DSDL_COMPOSITE_UNION,
+        .name        = { 13, "LargeUnion255" },
+        .version     = { 1, 0 },
+        .extent      = 8,
+        .sealed      = true,
+        .field_count = 255,
+        .field_names = field_names,
+        .field_types = field_types,
+    };
+
+    {
+        uint8_t            value = 0xAB;
+        dsdl_value_union_t uval  = { .tag = 254, .value = &value };
+
+        uint8_t buffer[16] = { 0 };
+        size_t  size       = dsdl_serialize(&union_type, &uval, sizeof(buffer), buffer, NULL);
+        TEST_ASSERT_TRUE(size != SIZE_MAX);
+
+        uint8_t            result_value = 0;
+        dsdl_value_union_t result_uval  = { .tag = 99, .value = &result_value };
+        size_t             consumed     = dsdl_deserialize(&union_type, &result_uval, size, buffer, NULL);
+        TEST_ASSERT_TRUE(consumed != SIZE_MAX);
+        TEST_ASSERT_EQUAL_size_t(254, result_uval.tag);
+        TEST_ASSERT_EQUAL_UINT8(0xAB, result_value);
+    }
+
+    {
+        uint8_t buffer[16] = { 0xFF, 0xAB };
+
+        uint8_t            result_value = 0;
+        dsdl_value_union_t result_uval  = { .tag = 0, .value = &result_value };
+        size_t             consumed     = dsdl_deserialize(&union_type, &result_uval, sizeof(buffer), buffer, NULL);
+        TEST_ASSERT_EQUAL_size_t(SIZE_MAX, consumed);
+    }
+}
+
+void test_deserialize_delimited_type(void)
+{
+    setup_dsdl();
+
+    TEST_ASSERT_TRUE(add_test_roots());
+
+    const dsdl_type_composite_t* delimited = dsdl_read(&g_dsdl, wkv_key("validation.Delimited.0.1"));
+    TEST_ASSERT_NOT_NULL(delimited);
+    TEST_ASSERT_FALSE(delimited->sealed);
+
+    uint8_t field_storage[256] = { 0 };
+    void*   field_ptrs[32];
+    for (size_t i = 0; i < 32; i++) {
+        field_ptrs[i] = &field_storage[i * 8];
+    }
+    dsdl_value_struct_t sval = { .values = field_ptrs };
+
+    uint8_t buffer[512] = { 0 };
+    size_t  size        = dsdl_serialize(delimited, &sval, sizeof(buffer), buffer, NULL);
+    TEST_ASSERT_TRUE(size != SIZE_MAX);
+    TEST_ASSERT_TRUE(size >= 4);
+
+    uint8_t result_storage[256] = { 0 };
+    void*   result_ptrs[32];
+    for (size_t i = 0; i < 32; i++) {
+        result_ptrs[i] = &result_storage[i * 8];
+    }
+    dsdl_value_struct_t result_sval = { .values = result_ptrs };
+
+    size_t consumed = dsdl_deserialize(delimited, &result_sval, size, buffer, NULL);
+    TEST_ASSERT_EQUAL_size_t(size, consumed);
+
+    teardown_dsdl();
+}
+
+void test_deserialize_variable_array_at_max_capacity(void)
+{
+    setup_dsdl();
+
+    TEST_ASSERT_TRUE(add_test_roots());
+
+    const dsdl_type_composite_t* inner = dsdl_read(&g_dsdl, wkv_key("mymsgs.Inner.1.0"));
+    TEST_ASSERT_NOT_NULL(inner);
+
+    uint32_t                    elements[5] = { 0x11111111, 0x22222222, 0x33333333, 0x44444444, 0x55555555 };
+    dsdl_value_array_variable_t array_val   = { .count = 5, .members = elements };
+
+    void*               field_ptrs[] = { &array_val };
+    dsdl_value_struct_t sval         = { .values = field_ptrs };
+
+    uint8_t buffer[32] = { 0 };
+    size_t  size       = dsdl_serialize(inner, &sval, sizeof(buffer), buffer, NULL);
+    TEST_ASSERT_EQUAL_size_t(21, size);
+
+    uint32_t                    result_elements[5] = { 0 };
+    dsdl_value_array_variable_t result_array       = { .count = 5, .members = result_elements };
+
+    void*               result_ptrs[] = { &result_array };
+    dsdl_value_struct_t result_sval   = { .values = result_ptrs };
+
+    size_t consumed = dsdl_deserialize(inner, &result_sval, size, buffer, NULL);
+    TEST_ASSERT_EQUAL_size_t(21, consumed);
+    TEST_ASSERT_EQUAL_size_t(5, result_array.count);
+    TEST_ASSERT_EQUAL_UINT32(0x11111111, result_elements[0]);
+    TEST_ASSERT_EQUAL_UINT32(0x22222222, result_elements[1]);
+    TEST_ASSERT_EQUAL_UINT32(0x33333333, result_elements[2]);
+    TEST_ASSERT_EQUAL_UINT32(0x44444444, result_elements[3]);
+    TEST_ASSERT_EQUAL_UINT32(0x55555555, result_elements[4]);
+
+    teardown_dsdl();
+}
+
+void test_deserialize_union_tag_out_of_range(void)
+{
+    static dsdl_type_t field_a_type = DSDL_UINT(8);
+    static dsdl_type_t field_b_type = DSDL_UINT(16);
+    static dsdl_type_t field_c_type = DSDL_UINT(32);
+
+    static dsdl_type_t* field_types[3];
+    field_types[0] = &field_a_type;
+    field_types[1] = &field_b_type;
+    field_types[2] = &field_c_type;
+
+    static wkv_str_t field_names[3] = { { 1, "a" }, { 1, "b" }, { 1, "c" } };
+
+    dsdl_type_composite_t union_type = {
+        .type        = DSDL_COMPOSITE_UNION,
+        .name        = { 12, "ThreeUnion" },
+        .version     = { 1, 0 },
+        .extent      = 8,
+        .sealed      = true,
+        .field_count = 3,
+        .field_names = field_names,
+        .field_types = field_types,
+    };
+
+    const uint8_t invalid_tags[] = { 3, 4, 5, 10, 100, 255 };
+    for (size_t i = 0; i < sizeof(invalid_tags) / sizeof(invalid_tags[0]); i++) {
+        uint8_t buffer[16] = { invalid_tags[i], 0x00 };
+
+        uint8_t            result_value = 0;
+        dsdl_value_union_t result_uval  = { .tag = 0, .value = &result_value };
+
+        dsdl_error_t err      = dsdl_error_none;
+        size_t       consumed = dsdl_deserialize(&union_type, &result_uval, sizeof(buffer), buffer, &err);
+
+        TEST_ASSERT_EQUAL_size_t(SIZE_MAX, consumed);
+        TEST_ASSERT_NOT_EQUAL(dsdl_error_none, err);
+    }
+}
+
+// ============================================================================
 // Main
 // ============================================================================
 
 void setUp(void) {}
 void tearDown(void) {}
 
+// ============================================================================
+// Complex serialization tests for coverage improvement
+// ============================================================================
+
+void test_serialize_struct_containing_union(void)
+{
+    // Create a struct that contains a union field
+    // Union: uint8 a, uint16 b
+    static dsdl_type_t union_field_a = DSDL_UINT(8);
+    static dsdl_type_t union_field_b = DSDL_UINT(16);
+
+    static dsdl_type_t* union_field_types[2];
+    union_field_types[0] = &union_field_a;
+    union_field_types[1] = &union_field_b;
+
+    static wkv_str_t union_field_names[2] = { { 1, "a" }, { 1, "b" } };
+
+    static dsdl_type_composite_t union_type = {
+        .type        = DSDL_COMPOSITE_UNION,
+        .name        = { 10, "InnerUnion" },
+        .version     = { 1, 0 },
+        .extent      = 8,
+        .sealed      = true,
+        .field_count = 2,
+        .field_names = union_field_names,
+        .field_types = union_field_types,
+    };
+
+    // Struct: uint32 x, InnerUnion u, bool y
+    static dsdl_type_t struct_field_x = DSDL_UINT(32);
+    static dsdl_type_t struct_field_y = DSDL_BOOL;
+
+    static dsdl_type_t* struct_field_types[3];
+    struct_field_types[0] = &struct_field_x;
+    struct_field_types[1] = (dsdl_type_t*)&union_type;
+    struct_field_types[2] = &struct_field_y;
+
+    static wkv_str_t struct_field_names[3] = { { 1, "x" }, { 1, "u" }, { 1, "y" } };
+
+    dsdl_type_composite_t struct_type = {
+        .type        = DSDL_COMPOSITE_STRUCT,
+        .name        = { 11, "OuterStruct" },
+        .version     = { 1, 0 },
+        .extent      = 16,
+        .sealed      = true,
+        .field_count = 3,
+        .field_names = struct_field_names,
+        .field_types = struct_field_types,
+    };
+
+    // Create values: x=0x12345678, u={tag=1, value=0xABCD}, y=true
+    uint32_t           x_val     = 0x12345678;
+    uint16_t           u_val     = 0xABCD;
+    dsdl_value_union_t union_val = { .tag = 1, .value = &u_val };
+    bool               y_val     = true;
+
+    void*               field_ptrs[] = { &x_val, &union_val, &y_val };
+    dsdl_value_struct_t struct_val   = { .values = field_ptrs };
+
+    // Serialize
+    uint8_t buffer[16] = { 0 };
+    size_t  size       = dsdl_serialize(&struct_type, &struct_val, sizeof(buffer), buffer, NULL);
+
+    // Expected: 32 (x) + 8 (union tag) + 16 (union value) + 1 (y) = 57 bits = 8 bytes
+    TEST_ASSERT_TRUE(size != SIZE_MAX);
+    TEST_ASSERT_EQUAL_size_t(8, size);
+
+    // Deserialize and verify
+    uint32_t           result_x         = 0;
+    uint16_t           result_u_val     = 0;
+    dsdl_value_union_t result_union_val = { .tag = 99, .value = &result_u_val };
+    bool               result_y         = false;
+
+    void*               result_ptrs[]     = { &result_x, &result_union_val, &result_y };
+    dsdl_value_struct_t result_struct_val = { .values = result_ptrs };
+
+    size_t consumed = dsdl_deserialize(&struct_type, &result_struct_val, size, buffer, NULL);
+    TEST_ASSERT_EQUAL_size_t(size, consumed);
+    TEST_ASSERT_EQUAL_UINT32(0x12345678, result_x);
+    TEST_ASSERT_EQUAL_size_t(1, result_union_val.tag);
+    TEST_ASSERT_EQUAL_UINT16(0xABCD, result_u_val);
+    TEST_ASSERT_TRUE(result_y);
+}
+
+void test_serialize_delimited_with_variable_array(void)
+{
+    setup_dsdl();
+
+    TEST_ASSERT_TRUE(add_test_roots());
+
+    // Load validation.Delimited.0.1 which is a delimited type
+    const dsdl_type_composite_t* delimited = dsdl_read(&g_dsdl, wkv_key("validation.Delimited.0.1"));
+    TEST_ASSERT_NOT_NULL(delimited);
+    TEST_ASSERT_FALSE(delimited->sealed); // Should be delimited (not sealed)
+
+    // Delimited.0.1 has: uint8 a, uint16 b, uint32 c, float64 d
+    uint8_t  a_val = 0x12;
+    uint16_t b_val = 0x3456;
+    uint32_t c_val = 0x789ABCDE;
+    double   d_val = 3.14159;
+
+    void*               field_ptrs[] = { &a_val, &b_val, &c_val, &d_val };
+    dsdl_value_struct_t struct_val   = { .values = field_ptrs };
+
+    // Serialize
+    uint8_t buffer[128] = { 0 };
+    size_t  size        = dsdl_serialize(delimited, &struct_val, sizeof(buffer), buffer, NULL);
+
+    TEST_ASSERT_TRUE(size != SIZE_MAX);
+    // Top-level delimited types are serialized WITHOUT delimiter header
+    // Content size: 8 + 16 + 32 + 64 = 120 bits = 15 bytes
+    TEST_ASSERT_EQUAL_size_t(15, size);
+
+    // Deserialize and verify
+    uint8_t  result_a = 0;
+    uint16_t result_b = 0;
+    uint32_t result_c = 0;
+    double   result_d = 0.0;
+
+    void*               result_ptrs[]     = { &result_a, &result_b, &result_c, &result_d };
+    dsdl_value_struct_t result_struct_val = { .values = result_ptrs };
+
+    size_t consumed = dsdl_deserialize(delimited, &result_struct_val, size, buffer, NULL);
+    TEST_ASSERT_EQUAL_size_t(size, consumed);
+    TEST_ASSERT_EQUAL_UINT8(0x12, result_a);
+    TEST_ASSERT_EQUAL_UINT16(0x3456, result_b);
+    TEST_ASSERT_EQUAL_UINT32(0x789ABCDE, result_c);
+    // Verify float64 by checking it's non-zero (Unity doesn't have double precision support)
+    TEST_ASSERT_TRUE(result_d > 3.0 && result_d < 3.2);
+
+    teardown_dsdl();
+}
+
+void test_serialize_union_with_void_variant(void)
+{
+    // Create union with void variant: void1 empty, uint32 value
+    static dsdl_type_t void_variant = DSDL_VOID(1);
+    static dsdl_type_t uint_variant = DSDL_UINT(32);
+
+    static dsdl_type_t* field_types[2];
+    field_types[0] = &void_variant;
+    field_types[1] = &uint_variant;
+
+    static wkv_str_t field_names[2] = { { 5, "empty" }, { 5, "value" } };
+
+    dsdl_type_composite_t union_type = {
+        .type        = DSDL_COMPOSITE_UNION,
+        .name        = { 13, "VoidVariantU" },
+        .version     = { 1, 0 },
+        .extent      = 8,
+        .sealed      = true,
+        .field_count = 2,
+        .field_names = field_names,
+        .field_types = field_types,
+    };
+
+    // Test variant 0 (void1)
+    {
+        uint8_t            dummy = 0; // void needs a pointer but value is ignored
+        dsdl_value_union_t uval  = { .tag = 0, .value = &dummy };
+
+        uint8_t buffer[8] = { 0 };
+        size_t  size      = dsdl_serialize(&union_type, &uval, sizeof(buffer), buffer, NULL);
+
+        // Tag (8 bits) + void1 (1 bit) = 9 bits = 2 bytes
+        TEST_ASSERT_TRUE(size != SIZE_MAX);
+        TEST_ASSERT_EQUAL_size_t(2, size);
+
+        // Deserialize
+        uint8_t            result_dummy = 0;
+        dsdl_value_union_t result_uval  = { .tag = 99, .value = &result_dummy };
+        size_t             consumed     = dsdl_deserialize(&union_type, &result_uval, size, buffer, NULL);
+        TEST_ASSERT_EQUAL_size_t(size, consumed);
+        TEST_ASSERT_EQUAL_size_t(0, result_uval.tag);
+    }
+
+    // Test variant 1 (uint32)
+    {
+        uint32_t           value = 0xDEADBEEF;
+        dsdl_value_union_t uval  = { .tag = 1, .value = &value };
+
+        uint8_t buffer[8] = { 0 };
+        size_t  size      = dsdl_serialize(&union_type, &uval, sizeof(buffer), buffer, NULL);
+
+        // Tag (8 bits) + uint32 (32 bits) = 40 bits = 5 bytes
+        TEST_ASSERT_TRUE(size != SIZE_MAX);
+        TEST_ASSERT_EQUAL_size_t(5, size);
+
+        // Deserialize
+        uint32_t           result_value = 0;
+        dsdl_value_union_t result_uval  = { .tag = 99, .value = &result_value };
+        size_t             consumed     = dsdl_deserialize(&union_type, &result_uval, size, buffer, NULL);
+        TEST_ASSERT_EQUAL_size_t(size, consumed);
+        TEST_ASSERT_EQUAL_size_t(1, result_uval.tag);
+        TEST_ASSERT_EQUAL_UINT32(0xDEADBEEF, result_value);
+    }
+}
+
+void test_serialize_union_with_composite_variant(void)
+{
+    // Create a simple struct type
+    static dsdl_type_t struct_field_a = DSDL_UINT(16);
+    static dsdl_type_t struct_field_b = DSDL_BOOL;
+
+    static dsdl_type_t* struct_field_types[2];
+    struct_field_types[0] = &struct_field_a;
+    struct_field_types[1] = &struct_field_b;
+
+    static wkv_str_t struct_field_names[2] = { { 1, "a" }, { 1, "b" } };
+
+    static dsdl_type_composite_t struct_type = {
+        .type        = DSDL_COMPOSITE_STRUCT,
+        .name        = { 11, "SimpleStruct" },
+        .version     = { 1, 0 },
+        .extent      = 8,
+        .sealed      = true,
+        .field_count = 2,
+        .field_names = struct_field_names,
+        .field_types = struct_field_types,
+    };
+
+    // Create union with composite variant: uint8 simple, SimpleStruct composite
+    static dsdl_type_t uint_variant = DSDL_UINT(8);
+
+    static dsdl_type_t* union_field_types[2];
+    union_field_types[0] = &uint_variant;
+    union_field_types[1] = (dsdl_type_t*)&struct_type;
+
+    static wkv_str_t union_field_names[2] = { { 6, "simple" }, { 9, "composite" } };
+
+    dsdl_type_composite_t union_type = {
+        .type        = DSDL_COMPOSITE_UNION,
+        .name        = { 14, "CompositeUnion" },
+        .version     = { 1, 0 },
+        .extent      = 16,
+        .sealed      = true,
+        .field_count = 2,
+        .field_names = union_field_names,
+        .field_types = union_field_types,
+    };
+
+    // Test variant 1 (composite)
+    uint16_t            struct_a            = 0x1234;
+    bool                struct_b            = true;
+    void*               struct_field_ptrs[] = { &struct_a, &struct_b };
+    dsdl_value_struct_t struct_val          = { .values = struct_field_ptrs };
+
+    dsdl_value_union_t uval = { .tag = 1, .value = &struct_val };
+
+    uint8_t buffer[16] = { 0 };
+    size_t  size       = dsdl_serialize(&union_type, &uval, sizeof(buffer), buffer, NULL);
+
+    // Tag (8 bits) + struct (16 + 1 = 17 bits) = 25 bits = 4 bytes
+    TEST_ASSERT_TRUE(size != SIZE_MAX);
+    TEST_ASSERT_EQUAL_size_t(4, size);
+
+    // Deserialize
+    uint16_t            result_struct_a            = 0;
+    bool                result_struct_b            = false;
+    void*               result_struct_field_ptrs[] = { &result_struct_a, &result_struct_b };
+    dsdl_value_struct_t result_struct_val          = { .values = result_struct_field_ptrs };
+
+    dsdl_value_union_t result_uval = { .tag = 99, .value = &result_struct_val };
+
+    size_t consumed = dsdl_deserialize(&union_type, &result_uval, size, buffer, NULL);
+    TEST_ASSERT_EQUAL_size_t(size, consumed);
+    TEST_ASSERT_EQUAL_size_t(1, result_uval.tag);
+    TEST_ASSERT_EQUAL_UINT16(0x1234, result_struct_a);
+    TEST_ASSERT_TRUE(result_struct_b);
+}
+
+void test_serialize_union_with_array_variant(void)
+{
+    // Create array type: uint32[3] (fixed array)
+    static dsdl_type_t       element_type = DSDL_UINT(32);
+    static dsdl_type_array_t array_type   = {
+          .type        = DSDL_ARRAY_FIXED,
+          .member_type = &element_type,
+          .capacity    = 3,
+    };
+
+    // Create union: uint8 simple, uint32[3] array
+    static dsdl_type_t uint_variant = DSDL_UINT(8);
+
+    static dsdl_type_t* union_field_types[2];
+    union_field_types[0] = &uint_variant;
+    union_field_types[1] = (dsdl_type_t*)&array_type;
+
+    static wkv_str_t union_field_names[2] = { { 6, "simple" }, { 5, "array" } };
+
+    dsdl_type_composite_t union_type = {
+        .type        = DSDL_COMPOSITE_UNION,
+        .name        = { 10, "ArrayUnion" },
+        .version     = { 1, 0 },
+        .extent      = 16,
+        .sealed      = true,
+        .field_count = 2,
+        .field_names = union_field_names,
+        .field_types = union_field_types,
+    };
+
+    // Test variant 1 (array)
+    uint32_t           array_elements[3] = { 0x11111111, 0x22222222, 0x33333333 };
+    dsdl_value_union_t uval              = { .tag = 1, .value = array_elements };
+
+    uint8_t buffer[32] = { 0 };
+    size_t  size       = dsdl_serialize(&union_type, &uval, sizeof(buffer), buffer, NULL);
+
+    // Tag (8 bits) + array (3 * 32 = 96 bits) = 104 bits = 13 bytes
+    TEST_ASSERT_TRUE(size != SIZE_MAX);
+    TEST_ASSERT_EQUAL_size_t(13, size);
+
+    // Deserialize
+    uint32_t           result_array_elements[3] = { 0 };
+    dsdl_value_union_t result_uval              = { .tag = 99, .value = result_array_elements };
+
+    size_t consumed = dsdl_deserialize(&union_type, &result_uval, size, buffer, NULL);
+    TEST_ASSERT_EQUAL_size_t(size, consumed);
+    TEST_ASSERT_EQUAL_size_t(1, result_uval.tag);
+    TEST_ASSERT_EQUAL_UINT32(0x11111111, result_array_elements[0]);
+    TEST_ASSERT_EQUAL_UINT32(0x22222222, result_array_elements[1]);
+    TEST_ASSERT_EQUAL_UINT32(0x33333333, result_array_elements[2]);
+}
+
+void test_serialize_nested_delimited_types(void)
+{
+    // Create inner delimited struct: uint16 x
+    static dsdl_type_t  inner_field = DSDL_UINT(16);
+    static dsdl_type_t* inner_field_types[1];
+    inner_field_types[0]                  = &inner_field;
+    static wkv_str_t inner_field_names[1] = { { 1, "x" } };
+
+    static dsdl_type_composite_t inner_delimited = {
+        .type        = DSDL_COMPOSITE_STRUCT,
+        .name        = { 13, "InnerDelimited" },
+        .version     = { 1, 0 },
+        .extent      = 64,
+        .sealed      = false, // Delimited
+        .field_count = 1,
+        .field_names = inner_field_names,
+        .field_types = inner_field_types,
+    };
+
+    // Create outer delimited struct: uint8 a, InnerDelimited inner
+    static dsdl_type_t  outer_field_a = DSDL_UINT(8);
+    static dsdl_type_t* outer_field_types[2];
+    outer_field_types[0]                  = &outer_field_a;
+    outer_field_types[1]                  = (dsdl_type_t*)&inner_delimited;
+    static wkv_str_t outer_field_names[2] = { { 1, "a" }, { 5, "inner" } };
+
+    dsdl_type_composite_t outer_delimited = {
+        .type        = DSDL_COMPOSITE_STRUCT,
+        .name        = { 13, "OuterDelimited" },
+        .version     = { 1, 0 },
+        .extent      = 128,
+        .sealed      = false, // Delimited
+        .field_count = 2,
+        .field_names = outer_field_names,
+        .field_types = outer_field_types,
+    };
+
+    // Create values
+    uint8_t             a_val              = 0x42;
+    uint16_t            inner_x_val        = 0xABCD;
+    void*               inner_field_ptrs[] = { &inner_x_val };
+    dsdl_value_struct_t inner_val          = { .values = inner_field_ptrs };
+
+    void*               outer_field_ptrs[] = { &a_val, &inner_val };
+    dsdl_value_struct_t outer_val          = { .values = outer_field_ptrs };
+
+    // Serialize
+    uint8_t buffer[64] = { 0 };
+    size_t  size       = dsdl_serialize(&outer_delimited, &outer_val, sizeof(buffer), buffer, NULL);
+
+    TEST_ASSERT_TRUE(size != SIZE_MAX);
+    // Top-level delimited: a (1) + nested inner delimiter (4) + inner content (2) = 7 bytes
+    TEST_ASSERT_EQUAL_size_t(7, size);
+
+    // Verify inner delimiter at offset 1 (content = 2 bytes)
+    uint32_t inner_delimiter =
+      (uint32_t)buffer[1] | ((uint32_t)buffer[2] << 8) | ((uint32_t)buffer[3] << 16) | ((uint32_t)buffer[4] << 24);
+    TEST_ASSERT_EQUAL_UINT32(2, inner_delimiter);
+
+    // Deserialize
+    uint8_t             result_a                  = 0;
+    uint16_t            result_inner_x            = 0;
+    void*               result_inner_field_ptrs[] = { &result_inner_x };
+    dsdl_value_struct_t result_inner_val          = { .values = result_inner_field_ptrs };
+
+    void*               result_outer_field_ptrs[] = { &result_a, &result_inner_val };
+    dsdl_value_struct_t result_outer_val          = { .values = result_outer_field_ptrs };
+
+    size_t consumed = dsdl_deserialize(&outer_delimited, &result_outer_val, size, buffer, NULL);
+    TEST_ASSERT_EQUAL_size_t(size, consumed);
+    TEST_ASSERT_EQUAL_UINT8(0x42, result_a);
+    TEST_ASSERT_EQUAL_UINT16(0xABCD, result_inner_x);
+}
 int main(void)
 {
     UNITY_BEGIN();
@@ -1705,6 +2318,22 @@ int main(void)
     RUN_TEST(test_serialize_variable_array_at_capacity);
     RUN_TEST(test_deserialize_truncated_implicit_zero_extension);
     RUN_TEST(test_serialize_union_with_different_sizes);
+
+    // Deserialization edge case tests
+    RUN_TEST(test_deserialize_void_fields_in_struct);
+    RUN_TEST(test_deserialize_union_with_void_variant);
+    RUN_TEST(test_deserialize_union_tag_at_boundary);
+    RUN_TEST(test_deserialize_delimited_type);
+    RUN_TEST(test_deserialize_variable_array_at_max_capacity);
+    RUN_TEST(test_deserialize_union_tag_out_of_range);
+
+    // Complex serialization tests for coverage improvement
+    RUN_TEST(test_serialize_struct_containing_union);
+    RUN_TEST(test_serialize_delimited_with_variable_array);
+    RUN_TEST(test_serialize_union_with_void_variant);
+    RUN_TEST(test_serialize_union_with_composite_variant);
+    RUN_TEST(test_serialize_union_with_array_variant);
+    RUN_TEST(test_serialize_nested_delimited_types);
 
     return UNITY_END();
 }

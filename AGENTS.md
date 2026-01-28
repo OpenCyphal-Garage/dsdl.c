@@ -6,6 +6,8 @@ Directory `test_dsdl_root_namespaces` contains `0/` and `1/`, each with root nam
 
 During development, please monitor CI status (e.g., using the `gh` app or whatever you prefer).
 
+Do not commit temporary agent files, e.g., `.sisyphus/*`, status Markdown documents, etc.
+
 ## Style
 
 Follow the Zubax Style Guide per `specs/CODING_CONVENTIONS.md`. Use Clang-Format.

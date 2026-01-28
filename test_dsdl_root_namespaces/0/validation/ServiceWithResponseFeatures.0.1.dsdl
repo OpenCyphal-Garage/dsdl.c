@@ -1,0 +1,35 @@
+# Service with comprehensive response-specific features for coverage
+
+# Request part (simple)
+uint8 request_field
+@assert _offset_ == {8}
+
+@sealed
+
+---
+
+# Response part with multiple feature types
+
+uint8 response_field1
+@assert _offset_ == {8}
+
+uint16 response_field2
+@assert _offset_ == {24}
+
+uint32 response_field3
+@assert _offset_ == {56}
+
+# Response constants
+uint8 RESPONSE_SIZE = 4
+uint8 RESPONSE_CONST = 42
+
+# Multiple response assertions to trigger capacity growth
+@assert RESPONSE_SIZE == 4
+@assert RESPONSE_CONST == 42
+@assert _offset_.min > 0
+
+# @print in response
+@print _offset_
+@print RESPONSE_CONST
+
+@extent 64

@@ -1,0 +1,4 @@
+# Request with invalid print directive
+uint8 field
+@print undefined_variable
+@sealed

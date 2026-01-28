@@ -1,0 +1,7 @@
+# Service with invalid print directive in response section
+uint8 request_field
+@sealed
+---
+uint8 response_field
+@print undefined_variable
+@extent 64

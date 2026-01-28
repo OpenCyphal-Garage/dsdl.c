@@ -1,0 +1,6 @@
+# Service with invalid response @extent
+uint8 request
+@sealed
+---
+uint8 response
+@extent "invalid"

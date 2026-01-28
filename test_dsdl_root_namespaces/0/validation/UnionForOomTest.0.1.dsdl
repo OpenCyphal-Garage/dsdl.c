@@ -1,0 +1,6 @@
+# Union type for OOM testing during variants allocation
+@union
+uint8 a
+uint16 b
+uint32 c
+@sealed

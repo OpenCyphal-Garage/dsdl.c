@@ -1,0 +1,5 @@
+# Print with undefined symbol after field (not at start)
+uint8 first_field
+uint8 second_field
+@print undefined_after_fields
+@sealed

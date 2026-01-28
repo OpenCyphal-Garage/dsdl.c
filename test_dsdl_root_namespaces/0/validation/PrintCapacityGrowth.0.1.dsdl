@@ -1,0 +1,66 @@
+# @print directive capacity growth testing
+# Initial capacity is 16, so 17+ prints trigger capacity growth (16 -> 32)
+
+uint8 f1
+@print "Print 1"
+
+uint8 f2
+@print "Print 2"
+
+uint8 f3
+@print "Print 3"
+
+uint8 f4
+@print "Print 4"
+
+uint8 f5
+@print "Print 5"
+
+uint8 f6
+@print "Print 6"
+
+uint8 f7
+@print "Print 7"
+
+uint8 f8
+@print "Print 8"
+
+uint8 f9
+@print "Print 9"
+
+uint8 f10
+@print "Print 10"
+
+uint8 f11
+@print "Print 11"
+
+uint8 f12
+@print "Print 12"
+
+uint8 f13
+@print "Print 13"
+
+uint8 f14
+@print "Print 14"
+
+uint8 f15
+@print "Print 15"
+
+uint8 f16
+@print "Print 16"
+
+# This 17th print triggers capacity growth
+uint8 f17
+@print "Print 17 - triggers growth"
+
+# Additional prints to ensure growth path is exercised
+uint8 f18
+@print "Print 18"
+
+uint8 f19
+@print "Print 19"
+
+uint8 f20
+@print "Print 20"
+
+@sealed

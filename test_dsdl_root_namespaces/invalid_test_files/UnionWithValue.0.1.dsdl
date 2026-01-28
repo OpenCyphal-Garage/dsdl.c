@@ -1,0 +1,5 @@
+# Test file for @union with expression error (line 6359)
+@union 123
+uint8 field1
+uint8 field2
+@sealed

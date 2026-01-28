@@ -1,0 +1,4 @@
+# Test file for @fixed-port-id with non-integer value (line 6395-6397)
+@fixed-port-id 3.14
+uint8 field
+@sealed

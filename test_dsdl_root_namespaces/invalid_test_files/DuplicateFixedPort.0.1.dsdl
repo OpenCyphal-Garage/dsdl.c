@@ -1,0 +1,5 @@
+# Test file for duplicate @fixed-port-id error (line 6378-6380)
+@fixed-port-id 100
+@fixed-port-id 200
+uint8 field
+@sealed

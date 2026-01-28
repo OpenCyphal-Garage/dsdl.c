@@ -82,6 +82,9 @@ gen_test_matrix(test_dsdl_type_resolution "${trace_source};${CMAKE_CURRENT_SOURC
 # Bit Length Set tests (include dsdl.c directly)
 gen_test_matrix(test_dsdl_bls "${trace_source};${CMAKE_CURRENT_SOURCE_DIR}/test_bls.c" FALSE)
 
+# Unreachable defense tests (include dsdl.c directly)
+gen_test_matrix(test_dsdl_unreachable_defense "${trace_source};${CMAKE_CURRENT_SOURCE_DIR}/test_unreachable_defense.c" FALSE)
+
 # Error path tests (include dsdl.c directly)
 gen_test_matrix(test_dsdl_error_paths "${trace_source};${CMAKE_CURRENT_SOURCE_DIR}/test_error_paths.c" FALSE)
 

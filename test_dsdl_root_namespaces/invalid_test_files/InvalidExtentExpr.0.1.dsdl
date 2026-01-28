@@ -1,0 +1,3 @@
+# @extent with string literal (not a rational number)
+uint8 field
+@extent "not_a_number"
