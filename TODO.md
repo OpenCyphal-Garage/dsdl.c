@@ -19,7 +19,11 @@ assert(ok);  // Reachable, valid!
 (void) ok;   // Avoid unused variable warnings in debug builds.
 ```
 
+Some assertions contain reason strings; these should be removed (comments may be added where necessary instead).
+
 Add new tests to ensure full test coverage. Prefer tests that use the public API only. If there is any code that cannot be tested through the public API, resort to intrusive tests that `#include "dsdl.c"` directly.
+
+Keep at it until 100% coverage is reached.
 
 ## Add nested composite serialization and deserialization tests
 
